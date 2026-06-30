@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      if ("caches" in window) {
+        caches.keys().then((names) => {
+          for (const name of names) caches.delete(name);
+        });
+      }
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <title>UCU — Free POS, Inventory & Sales Tracking</title>
+    <meta name="description" content="UCU is a fast, friendly point-of-sale that works on desktop, tablet and phone. Manage products, stock, sales, expenses and customers in one place — online or offline." />
+    <meta name="author" content="UCU" />
+    <meta name="keywords" content="POS, point of sale, inventory management, sales tracking, small business, retail software, free POS, offline POS, barcode scanner" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#11b67a" />
+    <link rel="canonical" href="https://ucultra.com/" />
+    <meta name="google-site-verification" content="xqWttoqHu_reyIPDrsgifavtSBMd1biRD6tgZ65aQHk" />
+
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="UCU" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="UCU" />
+    <meta property="og:url" content="https://ucultra.com/" />
+    <meta property="og:title" content="UCU — Free Point of Sale, Inventory & Sales Tracking" />
+    <meta property="og:description" content="Run your shop from any device. Sell, scan barcodes, track stock, manage customers and view real-time analytics — even offline." />
+    <meta property="og:image" content="https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/a8b8ff1d-9e2c-4464-8f16-7b6c79916801" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="UCU — Free Point of Sale, Inventory & Sales Tracking" />
+    <meta name="twitter:description" content="Run your shop from any device. Sell, scan barcodes, track stock, manage customers and view real-time analytics — even offline." />
+    <meta name="twitter:image" content="https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/a8b8ff1d-9e2c-4464-8f16-7b6c79916801" />
+
+    <!-- Structured data: SoftwareApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "UCU — Unified Commerce Ultra",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web, Android, iOS, Windows, macOS",
+      "url": "https://ucultra.com/",
+      "description": "Fast, friendly point-of-sale for shops. Sell, scan barcodes, track stock, manage customers, and view real-time analytics — online or offline.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "ratingCount": "120"
+      }
+    }
+    </script>
+  </head>
+
+  <body>
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (const registration of registrations) {
+            if (!registration.scope.startsWith(location.origin)) {
+              registration.unregister();
+            }
+          }
+        });
+      }
+
+      if ("caches" in window) {
+        caches.keys().then((names) => {
+          for (const name of names) caches.delete(name);
+        });
+      }
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

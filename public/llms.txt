@@ -1,0 +1,15 @@
+# UCU — Unified Commerce Ultra
+
+> Fast, friendly point-of-sale for small shops. Sell, scan barcodes, track stock, manage customers, and view real-time analytics — online or offline.
+
+UCU is a web-based POS that runs on desktop, tablet and phone. It helps shop owners manage products, suppliers, purchases, sales, returns, expenses, customer debts and staff from one place.
+
+## Pages
+
+- [Home / Dashboard](/): Overview of sales, stock and shop performance.
+- [Sign in / Sign up](/auth): Create a UCU account or sign in to your shop.
+- [Forgot password](/forgot-password): Reset your account password by email.
+
+## Optional
+
+- [Reset password](/reset-password): Complete a password reset from the email link.

@@ -1,0 +1,14 @@
+{
+  "name": "UCU — Unified Commerce Ultra",
+  "short_name": "UCU",
+  "description": "Run your shop with a fast, friendly point of sale. Manage products, stock and sales from any device.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#11b67a",
+  "orientation": "any",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

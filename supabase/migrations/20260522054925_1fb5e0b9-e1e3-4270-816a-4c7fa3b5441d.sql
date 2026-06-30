@@ -1,0 +1,2 @@
+revoke execute on function public.activate_pro_from_paddle(uuid, text, timestamptz) from public, anon, authenticated;
+grant execute on function public.activate_pro_from_paddle(uuid, text, timestamptz) to service_role;

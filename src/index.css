@@ -1,0 +1,165 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 30% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 158 84% 39%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 158 75% 55%;
+
+    --secondary: 220 25% 95%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 220 20% 94%;
+    --muted-foreground: 220 10% 46%;
+
+    --accent: 38 95% 55%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 95% 55%;
+    --warning-foreground: 222 47% 11%;
+
+    --border: 220 20% 90%;
+    --input: 220 20% 92%;
+    --ring: 158 84% 39%;
+
+    --radius: 0.875rem;
+
+    --gradient-primary: linear-gradient(135deg, hsl(158 84% 39%), hsl(170 80% 45%));
+    --gradient-accent: linear-gradient(135deg, hsl(38 95% 55%), hsl(28 95% 60%));
+    --gradient-surface: linear-gradient(180deg, hsl(220 30% 99%), hsl(220 25% 96%));
+    --gradient-hero: linear-gradient(135deg, hsl(158 84% 39%) 0%, hsl(180 75% 42%) 50%, hsl(200 85% 50%) 100%);
+
+    --shadow-sm: 0 1px 2px 0 hsl(220 40% 20% / 0.04);
+    --shadow-md: 0 4px 12px -2px hsl(220 40% 20% / 0.08);
+    --shadow-lg: 0 12px 32px -8px hsl(220 40% 20% / 0.12);
+    --shadow-glow: 0 0 40px hsl(158 75% 55% / 0.35);
+    --shadow-card: 0 2px 8px -2px hsl(220 40% 20% / 0.06), 0 1px 3px hsl(220 40% 20% / 0.04);
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 30% 25%;
+    --sidebar-primary: 158 84% 39%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 25% 96%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 220 20% 92%;
+    --sidebar-ring: 158 84% 39%;
+  }
+
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 220 20% 95%;
+    --card: 222 40% 12%;
+    --card-foreground: 220 20% 95%;
+    --popover: 222 40% 12%;
+    --popover-foreground: 220 20% 95%;
+    --primary: 158 75% 50%;
+    --primary-foreground: 222 47% 8%;
+    --secondary: 222 30% 18%;
+    --secondary-foreground: 220 20% 95%;
+    --muted: 222 30% 16%;
+    --muted-foreground: 220 15% 65%;
+    --accent: 38 95% 60%;
+    --accent-foreground: 222 47% 8%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 30% 20%;
+    --input: 222 30% 18%;
+    --ring: 158 75% 50%;
+
+    --sidebar-background: 222 40% 10%;
+    --sidebar-foreground: 220 20% 88%;
+    --sidebar-primary: 158 75% 50%;
+    --sidebar-primary-foreground: 222 47% 8%;
+    --sidebar-accent: 222 35% 16%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 222 35% 16%;
+    --sidebar-ring: 158 75% 50%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(158 75% 40%), hsl(170 70% 45%));
+    --gradient-accent: linear-gradient(135deg, hsl(38 90% 50%), hsl(28 90% 55%));
+    --gradient-surface: linear-gradient(180deg, hsl(222 47% 8%), hsl(222 45% 11%));
+    --gradient-hero: linear-gradient(135deg, hsl(158 75% 35%) 0%, hsl(180 70% 38%) 50%, hsl(200 75% 42%) 100%);
+
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
+    --shadow-md: 0 4px 12px -2px hsl(0 0% 0% / 0.4);
+    --shadow-lg: 0 12px 32px -8px hsl(0 0% 0% / 0.5);
+    --shadow-glow: 0 0 40px hsl(158 75% 50% / 0.4);
+    --shadow-card: 0 2px 8px -2px hsl(0 0% 0% / 0.3), 0 1px 3px hsl(0 0% 0% / 0.2);
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+  html[dir="rtl"] body {
+    font-family: 'IBM Plex Sans Arabic', 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+  h1, h2, h3, h4 { @apply tracking-tight; font-weight: 700; }
+
+  /* RTL: flip lucide icons that imply direction */
+  html[dir="rtl"] .rtl-flip { transform: scaleX(-1); }
+}
+
+@layer utilities {
+  .bg-gradient-primary { background: var(--gradient-primary); }
+  .bg-gradient-accent { background: var(--gradient-accent); }
+  .bg-gradient-hero { background: var(--gradient-hero); }
+  .bg-gradient-surface { background: var(--gradient-surface); }
+  .shadow-card { box-shadow: var(--shadow-card); }
+  .shadow-glow { box-shadow: var(--shadow-glow); }
+  .shadow-soft { box-shadow: var(--shadow-md); }
+  .shadow-elevated { box-shadow: var(--shadow-lg); }
+  .text-balance { text-wrap: balance; }
+}
+
+/* --- Mobile keyboard handling ---
+ * When the on-screen keyboard is open, visualViewport shrinks. We expose its
+ * delta as --kb-inset and add bottom padding so dialog/page content can scroll
+ * fully into view above the keyboard. iOS also benefits from a 16px+ font
+ * size on inputs to prevent forced zoom — Tailwind `text-base` handles that.
+ */
+:root { --kb-inset: 0px; }
+body.kb-open { padding-bottom: var(--kb-inset); }
+body.kb-open [role="dialog"],
+body.kb-open .overflow-auto,
+body.kb-open .overflow-y-auto {
+  scroll-padding-bottom: calc(var(--kb-inset) + 24px);
+}
+@media (pointer: coarse) {
+  /* Prevent iOS auto-zoom on focus by ensuring inputs are at least 16px */
+  input, textarea, select { font-size: max(16px, 1rem); }
+}
+
+/* --- Print: only show #report-print-area when printing Reports --- */
+@media print {
+  body * { visibility: hidden !important; }
+  #report-print-area, #report-print-area * { visibility: visible !important; }
+  #report-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 16px; }
+  .print\:hidden { display: none !important; }
+  .print\:block { display: block !important; }
+  @page { margin: 12mm; }
+}
