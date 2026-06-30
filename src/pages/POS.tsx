@@ -6,7 +6,9 @@ import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag } from "lucide-react";
+import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw } from "lucide-react";
+import { useOfflineProducts } from "@/hooks/useOfflineProducts";
+import { enqueueSale, getPendingSales, removePendingSale } from "@/lib/offlineDb";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { toast } from "sonner";
@@ -54,7 +56,7 @@ export default function POS() {
     description: "Ring up sales, scan barcodes, apply discounts and print receipts from any device.",
   });
   const formatMoney = useFormatMoney();
-  const [products, setProducts] = useState<Product[]>([]);
+  const { products, isOnline, lastSynced, refresh } = useOfflineProducts(currentShop?.id);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -69,37 +71,6 @@ export default function POS() {
   const [discountValue, setDiscountValue] = useState<string>("");
 
   useEffect(() => { document.title = `${t("nav.pos")} — UCU`; }, [t]);
-
-  const load = useCallback(async () => {
-    if (!currentShop) return;
-    const [{ data: prods }, { data: vars }] = await Promise.all([
-      supabase
-        .from("products")
-        .select("id, name, barcode, price, stock")
-        .eq("shop_id", currentShop.id)
-        .eq("is_active", true)
-        .order("name"),
-      supabase
-        .from("product_variants")
-        .select("id, product_id, name, sku, barcode, price_override, stock")
-        .eq("shop_id", currentShop.id)
-        .eq("is_active", true)
-        .order("sort_order"),
-    ]);
-    const variantsByProduct = new Map<string, Variant[]>();
-    ((vars as any) ?? []).forEach((v: Variant) => {
-      const arr = variantsByProduct.get(v.product_id) ?? [];
-      arr.push(v);
-      variantsByProduct.set(v.product_id, arr);
-    });
-    const merged: Product[] = ((prods as any) ?? []).map((p: any) => ({
-      ...p,
-      variants: variantsByProduct.get(p.id) ?? [],
-    }));
-    setProducts(merged);
-  }, [currentShop]);
-
-  useEffect(() => { load(); }, [load]);
 
   /** Add a (product, optional variant) to the cart. */
   const pushToCart = (p: Product, v: Variant | null) => {
@@ -295,7 +266,23 @@ export default function POS() {
           <Button variant="outline" size="lg" onClick={() => setScannerOpen(true)} aria-label={t("pos.scanBarcode")}>
             <ScanBarcode className="size-5" />
           </Button>
+          <Button variant="ghost" size="icon" className="h-12 w-12 shrink-0" onClick={refresh} title="Sync products">
+            <RefreshCw className="size-4" />
+          </Button>
         </div>
+
+        {/* Online / offline status bar */}
+        {!isOnline && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+            <WifiOff className="size-4 shrink-0" />
+            <span>Offline — showing cached products. Sales will sync when back online.</span>
+          </div>
+        )}
+        {isOnline && lastSynced && (
+          <div className="text-[11px] text-muted-foreground px-1">
+            Last synced: {lastSynced.toLocaleTimeString()}
+          </div>
+        )}
 
         <div className="lg:flex-1 lg:overflow-y-auto pr-1">
           {filtered.length === 0 ? (
@@ -312,16 +299,38 @@ export default function POS() {
                     key={p.id}
                     onClick={() => handleProductClick(p)}
                     disabled={totalStock <= 0}
-                    className="text-start p-4 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all disabled:opacity-40 disabled:cursor-not-allowed group relative"
+                    className="text-start rounded-xl border bg-card hover:border-primary hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed group relative overflow-hidden flex flex-col"
                   >
-                    {hasVariants && (
-                      <span className="absolute top-2 end-2 inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5">
-                        <Layers className="size-3" />{p.variants!.length}
+                    {/* Product colour strip / placeholder image area */}
+                    <div className="w-full h-20 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shrink-0">
+                      <span className="text-2xl font-bold text-primary/30 select-none uppercase">
+                        {p.name.charAt(0)}
                       </span>
-                    )}
-                    <div className="font-semibold text-sm line-clamp-2 group-hover:text-primary">{p.name}</div>
-                    <div className="text-lg font-bold mt-2">{formatMoney(p.price, cur)}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{t("common.stock")}: {totalStock}</div>
+                    </div>
+
+                    <div className="p-3 flex flex-col gap-1 flex-1">
+                      <div className="font-semibold text-sm line-clamp-2 leading-tight group-hover:text-primary min-h-[2.5rem]">{p.name}</div>
+
+                      <div className="mt-auto pt-2 flex items-end justify-between gap-1">
+                        <div className="text-base font-bold tabular-nums text-primary">{formatMoney(p.price, cur)}</div>
+                        <div className={cn(
+                          "text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
+                          totalStock === 0
+                            ? "bg-destructive/10 text-destructive"
+                            : totalStock <= 3
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : "bg-success/10 text-success"
+                        )}>
+                          {totalStock === 0 ? "Out" : `${totalStock} left`}
+                        </div>
+                      </div>
+
+                      {hasVariants && (
+                        <div className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 w-fit">
+                          <Layers className="size-3" />{p.variants!.length} variants
+                        </div>
+                      )}
+                    </div>
                   </button>
                 );
               })}

@@ -95,8 +95,11 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     <div className="min-h-screen flex bg-background">
       {/* Sidebar */}
       <aside className="hidden lg:flex flex-col w-64 bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-        <div className="px-6 py-5 border-b border-sidebar-border">
-          <div className="flex items-center gap-2.5">
+        <div
+          className="px-6 py-5 border-b border-sidebar-border"
+          style={{ WebkitAppRegion: 'drag', paddingLeft: '5rem' } as React.CSSProperties}
+        >
+          <div className="flex items-center gap-2.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <Logo size="md" />
             <div>
               <div className="font-bold text-base leading-tight">{t("app.name")}</div>

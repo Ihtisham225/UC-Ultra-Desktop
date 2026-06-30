@@ -32,6 +32,7 @@ function createWindow() {
       contextIsolation: true,
     },
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    trafficLightPosition: { x: 16, y: 18 },
     show: false,
   })
 
