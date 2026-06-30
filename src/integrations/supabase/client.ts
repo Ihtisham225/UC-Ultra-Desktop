@@ -5,6 +5,16 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+// Fail instantly when offline instead of waiting 30-60s for a network timeout
+const offlineFetch: typeof fetch = (input, init) => {
+  if (!navigator.onLine) {
+    return Promise.reject(new Error('offline'))
+  }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 12000)
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer))
+}
+
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
@@ -14,5 +24,6 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: false,
-  }
+  },
+  global: { fetch: offlineFetch },
 });

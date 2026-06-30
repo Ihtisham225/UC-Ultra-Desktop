@@ -18,6 +18,7 @@ import { BulkActionBar } from "@/components/BulkActionBar";
 import { downloadCsv } from "@/lib/csv";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { getCacheEntry, setCacheEntry } from "@/lib/offlineDb";
 
 const PAGE_SIZE_KEY = "pos.pageSize.sales";
 const DEFAULT_PAGE_SIZE = 20;
@@ -67,6 +68,14 @@ export default function Sales() {
   const loadSales = useCallback(async () => {
     if (!currentShop) return;
     setLoading(true);
+
+    // Serve cache immediately when offline
+    if (!navigator.onLine) {
+      const cached = await getCacheEntry<{ sales: any[]; total: number; grandTotal: number; refundTotal: number }>(`sales:${currentShop.id}:${page}`)
+      if (cached) { setSales(cached.sales); setTotalCount(cached.total); setGrandTotal(cached.grandTotal); setRefundTotal(cached.refundTotal); }
+      setLoading(false);
+      return;
+    }
     const offset = (page - 1) * pageSize;
     const { data: salesData, count } = await supabase
       .from("sales")
@@ -111,8 +120,11 @@ export default function Sales() {
       supabase.from("sales").select("total").eq("shop_id", currentShop.id),
       supabase.from("sale_returns").select("total_refund").eq("shop_id", currentShop.id),
     ]);
-    setGrandTotal(((allSales as any[]) ?? []).reduce((a, s) => a + Number(s.total ?? 0), 0));
-    setGrandRefunded(((allReturns as any[]) ?? []).reduce((a, r) => a + Number(r.total_refund ?? 0), 0));
+    const grandTotal = ((allSales as any[]) ?? []).reduce((a, s) => a + Number(s.total ?? 0), 0);
+    const refundTotal = ((allReturns as any[]) ?? []).reduce((a, r) => a + Number(r.total_refund ?? 0), 0);
+    setGrandTotal(grandTotal);
+    setGrandRefunded(refundTotal);
+    setCacheEntry(`sales:${currentShop.id}:${page}`, { sales: enriched, total: count ?? 0, grandTotal, refundTotal });
 
     setLoading(false);
   }, [currentShop, page, pageSize]);

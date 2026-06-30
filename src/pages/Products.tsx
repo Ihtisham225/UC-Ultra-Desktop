@@ -27,6 +27,7 @@ import { generateSku, generateBarcode } from "@/lib/sku";
 import { VariantsBuilder, type BuilderVariant } from "@/components/VariantsBuilder";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { useOfflineQuery } from "@/hooks/useOfflineQuery";
 
 interface Variant {
   id?: string;
@@ -87,30 +88,26 @@ export default function Products() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
-  const load = useCallback(async () => {
-    if (!currentShop) return;
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("products")
-      .select("*, product_variants(id, name, sku, barcode, price_override, stock, sort_order)")
-      .eq("shop_id", currentShop.id)
-      .order("name");
-    if (error) {
-      toast.error(error.message);
-    } else {
-      // Sort variants by sort_order client-side (PostgREST nested ordering would need .order)
-      const list = ((data as any[]) ?? []).map((p) => ({
+  const { data: cachedItems, loading, refresh: load } = useOfflineQuery<Product[]>(
+    currentShop ? `products:${currentShop.id}` : null,
+    async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("*, product_variants(id, name, sku, barcode, price_override, stock, sort_order)")
+        .eq("shop_id", currentShop!.id)
+        .order("name");
+      if (error) throw error;
+      return ((data as any[]) ?? []).map((p) => ({
         ...p,
         product_variants: (p.product_variants ?? []).sort(
           (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
         ),
       })) as Product[];
-      setItems(list);
-    }
-    setLoading(false);
-  }, [currentShop]);
+    },
+    [currentShop?.id],
+  );
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (cachedItems) setItems(cachedItems); }, [cachedItems]);
 
   const startEdit = (p: Product) => {
     const variants = (p.product_variants ?? []).map((v) => ({ ...v }));

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,6 +10,7 @@ import { ScanBarcode, Package, Receipt, AlertTriangle, TrendingUp, DollarSign, U
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { PageTip } from "@/components/PageTip";
+import { useOfflineQuery } from "@/hooks/useOfflineQuery";
 
 interface Stats {
   todaySales: number;
@@ -24,39 +25,30 @@ export default function Dashboard() {
   const perms = usePermissions();
   const { t } = useTranslation();
   const formatMoney = useFormatMoney();
-  const [stats, setStats] = useState<Stats>({ todaySales: 0, todayCount: 0, productCount: 0, lowStock: [] });
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => { document.title = `${t("nav.dashboard")} — UCU`; }, [t]);
 
-  useEffect(() => {
-    if (!currentShop) return;
-    (async () => {
-      setLoading(true);
+  const { data: stats, loading } = useOfflineQuery<Stats>(
+    currentShop ? `dashboard:${currentShop.id}` : null,
+    async () => {
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
-
       const [{ data: salesToday }, { count: productCount }, { data: products }] = await Promise.all([
-        supabase.from("sales").select("total").eq("shop_id", currentShop.id).gte("created_at", startOfDay.toISOString()),
-        supabase.from("products").select("id", { count: "exact", head: true }).eq("shop_id", currentShop.id).eq("is_active", true),
-        supabase.from("products").select("id, name, stock, low_stock_threshold").eq("shop_id", currentShop.id).eq("is_active", true),
+        supabase.from("sales").select("total").eq("shop_id", currentShop!.id).gte("created_at", startOfDay.toISOString()),
+        supabase.from("products").select("id", { count: "exact", head: true }).eq("shop_id", currentShop!.id).eq("is_active", true),
+        supabase.from("products").select("id, name, stock, low_stock_threshold").eq("shop_id", currentShop!.id).eq("is_active", true),
       ]);
-
-      const todaySales = (salesToday ?? []).reduce((a, s) => a + Number(s.total), 0);
+      const todaySales = (salesToday ?? []).reduce((a: number, s: any) => a + Number(s.total), 0);
       const lowStock = (products ?? [])
-        .filter((p) => Number(p.stock) <= Number(p.low_stock_threshold))
+        .filter((p: any) => Number(p.stock) <= Number(p.low_stock_threshold))
         .slice(0, 5)
-        .map((p) => ({ id: p.id, name: p.name, stock: Number(p.stock) }));
+        .map((p: any) => ({ id: p.id, name: p.name, stock: Number(p.stock) }));
+      return { todaySales, todayCount: salesToday?.length ?? 0, productCount: productCount ?? 0, lowStock };
+    },
+    [currentShop?.id],
+  );
 
-      setStats({
-        todaySales,
-        todayCount: salesToday?.length ?? 0,
-        productCount: productCount ?? 0,
-        lowStock,
-      });
-      setLoading(false);
-    })();
-  }, [currentShop]);
+  const safeStats: Stats = stats ?? { todaySales: 0, todayCount: 0, productCount: 0, lowStock: [] };
 
   const cur = currentShop?.currency ?? "USD";
 
@@ -81,10 +73,10 @@ export default function Dashboard() {
 
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={DollarSign} label={t("dashboard.todayRevenue")} value={formatMoney(stats.todaySales, cur)} tone="primary" />
-        <StatCard icon={Receipt} label={t("dashboard.todaySales")} value={String(stats.todayCount)} tone="accent" />
-        <StatCard icon={Package} label={t("dashboard.activeProducts")} value={String(stats.productCount)} tone="default" />
-        <StatCard icon={AlertTriangle} label={t("dashboard.lowStock")} value={String(stats.lowStock.length)} tone="warning" />
+        <StatCard icon={DollarSign} label={t("dashboard.todayRevenue")} value={formatMoney(safeStats.todaySales, cur)} tone="primary" />
+        <StatCard icon={Receipt} label={t("dashboard.todaySales")} value={String(safeStats.todayCount)} tone="accent" />
+        <StatCard icon={Package} label={t("dashboard.activeProducts")} value={String(safeStats.productCount)} tone="default" />
+        <StatCard icon={AlertTriangle} label={t("dashboard.lowStock")} value={String(safeStats.lowStock.length)} tone="warning" />
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -110,11 +102,11 @@ export default function Dashboard() {
           </div>
           {loading ? (
             <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
-          ) : stats.lowStock.length === 0 ? (
+          ) : safeStats.lowStock.length === 0 ? (
             <div className="text-center py-8 text-sm text-muted-foreground">{t("dashboard.lowStockEmpty")} ✨</div>
           ) : (
             <ul className="space-y-2">
-              {stats.lowStock.map((p) => (
+              {safeStats.lowStock.map((p) => (
                 <li key={p.id} className="flex items-center justify-between p-3 rounded-lg bg-warning/5 border border-warning/20">
                   <span className="font-medium">{p.name}</span>
                   <span className="text-sm font-mono text-warning font-semibold">{p.stock}</span>

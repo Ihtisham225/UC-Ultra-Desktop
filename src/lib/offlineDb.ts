@@ -32,14 +32,39 @@ let _db: IDBPDatabase | null = null
 
 async function getDb() {
   if (_db) return _db
-  _db = await openDB('uc-ultra-offline', 1, {
-    upgrade(db) {
-      db.createObjectStore('products', { keyPath: 'id' })
-      const sales = db.createObjectStore('pending_sales', { keyPath: 'localId' })
-      sales.createIndex('shopId', 'shopId')
+  _db = await openDB('uc-ultra-offline', 2, {
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+        db.createObjectStore('products', { keyPath: 'id' })
+        const sales = db.createObjectStore('pending_sales', { keyPath: 'localId' })
+        sales.createIndex('shopId', 'shopId')
+      }
+      if (oldVersion < 2) {
+        // Generic key-value cache for any page query
+        db.createObjectStore('query_cache', { keyPath: 'key' })
+      }
     },
   })
   return _db
+}
+
+// ─── Generic query cache ────────────────────────────────────────────────────
+
+interface CacheEntry<T> {
+  key: string
+  data: T
+  cachedAt: number
+}
+
+export async function getCacheEntry<T>(key: string): Promise<T | null> {
+  const db = await getDb()
+  const entry: CacheEntry<T> | undefined = await db.get('query_cache', key)
+  return entry?.data ?? null
+}
+
+export async function setCacheEntry<T>(key: string, data: T): Promise<void> {
+  const db = await getDb()
+  await db.put('query_cache', { key, data, cachedAt: Date.now() } satisfies CacheEntry<T>)
 }
 
 // ─── Products ──────────────────────────────────────────────────────────────
