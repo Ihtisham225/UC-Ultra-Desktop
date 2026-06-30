@@ -300,38 +300,16 @@ export default function POS() {
                     key={p.id}
                     onClick={() => handleProductClick(p)}
                     disabled={totalStock <= 0}
-                    className="text-start rounded-xl border bg-card hover:border-primary hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed group relative overflow-hidden flex flex-col"
+                    className="text-start p-4 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all disabled:opacity-40 disabled:cursor-not-allowed group relative"
                   >
-                    {/* Product colour strip / placeholder image area */}
-                    <div className="w-full h-20 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shrink-0">
-                      <span className="text-2xl font-bold text-primary/30 select-none uppercase">
-                        {p.name.charAt(0)}
+                    {hasVariants && (
+                      <span className="absolute top-2 end-2 inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5">
+                        <Layers className="size-3" />{p.variants!.length}
                       </span>
-                    </div>
-
-                    <div className="p-3 flex flex-col gap-1 flex-1">
-                      <div className="font-semibold text-sm line-clamp-2 leading-tight group-hover:text-primary min-h-[2.5rem]">{p.name}</div>
-
-                      <div className="mt-auto pt-2 flex items-end justify-between gap-1">
-                        <div className="text-base font-bold tabular-nums text-primary">{formatMoney(p.price, cur)}</div>
-                        <div className={cn(
-                          "text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
-                          totalStock === 0
-                            ? "bg-destructive/10 text-destructive"
-                            : totalStock <= 3
-                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                            : "bg-success/10 text-success"
-                        )}>
-                          {totalStock === 0 ? "Out" : `${totalStock} left`}
-                        </div>
-                      </div>
-
-                      {hasVariants && (
-                        <div className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 w-fit">
-                          <Layers className="size-3" />{p.variants!.length} variants
-                        </div>
-                      )}
-                    </div>
+                    )}
+                    <div className="font-semibold text-sm leading-snug group-hover:text-primary mb-2 pr-6">{p.name}</div>
+                    <div className="text-lg font-bold">{formatMoney(p.price, cur)}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{t("common.stock")}: {totalStock}</div>
                   </button>
                 );
               })}
