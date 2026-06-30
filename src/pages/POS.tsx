@@ -300,15 +300,15 @@ export default function POS() {
                     key={p.id}
                     onClick={() => handleProductClick(p)}
                     disabled={totalStock <= 0}
-                    className="text-start p-4 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all disabled:opacity-40 disabled:cursor-not-allowed group relative"
+                    className="text-start p-3 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all disabled:opacity-40 disabled:cursor-not-allowed group relative overflow-hidden w-full min-w-0"
                   >
                     {hasVariants && (
                       <span className="absolute top-2 end-2 inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5">
                         <Layers className="size-3" />{p.variants!.length}
                       </span>
                     )}
-                    <div className="font-semibold text-sm leading-snug group-hover:text-primary mb-2 pr-6">{p.name}</div>
-                    <div className="text-lg font-bold">{formatMoney(p.price, cur)}</div>
+                    <div className="font-semibold text-sm leading-snug group-hover:text-primary mb-2 pr-6 line-clamp-3">{p.name}</div>
+                    <div className="text-base font-bold truncate">{formatMoney(p.price, cur)}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">{t("common.stock")}: {totalStock}</div>
                   </button>
                 );
