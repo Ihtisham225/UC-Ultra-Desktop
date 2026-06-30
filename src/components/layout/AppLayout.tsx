@@ -97,12 +97,13 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
       <header
         className="drag-region border-b bg-card/90 backdrop-blur-sm sticky top-0 z-30 shrink-0"
       >
-        <div className="no-drag-region flex items-center gap-3 h-14">
-          {/* Traffic-light spacer on macOS */}
+        {/* The flex row is NOT no-drag — only individual interactive elements are */}
+        <div className="flex items-center gap-3 h-14">
+          {/* Traffic-light spacer — drag region passes through here */}
           <div className="hidden lg:block w-[5.5rem] shrink-0" />
 
-          {/* Brand */}
-          <div className="hidden lg:flex items-center gap-2.5 shrink-0 pe-2 border-r border-border mr-1">
+          {/* Brand — static, draggable */}
+          <div className="no-drag-region hidden lg:flex items-center gap-2.5 shrink-0 pe-2 border-r border-border mr-1">
             <Logo size="sm" />
             <div className="leading-tight">
               <div className="font-bold text-sm">{t("app.name")}</div>
@@ -111,12 +112,12 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
           </div>
 
           {/* Mobile brand */}
-          <div className="lg:hidden flex items-center gap-2 pl-4 shrink-0">
+          <div className="no-drag-region lg:hidden flex items-center gap-2 pl-4 shrink-0">
             <Logo size="sm" />
           </div>
 
           {/* Shop switcher */}
-          <div className="flex items-center gap-2 min-w-0 pl-2 lg:pl-0">
+          <div className="no-drag-region flex items-center gap-2 min-w-0 pl-2 lg:pl-0">
             {role === "owner" ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -150,13 +151,13 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
             )}
           </div>
 
-          {/* Global search — centred flex-1 */}
-          <div className="hidden lg:flex flex-1 justify-center px-4">
+          {/* Global search — centred flex-1, draggable gaps on either side */}
+          <div className="no-drag-region hidden lg:flex flex-1 justify-center px-4">
             <GlobalSearch variant="desktop-bar" />
           </div>
 
           {/* Right actions */}
-          <div className="flex items-center gap-0.5 shrink-0 pr-3 ml-auto lg:ml-0">
+          <div className="no-drag-region flex items-center gap-0.5 shrink-0 pr-3 ml-auto lg:ml-0">
             <Button variant="ghost" size="icon" onClick={() => setCalcOpen(true)} aria-label="Calculator">
               <Calculator className="size-4.5" />
             </Button>
