@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
 import { useShop } from "@/contexts/ShopContext";
 import { Card } from "@/components/ui/card";
 import { Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2 } from "lucide-react";
@@ -18,7 +17,8 @@ import { BulkActionBar } from "@/components/BulkActionBar";
 import { downloadCsv } from "@/lib/csv";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { getCacheEntry, setCacheEntry } from "@/lib/offlineDb";
+import { useLocalStore } from "@/hooks/useLocalStore";
+import { deleteLocal, notifyChange } from "@/lib/localDb";
 
 const PAGE_SIZE_KEY = "pos.pageSize.sales";
 const DEFAULT_PAGE_SIZE = 20;
@@ -42,11 +42,6 @@ export default function Sales() {
   const formatMoney = useFormatMoney();
   const canReturn = role === "owner" || role === "manager";
   const canDelete = role === "owner";
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [grandTotal, setGrandTotal] = useState(0);
-  const [grandRefunded, setGrandRefunded] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState<number>(() => {
     const raw = typeof window !== "undefined" ? localStorage.getItem(PAGE_SIZE_KEY) : null;
@@ -65,71 +60,33 @@ export default function Sales() {
 
   useEffect(() => { document.title = "UCU"; }, []);
 
-  const loadSales = useCallback(async () => {
-    if (!currentShop) return;
-    setLoading(true);
+  const { data: allSalesRaw, loading, refresh: loadSales } = useLocalStore<any>("sales", currentShop?.id);
+  const { data: allSaleItems } = useLocalStore<any>("sale_items", currentShop?.id);
+  const { data: allReturns } = useLocalStore<any>("sale_returns", currentShop?.id);
 
-    // Serve cache immediately when offline
-    if (!navigator.onLine) {
-      const cached = await getCacheEntry<{ sales: any[]; total: number; grandTotal: number; refundTotal: number }>(`sales:${currentShop.id}:${page}`)
-      if (cached) { setSales(cached.sales); setTotalCount(cached.total); setGrandTotal(cached.grandTotal); setRefundTotal(cached.refundTotal); }
-      setLoading(false);
-      return;
-    }
-    const offset = (page - 1) * pageSize;
-    const { data: salesData, count } = await supabase
-      .from("sales")
-      .select(
-        "id, receipt_number, total, payment_method, created_at, sale_items(id, product_name, quantity)",
-        { count: "exact" },
-      )
-      .eq("shop_id", currentShop.id)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + pageSize - 1);
-
-    const list = (salesData as any[]) ?? [];
-    const ids = list.map((s) => s.id);
-
-    const returnsBySale: Record<string, { sale_item_id: string | null; quantity: number }[]> = {};
-    if (ids.length > 0) {
-      const { data: returns } = await supabase
-        .from("sale_returns")
-        .select("sale_id, sale_return_items(sale_item_id, quantity)")
-        .in("sale_id", ids);
-      (returns as any[] ?? []).forEach((r) => {
-        const arr = returnsBySale[r.sale_id] ?? [];
-        (r.sale_return_items ?? []).forEach((it: any) => arr.push(it));
-        returnsBySale[r.sale_id] = arr;
-      });
-    }
-
-    const enriched = list.map((s: any) => {
-      const items = s.sale_items ?? [];
+  // Sort and paginate locally
+  const allSales = useMemo(() => {
+    return [...allSalesRaw].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    ).map((s) => {
+      const items = allSaleItems.filter((i: any) => i.sale_id === s.id);
       const totalQty = items.reduce((sum: number, it: any) => sum + Number(it.quantity || 0), 0);
-      const returnItems = returnsBySale[s.id] ?? [];
-      const returnedQty = returnItems.reduce((sum, it) => sum + Number(it.quantity || 0), 0);
+      const saleReturns = allReturns.filter((r: any) => r.sale_id === s.id);
+      const returnedQty = saleReturns.reduce((sum: number, r: any) => sum + Number(r.quantity || 0), 0);
       let returnStatus: ReturnStatus = "none";
       if (returnedQty > 0) returnStatus = returnedQty >= totalQty ? "full" : "partial";
-      return { ...s, returnStatus };
+      return { ...s, sale_items: items, returnStatus };
     });
+  }, [allSalesRaw, allSaleItems, allReturns]);
 
-    setSales(enriched);
-    setTotalCount(count ?? 0);
+  const totalCount = allSales.length;
+  const grandTotal = allSalesRaw.reduce((a: number, s: any) => a + Number(s.total ?? 0), 0);
+  const grandRefunded = allReturns.reduce((a: number, r: any) => a + Number(r.total_refund ?? 0), 0);
 
-    const [{ data: allSales }, { data: allReturns }] = await Promise.all([
-      supabase.from("sales").select("total").eq("shop_id", currentShop.id),
-      supabase.from("sale_returns").select("total_refund").eq("shop_id", currentShop.id),
-    ]);
-    const grandTotal = ((allSales as any[]) ?? []).reduce((a, s) => a + Number(s.total ?? 0), 0);
-    const refundTotal = ((allReturns as any[]) ?? []).reduce((a, r) => a + Number(r.total_refund ?? 0), 0);
-    setGrandTotal(grandTotal);
-    setGrandRefunded(refundTotal);
-    setCacheEntry(`sales:${currentShop.id}:${page}`, { sales: enriched, total: count ?? 0, grandTotal, refundTotal });
-
-    setLoading(false);
-  }, [currentShop, page, pageSize]);
-
-  useEffect(() => { loadSales(); }, [loadSales]);
+  const sales = useMemo(() => {
+    const offset = (page - 1) * pageSize;
+    return allSales.slice(offset, offset + pageSize);
+  }, [allSales, page, pageSize]);
 
   // Clamp page if totals shrink (e.g. after deletes).
   useEffect(() => {
@@ -139,20 +96,11 @@ export default function Sales() {
 
   const cur = currentShop?.currency ?? "USD";
 
-  const openReceipt = async (saleId: string) => {
+  const openReceipt = (saleId: string) => {
     if (!currentShop) return;
-    const { data } = await supabase
-      .from("sales")
-      .select("*, sale_items(*), customers(name, phone)")
-      .eq("id", saleId)
-      .maybeSingle();
-    if (data) {
-      setOpenSale({
-        ...data,
-        items: (data as any).sale_items,
-        customer: (data as any).customers,
-        shop: currentShop,
-      });
+    const sale = allSales.find((s) => s.id === saleId);
+    if (sale) {
+      setOpenSale({ ...sale, items: sale.sale_items, customer: null, shop: currentShop });
     }
   };
 
@@ -163,10 +111,11 @@ export default function Sales() {
       variant: "destructive",
     });
     if (!ok) return;
-    const { error } = await supabase.rpc("delete_sale" as any, { _sale_id: saleId });
-    if (error) return toast.error(error.message);
+    const saleItems = allSaleItems.filter((i: any) => i.sale_id === saleId);
+    for (const item of saleItems) await deleteLocal("sale_items", item.id, true);
+    await deleteLocal("sales", saleId, true);
+    notifyChange("sales");
     toast.success(t("common.deleted"));
-    loadSales();
   };
 
   const visibleIds = sales.map((s) => s.id);
@@ -180,15 +129,14 @@ export default function Sales() {
     });
     if (!ok) return;
     const ids = sel.ids;
-    let ok_n = 0, fail = 0;
     for (const id of ids) {
-      const { error } = await supabase.rpc("delete_sale" as any, { _sale_id: id });
-      if (error) fail++; else ok_n++;
+      const saleItems = allSaleItems.filter((i: any) => i.sale_id === id);
+      for (const item of saleItems) await deleteLocal("sale_items", item.id, true);
+      await deleteLocal("sales", id, true);
     }
-    if (fail === 0) toast.success(t("bulk.deleted", { count: ok_n }));
-    else toast.error(t("bulk.partialDelete", { ok: ok_n, total: ids.length, failed: fail }));
+    notifyChange("sales");
+    toast.success(t("bulk.deleted", { count: ids.length }));
     sel.clear();
-    loadSales();
   };
 
   const bulkExport = () => {

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +26,9 @@ import { generateSku, generateBarcode } from "@/lib/sku";
 import { VariantsBuilder, type BuilderVariant } from "@/components/VariantsBuilder";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { useOfflineQuery } from "@/hooks/useOfflineQuery";
+import { useLocalStore } from "@/hooks/useLocalStore";
+import { upsertLocal, deleteLocal, notifyChange } from "@/lib/localDb";
+import { v4 as uuid } from "uuid";
 
 interface Variant {
   id?: string;
@@ -67,8 +68,6 @@ export default function Products() {
   const { currentShop, role } = useShop();
   const formatMoney = useFormatMoney();
   const [params, setParams] = useSearchParams();
-  const [items, setItems] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [editing, setEditing] = useState<EditingProduct | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -88,26 +87,10 @@ export default function Products() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
-  const { data: cachedItems, loading, refresh: load } = useOfflineQuery<Product[]>(
-    currentShop ? `products:${currentShop.id}` : null,
-    async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*, product_variants(id, name, sku, barcode, price_override, stock, sort_order)")
-        .eq("shop_id", currentShop!.id)
-        .order("name");
-      if (error) throw error;
-      return ((data as any[]) ?? []).map((p) => ({
-        ...p,
-        product_variants: (p.product_variants ?? []).sort(
-          (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
-        ),
-      })) as Product[];
-    },
-    [currentShop?.id],
+  const { data: items, loading, refresh: load } = useLocalStore<Product>(
+    "products",
+    currentShop?.id,
   );
-
-  useEffect(() => { if (cachedItems) setItems(cachedItems); }, [cachedItems]);
 
   const startEdit = (p: Product) => {
     const variants = (p.product_variants ?? []).map((v) => ({ ...v }));
@@ -151,48 +134,47 @@ export default function Products() {
 
     const sku = (editing.sku?.trim()) || generateSku(name);
     const barcode = editing.barcode?.trim() || generateBarcode();
+    const now = new Date().toISOString();
 
-    const payload = {
+    const low_stock_threshold =
+      editing.low_stock_threshold === undefined ||
+      editing.low_stock_threshold === null ||
+      (editing.low_stock_threshold as unknown as string) === ""
+        ? 5
+        : Number(editing.low_stock_threshold) || 0;
+
+    const productId = editing.id ?? uuid();
+    const productPayload: Record<string, unknown> = {
+      id: productId,
       shop_id: currentShop.id,
       name,
       sku,
       barcode,
       category: null,
       price: Number(editing.price) || 0,
-      // Stock stays at whatever it currently is. New products start at 0;
-      // existing products keep their stock and only purchases/sales/returns move it.
-      low_stock_threshold:
-        editing.low_stock_threshold === undefined ||
-        editing.low_stock_threshold === null ||
-        (editing.low_stock_threshold as unknown as string) === ""
-          ? 5
-          : Number(editing.low_stock_threshold) || 0,
+      stock: editing.id
+        ? (items.find((p) => p.id === editing.id)?.stock ?? 0)
+        : 0,
+      low_stock_threshold,
       unit: editing.unit || "pcs",
+      is_active: editing.is_active !== false,
+      updated_at: now,
+      created_at: editing.id
+        ? ((items.find((p) => p.id === editing.id) as any)?.created_at ?? now)
+        : now,
     };
 
-    let productId = editing.id;
-    if (productId) {
-      const { error } = await supabase.from("products").update(payload).eq("id", productId);
-      if (error) return toast.error(error.message);
-    } else {
-      const { data, error } = await supabase.from("products").insert(payload).select("id").single();
-      if (error || !data) return toast.error(error?.message ?? "Failed");
-      productId = data.id;
-    }
+    await upsertLocal("products", productPayload, true);
 
-    // Sync variants
+    // Manage variants
     const existingVariants = items.find((p) => p.id === editing.id)?.product_variants ?? [];
     const keptIds = new Set(variants.filter((v) => v.id && !v._new).map((v) => v.id!));
 
     if (wantsVariants) {
       // Delete removed variants
       const toDelete = existingVariants.filter((v) => v.id && !keptIds.has(v.id)).map((v) => v.id!);
-      if (toDelete.length > 0) {
-        const { error } = await supabase.from("product_variants").delete().in("id", toDelete);
-        if (error) return toast.error(error.message);
-      }
+      for (const vid of toDelete) await deleteLocal("product_variants", vid, true);
 
-      // Slugify a variant name segment for SKU suffixes (e.g. "Red / S" -> "RED-S")
       const variantSlug = (s: string) =>
         s
           .toUpperCase()
@@ -203,42 +185,31 @@ export default function Products() {
           .join("-")
           .slice(0, 20) || "VAR";
 
-      // Upsert / insert each variant
       for (let i = 0; i < variants.length; i++) {
         const v = variants[i];
         const autoSku = `${sku}-${variantSlug(v.name)}`;
-        const variantPayload = {
-          product_id: productId!,
+        await upsertLocal("product_variants", {
+          id: v.id && !v._new ? v.id : uuid(),
+          product_id: productId,
           shop_id: currentShop.id,
           name: v.name,
-          // SKU & barcode are hidden from the UI — auto-generated and stable across edits.
           sku: v.sku?.trim() || autoSku,
           barcode: v.barcode?.trim() || generateBarcode(),
           price_override:
             v.price_override === null || v.price_override === undefined || (v.price_override as unknown as string) === ""
               ? null
               : Number(v.price_override),
-          // Inherit the parent product's low-stock threshold.
-          low_stock_threshold: payload.low_stock_threshold,
+          low_stock_threshold,
           sort_order: i,
-        };
-        if (v.id && !v._new) {
-          const { error } = await supabase.from("product_variants").update(variantPayload).eq("id", v.id);
-          if (error) return toast.error(error.message);
-        } else {
-          const { error } = await supabase.from("product_variants").insert(variantPayload);
-          if (error) return toast.error(error.message);
-        }
+          updated_at: now,
+        }, true);
       }
     } else {
-      // No variants wanted — delete any existing
       const toDelete = existingVariants.filter((v) => v.id).map((v) => v.id!);
-      if (toDelete.length > 0) {
-        const { error } = await supabase.from("product_variants").delete().in("id", toDelete);
-        if (error) return toast.error(error.message);
-      }
+      for (const vid of toDelete) await deleteLocal("product_variants", vid, true);
     }
 
+    notifyChange("products");
     toast.success(editing.id ? t("products.productUpdated") : t("products.productAdded"));
     setEditing(null);
     load();
@@ -251,8 +222,11 @@ export default function Products() {
       variant: "destructive",
     });
     if (!ok) return;
-    const { error } = await supabase.from("products").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    const prod = items.find((p) => p.id === id);
+    const variantIds = (prod?.product_variants ?? []).map((v) => v.id).filter(Boolean) as string[];
+    for (const vid of variantIds) await deleteLocal("product_variants", vid, true);
+    await deleteLocal("products", id, true);
+    notifyChange("products");
     toast.success(t("common.deleted"));
     load();
   };
@@ -293,8 +267,13 @@ export default function Products() {
     });
     if (!ok) return;
     const ids = sel.ids;
-    const { error } = await supabase.from("products").delete().in("id", ids);
-    if (error) return toast.error(error.message);
+    for (const id of ids) {
+      const prod = items.find((p) => p.id === id);
+      const variantIds = (prod?.product_variants ?? []).map((v) => v.id).filter(Boolean) as string[];
+      for (const vid of variantIds) await deleteLocal("product_variants", vid, true);
+      await deleteLocal("products", id, true);
+    }
+    notifyChange("products");
     toast.success(t("bulk.deleted", { count: ids.length }));
     sel.clear();
     load();

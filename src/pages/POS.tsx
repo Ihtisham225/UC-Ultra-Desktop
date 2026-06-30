@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw } from "lucide-react";
 import { useOfflineProducts } from "@/hooks/useOfflineProducts";
-import { enqueueSale, getPendingSales, removePendingSale } from "@/lib/offlineDb";
+import { upsertLocal, notifyChange } from "@/lib/localDb";
+import { v4 as uuid } from "uuid";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { toast } from "sonner";
@@ -177,16 +177,11 @@ export default function POS() {
     if (isCredit && effectivePaid > total) return toast.error("Paid cannot exceed total");
 
     setBusy(true);
+    const now = new Date().toISOString();
     const receiptNumber = `R-${Date.now().toString(36).toUpperCase()}`;
-    const items = cart.map((c) => ({
-      product_id: c.product_id,
-      variant_id: c.variant_id,
-      product_name: c.product_name,
-      unit_price: c.unit_price,
-      quantity: c.quantity,
-      line_total: c.unit_price * c.quantity,
-    }));
-    const salePayload = {
+    const saleId = uuid();
+    const saleRecord: Record<string, unknown> = {
+      id: saleId,
       shop_id: currentShop.id,
       cashier_id: user.id,
       customer_id: customer?.id ?? null,
@@ -195,17 +190,32 @@ export default function POS() {
       change_due: change,
       payment_method: paymentMethod,
       receipt_number: receiptNumber,
+      updated_at: now,
+      created_at: now,
     };
 
-    const { data: sale, error: saleErr } = await supabase.from("sales").insert(salePayload).select().single();
-    if (saleErr || !sale) { setBusy(false); return toast.error(saleErr?.message ?? "Failed"); }
+    await upsertLocal("sales", saleRecord, true);
 
-    const itemRows = items.map((i) => ({ ...i, sale_id: sale.id }));
-    const { error: itemsErr } = await supabase.from("sale_items").insert(itemRows);
-    if (itemsErr) { setBusy(false); return toast.error(itemsErr.message); }
+    const itemRows = cart.map((c) => ({
+      id: uuid(),
+      sale_id: saleId,
+      shop_id: currentShop.id,   // synthetic — for local IDB index only
+      product_id: c.product_id,
+      variant_id: c.variant_id,
+      product_name: c.product_name,
+      unit_price: c.unit_price,
+      quantity: c.quantity,
+      line_total: c.unit_price * c.quantity,
+      created_at: now,
+    }));
+
+    for (const item of itemRows) {
+      await upsertLocal("sale_items", item, true);
+    }
 
     if (isCredit && owed > 0 && customer) {
-      const { error: debtErr } = await supabase.from("debts").insert({
+      await upsertLocal("debts", {
+        id: uuid(),
         shop_id: currentShop.id,
         created_by: user.id,
         direction: "owed_to_me",
@@ -216,13 +226,17 @@ export default function POS() {
         currency: cur,
         status: "open",
         notes: `Sale ${receiptNumber}${effectivePaid > 0 ? ` (partial paid ${effectivePaid})` : ""}`,
-      });
-      if (debtErr) toast.error(`Sale saved but debt entry failed: ${debtErr.message}`);
-      else toast.success(`Credit of ${formatMoney(owed, cur)} recorded for ${customer.name}`);
+        updated_at: now,
+        created_at: now,
+      }, true);
+      toast.success(`Credit of ${formatMoney(owed, cur)} recorded for ${customer.name}`);
     }
 
+    notifyChange("sales");
+    notifyChange("sale_items");
+
     setBusy(false);
-    setCompletedSale({ ...sale, items: itemRows, shop: currentShop, customer });
+    setCompletedSale({ ...saleRecord, items: itemRows, shop: currentShop, customer });
     setCart([]); setAmountPaid(""); setCustomer(null); setDiscountValue(""); setIsCredit(false);
     toast.success("Sale completed!");
     refresh();

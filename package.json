@@ -2,7 +2,9 @@
   "name": "uc-ultra-desktop",
   "private": true,
   "version": "1.0.0",
-  "description": "UC-Ultra Multi-Vendor POS Desktop App",
+  "description": "UC-Ultra — Multi-Vendor Point of Sale",
+  "author": "UCU Team <support@ucultra.com>",
+  "homepage": "https://ucultra.com",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
@@ -12,10 +14,56 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:linux": "npm run build && electron-builder --linux",
-    "dist:all": "npm run build && electron-builder --win --mac --linux"
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:all": "npm run build && electron-builder --win --mac --publish never",
+    "release": "npm run build && electron-builder --win --mac --publish always"
+  },
+  "build": {
+    "appId": "com.ucultra.desktop",
+    "productName": "UC-Ultra",
+    "copyright": "Copyright © 2025 UCU Team",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "extraResources": [],
+    "mac": {
+      "category": "public.app-category.business",
+      "icon": "public/icon-512.png",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "UC-Ultra ${version}",
+      "background": null,
+      "window": { "width": 540, "height": 380 }
+    },
+    "win": {
+      "icon": "public/icon-512.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "UC-Ultra POS"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "YOUR_GITHUB_USERNAME",
+      "repo": "UC-Ultra-Desktop"
+    }
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -49,6 +97,7 @@
     "@supabase/supabase-js": "^2.104.0",
     "@tanstack/query-core": "^5.99.2",
     "@tanstack/react-query": "^5.83.0",
+    "@types/uuid": "^10.0.0",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "class-variance-authority": "^0.7.1",
@@ -75,6 +124,7 @@
     "sonner": "^1.7.4",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "uuid": "^14.0.1",
     "vaul": "^0.9.9",
     "xlsx": "^0.18.5",
     "zod": "^3.25.76"

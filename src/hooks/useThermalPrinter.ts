@@ -1,7 +1,28 @@
 import { useState, useEffect } from 'react'
 
+interface PrinterInfo {
+  name: string
+  displayName?: string
+  description?: string
+  status?: number
+  isDefault?: boolean
+}
+
+declare global {
+  interface Window {
+    electronAPI?: {
+      getPrinters: () => Promise<PrinterInfo[]>
+      printReceipt: (html: string, printerName?: string) => Promise<void>
+      platform?: string
+      onUpdateAvailable?: (cb: () => void) => void
+      onUpdateDownloaded?: (cb: () => void) => void
+      installUpdate?: () => void
+    }
+  }
+}
+
 export function useThermalPrinter() {
-  const [printers, setPrinters] = useState<Electron.PrinterInfo[]>([])
+  const [printers, setPrinters] = useState<PrinterInfo[]>([])
   const [selectedPrinter, setSelectedPrinter] = useState<string>('')
   const [printing, setPrinting] = useState(false)
 
@@ -9,9 +30,8 @@ export function useThermalPrinter() {
 
   useEffect(() => {
     if (!isDesktop) return
-    window.electronAPI.getPrinters().then((list) => {
+    window.electronAPI!.getPrinters().then((list) => {
       setPrinters(list)
-      // Auto-select the first thermal-looking printer if none selected
       const thermal = list.find(
         (p) =>
           p.name.toLowerCase().includes('thermal') ||
@@ -27,7 +47,6 @@ export function useThermalPrinter() {
 
   async function printReceipt(html: string, printerName?: string) {
     if (!isDesktop) {
-      // Fallback: open browser print dialog
       const w = window.open('', '_blank')
       if (w) {
         w.document.write(html)
@@ -36,10 +55,9 @@ export function useThermalPrinter() {
       }
       return
     }
-
     setPrinting(true)
     try {
-      await window.electronAPI.printReceipt(html, printerName ?? selectedPrinter)
+      await window.electronAPI!.printReceipt(html, printerName ?? selectedPrinter)
     } finally {
       setPrinting(false)
     }

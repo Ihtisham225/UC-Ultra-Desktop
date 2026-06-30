@@ -1,7 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
 import { useShop } from "@/contexts/ShopContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card } from "@/components/ui/card";
@@ -10,14 +9,7 @@ import { ScanBarcode, Package, Receipt, AlertTriangle, TrendingUp, DollarSign, U
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { PageTip } from "@/components/PageTip";
-import { useOfflineQuery } from "@/hooks/useOfflineQuery";
-
-interface Stats {
-  todaySales: number;
-  todayCount: number;
-  productCount: number;
-  lowStock: { id: string; name: string; stock: number }[];
-}
+import { useLocalStore } from "@/hooks/useLocalStore";
 
 export default function Dashboard() {
   usePageMeta({ title: "Dashboard — UCU", description: "Real-time overview of your shop sales, top products, low-stock alerts and revenue trends." });
@@ -28,27 +20,25 @@ export default function Dashboard() {
 
   useEffect(() => { document.title = `${t("nav.dashboard")} — UCU`; }, [t]);
 
-  const { data: stats, loading } = useOfflineQuery<Stats>(
-    currentShop ? `dashboard:${currentShop.id}` : null,
-    async () => {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const [{ data: salesToday }, { count: productCount }, { data: products }] = await Promise.all([
-        supabase.from("sales").select("total").eq("shop_id", currentShop!.id).gte("created_at", startOfDay.toISOString()),
-        supabase.from("products").select("id", { count: "exact", head: true }).eq("shop_id", currentShop!.id).eq("is_active", true),
-        supabase.from("products").select("id, name, stock, low_stock_threshold").eq("shop_id", currentShop!.id).eq("is_active", true),
-      ]);
-      const todaySales = (salesToday ?? []).reduce((a: number, s: any) => a + Number(s.total), 0);
-      const lowStock = (products ?? [])
-        .filter((p: any) => Number(p.stock) <= Number(p.low_stock_threshold))
-        .slice(0, 5)
-        .map((p: any) => ({ id: p.id, name: p.name, stock: Number(p.stock) }));
-      return { todaySales, todayCount: salesToday?.length ?? 0, productCount: productCount ?? 0, lowStock };
-    },
-    [currentShop?.id],
-  );
+  const { data: allSales, loading: salesLoading } = useLocalStore<any>("sales", currentShop?.id);
+  const { data: allProducts, loading: productsLoading } = useLocalStore<any>("products", currentShop?.id);
 
-  const safeStats: Stats = stats ?? { todaySales: 0, todayCount: 0, productCount: 0, lowStock: [] };
+  const loading = salesLoading || productsLoading;
+
+  const safeStats = useMemo(() => {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const todaySales = allSales
+      .filter((s) => s.created_at && new Date(s.created_at) >= startOfDay)
+      .reduce((a: number, s: any) => a + Number(s.total ?? 0), 0);
+    const todayCount = allSales.filter((s) => s.created_at && new Date(s.created_at) >= startOfDay).length;
+    const activeProducts = allProducts.filter((p: any) => p.is_active !== false);
+    const lowStock = activeProducts
+      .filter((p: any) => Number(p.stock) <= Number(p.low_stock_threshold ?? 5))
+      .slice(0, 5)
+      .map((p: any) => ({ id: p.id, name: p.name, stock: Number(p.stock) }));
+    return { todaySales, todayCount, productCount: activeProducts.length, lowStock };
+  }, [allSales, allProducts]);
 
   const cur = currentShop?.currency ?? "USD";
 

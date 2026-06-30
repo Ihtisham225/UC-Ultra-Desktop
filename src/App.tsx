@@ -15,6 +15,7 @@ import { RequireSuperAdmin } from "@/components/RequireSuperAdmin";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMobileKeyboardScroll } from "@/hooks/useMobileKeyboardScroll";
+import { SyncProvider } from "@/components/SyncProvider";
 
 // Lazy-load every route so the initial bundle stays small and the app boots fast.
 const Auth = lazy(() => import("./pages/Auth"));
@@ -121,6 +122,7 @@ const App = () => {
       <BrowserRouter>
         <AuthProvider>
           <ShopProvider>
+            <SyncProvider>
             <SearchProvider>
             <Suspense fallback={<RouteFallback />}>
             <Routes>
@@ -157,6 +159,7 @@ const App = () => {
             </Routes>
             </Suspense>
             </SearchProvider>
+            </SyncProvider>
           </ShopProvider>
         </AuthProvider>
       </BrowserRouter>
