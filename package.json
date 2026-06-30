@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "description": "UC-Ultra Multi-Vendor POS Desktop App",
-  "main": "dist-electron/main.mjs",
+  "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
     "dev": "vite",
