@@ -6,5 +6,7 @@ interface Window {
     onUpdateDownloaded: (cb: () => void) => void
     installUpdate: () => void
     platform: NodeJS.Platform
+    getPrinters: () => Promise<Electron.PrinterInfo[]>
+    printReceipt: (html: string, printerName?: string) => Promise<{ success: boolean }>
   }
 }
