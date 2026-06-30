@@ -308,7 +308,7 @@ export default function POS() {
                       </span>
                     )}
                     <div className="font-semibold text-sm leading-snug group-hover:text-primary mb-2 pr-6 line-clamp-3">{p.name}</div>
-                    <div className="text-base font-bold truncate">{formatMoney(p.price, cur)}</div>
+                    <div className={cn("font-bold break-all", formatMoney(p.price, cur).length > 12 ? "text-sm" : "text-base")}>{formatMoney(p.price, cur)}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">{t("common.stock")}: {totalStock}</div>
                   </button>
                 );
