@@ -17,6 +17,7 @@ import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { VariantPickerDialog, type VariantOption } from "@/components/VariantPickerDialog";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { cn } from "@/lib/utils";
 
 interface Variant {
   id: string;
