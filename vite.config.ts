@@ -29,7 +29,6 @@ export default defineConfig(({ mode }) => ({
       preload: {
         input: "electron/preload.ts",
       },
-      renderer: {},
     }),
   ],
   resolve: {
