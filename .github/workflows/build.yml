@@ -7,34 +7,48 @@ on:
   workflow_dispatch:  # allow manual trigger from GitHub UI
 
 jobs:
-  build-mac:
-    runs-on: macos-latest
+  build-mac-arm64:
+    runs-on: macos-latest   # Apple Silicon runner
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Build & package (macOS)
-        run: npm run dist:mac
+      - run: npm ci --legacy-peer-deps
+      - name: Build (Apple Silicon)
+        run: npm run build && npx electron-builder --mac --arm64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
-
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: mac-release
-          path: |
-            release/*.dmg
-            release/*.zip
+          name: mac-arm64
+          path: release/*arm64*
+          retention-days: 7
+
+  build-mac-x64:
+    runs-on: macos-13        # last Intel runner on GitHub Actions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Build (Intel)
+        run: npm run build && npx electron-builder --mac --x64 --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-x64
+          path: release/*x64*
           retention-days: 7
 
   build-win:
@@ -67,7 +81,7 @@ jobs:
           retention-days: 7
 
   publish:
-    needs: [build-mac, build-win]
+    needs: [build-mac-arm64, build-mac-x64, build-win]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:

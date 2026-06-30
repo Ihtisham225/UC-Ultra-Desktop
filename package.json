@@ -15,7 +15,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dist:win": "npm run build && electron-builder --win --publish never",
-    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --arm64 --publish never",
+    "dist:mac:x64": "npm run build && electron-builder --mac --x64 --publish never",
+    "dist:mac:universal": "npm run build && electron-builder --mac --universal --publish never",
     "dist:all": "npm run build && electron-builder --win --mac --publish never",
     "release": "npm run build && electron-builder --win --mac --publish always"
   },
