@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -224,7 +224,7 @@ export default function POS() {
     setCompletedSale({ ...sale, items: itemRows, shop: currentShop, customer });
     setCart([]); setAmountPaid(""); setCustomer(null); setDiscountValue(""); setIsCredit(false);
     toast.success("Sale completed!");
-    load();
+    refresh();
   };
 
   const variantOptions: VariantOption[] = useMemo(() => {
