@@ -95,13 +95,9 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     <div className="min-h-screen flex flex-col bg-background">
       {/* ── Full-width titlebar / header ── */}
       <header
-        className="border-b bg-card/90 backdrop-blur-sm sticky top-0 z-30 shrink-0"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        className="drag-region border-b bg-card/90 backdrop-blur-sm sticky top-0 z-30 shrink-0"
       >
-        <div
-          className="flex items-center gap-3 h-14"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
+        <div className="no-drag-region flex items-center gap-3 h-14">
           {/* Traffic-light spacer on macOS */}
           <div className="hidden lg:block w-[5.5rem] shrink-0" />
 
