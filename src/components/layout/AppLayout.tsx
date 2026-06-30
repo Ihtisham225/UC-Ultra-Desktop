@@ -92,22 +92,104 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <div className="min-h-screen flex bg-background">
-      {/* Sidebar */}
-      <aside className="hidden lg:flex flex-col w-64 bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* ── Full-width titlebar / header ── */}
+      <header
+        className="border-b bg-card/90 backdrop-blur-sm sticky top-0 z-30 shrink-0"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      >
         <div
-          className="px-6 py-5 border-b border-sidebar-border"
-          style={{ WebkitAppRegion: 'drag', paddingLeft: '5rem' } as React.CSSProperties}
+          className="flex items-center gap-3 h-14"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          <div className="flex items-center gap-2.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <Logo size="md" />
-            <div>
-              <div className="font-bold text-base leading-tight">{t("app.name")}</div>
-              <div className="text-[10px] uppercase tracking-wider text-sidebar-foreground/60">{t("app.tagline")}</div>
+          {/* Traffic-light spacer on macOS */}
+          <div className="hidden lg:block w-[5.5rem] shrink-0" />
+
+          {/* Brand */}
+          <div className="hidden lg:flex items-center gap-2.5 shrink-0 pe-2 border-r border-border mr-1">
+            <Logo size="sm" />
+            <div className="leading-tight">
+              <div className="font-bold text-sm">{t("app.name")}</div>
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{t("app.tagline")}</div>
             </div>
           </div>
-        </div>
 
+          {/* Mobile brand */}
+          <div className="lg:hidden flex items-center gap-2 pl-4 shrink-0">
+            <Logo size="sm" />
+          </div>
+
+          {/* Shop switcher */}
+          <div className="flex items-center gap-2 min-w-0 pl-2 lg:pl-0">
+            {role === "owner" ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5 min-w-0 max-w-[200px]">
+                    <Store className="size-4 text-primary shrink-0" />
+                    <span className="font-semibold truncate">{currentShop?.name ?? t("layout.selectShop")}</span>
+                    {role && <span className="hidden sm:inline-flex text-[10px] uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold shrink-0">{t(`staff.${role}` as const, { defaultValue: role })}</span>}
+                    <ChevronDown className="size-3.5 opacity-50 shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64">
+                  <DropdownMenuLabel>{t("layout.yourShops")}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {shops.map((s) => (
+                    <DropdownMenuItem key={s.id} onClick={() => setCurrentShopId(s.id)}>
+                      <Store className="size-4 me-2" /> {s.name}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <NavLink to="/onboarding">{t("layout.createShop")}</NavLink>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border min-w-0 max-w-full">
+                <Store className="size-4 text-primary shrink-0" />
+                <span className="font-semibold truncate">{currentShop?.name ?? ""}</span>
+                {role && <span className="hidden sm:inline-flex text-[10px] uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold shrink-0">{t(`staff.${role}` as const, { defaultValue: role })}</span>}
+              </div>
+            )}
+          </div>
+
+          {/* Global search — centred flex-1 */}
+          <div className="hidden lg:flex flex-1 justify-center px-4">
+            <GlobalSearch variant="desktop-bar" />
+          </div>
+
+          {/* Right actions */}
+          <div className="flex items-center gap-0.5 shrink-0 pr-3 ml-auto lg:ml-0">
+            <Button variant="ghost" size="icon" onClick={() => setCalcOpen(true)} aria-label="Calculator">
+              <Calculator className="size-4.5" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => setTourOpen(true)} aria-label="Guide">
+              <HelpCircle className="size-4.5" />
+            </Button>
+            <LanguageToggle />
+            <ThemeToggle />
+            <InstallPwaButton />
+          </div>
+        </div>
+      </header>
+
+      {isPro && daysLeft > 0 && daysLeft <= 10 && (
+        <div className="px-4 lg:px-8 pt-3 shrink-0">
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 px-4 py-2.5 text-sm flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4 shrink-0" />
+              <span>Your subscription expires in <b>{daysLeft} day{daysLeft === 1 ? "" : "s"}</b>. Please contact <b>Tech Town Swat</b> to renew.</span>
+            </div>
+            <Link to="/support" className="text-xs font-semibold underline underline-offset-2 hover:opacity-80">Contact support</Link>
+          </div>
+        </div>
+      )}
+
+      {/* ── Body: sidebar + main ── */}
+      <div className="flex flex-1 min-h-0">
+      {/* Sidebar */}
+      <aside className="hidden lg:flex flex-col w-56 bg-sidebar text-sidebar-foreground border-r border-sidebar-border shrink-0">
         <nav className="flex-1 px-3 py-4 space-y-1">
           {nav.map((item) => renderItem(item))}
           {isSuperAdmin && (
@@ -147,90 +229,9 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
         </div>
       </aside>
 
-      {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <header
-          className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-30"
-          style={{ paddingTop: "env(safe-area-inset-top)" }}
-        >
-          <div className="flex items-center justify-between px-3 lg:px-8 gap-2 h-14 lg:h-16">
-          {/* Mobile: compact brand */}
-          <div className="lg:hidden flex items-center gap-2 shrink-0">
-            <Logo size="sm" />
-          </div>
-
-          {/* Shop switcher (owners only) */}
-          <div className="flex items-center gap-2 min-w-0 flex-1 lg:flex-initial">
-            {role === "owner" ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1.5 min-w-0 max-w-full">
-                    <Store className="size-4 text-primary shrink-0" />
-                    <span className="font-semibold truncate">{currentShop?.name ?? t("layout.selectShop")}</span>
-                    {role && <span className="hidden sm:inline-flex text-[10px] uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold shrink-0">{t(`staff.${role}` as const, { defaultValue: role })}</span>}
-                    
-                    <ChevronDown className="size-3.5 opacity-50 shrink-0" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuLabel>{t("layout.yourShops")}</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {shops.map((s) => (
-                    <DropdownMenuItem key={s.id} onClick={() => setCurrentShopId(s.id)}>
-                      <Store className="size-4 me-2" /> {s.name}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <NavLink to="/onboarding">{t("layout.createShop")}</NavLink>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border min-w-0 max-w-full">
-                <Store className="size-4 text-primary shrink-0" />
-                <span className="font-semibold truncate">{currentShop?.name ?? ""}</span>
-                {role && <span className="hidden sm:inline-flex text-[10px] uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold shrink-0">{t(`staff.${role}` as const, { defaultValue: role })}</span>}
-              </div>
-            )}
-          </div>
-
-          {/* Desktop: big centered global search bar */}
-          <div className="hidden lg:flex flex-1 justify-center px-6">
-            <GlobalSearch variant="desktop-bar" />
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            <Button variant="ghost" size="icon" onClick={() => setCalcOpen(true)} aria-label="Calculator" title="Calculator">
-              <Calculator className="size-5" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => setTourOpen(true)} aria-label="Guide" title="Open guide">
-              <HelpCircle className="size-5" />
-            </Button>
-            <LanguageToggle />
-            <ThemeToggle />
-            <InstallPwaButton />
-          </div>
-          </div>
-        </header>
-
-        {isPro && daysLeft > 0 && daysLeft <= 10 && (
-          <div className="px-4 lg:px-8 pt-3">
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 px-4 py-2.5 text-sm flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <Sparkles className="size-4 shrink-0" />
-                <span>
-                  Your subscription expires in <b>{daysLeft} day{daysLeft === 1 ? "" : "s"}</b>. Please contact <b>Tech Town Swat</b> to renew.
-                </span>
-              </div>
-              <Link to="/support" className="text-xs font-semibold underline underline-offset-2 hover:opacity-80">Contact support</Link>
-            </div>
-          </div>
-        )}
-        <main className="flex-1 p-4 lg:p-8 pb-24 lg:pb-8">{children}</main>
+      {/* Main content */}
+      <main className="flex-1 min-w-0 overflow-y-auto p-4 lg:p-8 pb-24 lg:pb-8">{children}</main>
       </div>
-
-      
 
       {/* Mobile bottom navigation */}
       <MobileBottomNav />
