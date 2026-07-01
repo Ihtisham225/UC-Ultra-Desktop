@@ -4,6 +4,10 @@ import path from "path";
 import electron from "vite-plugin-electron/simple";
 
 export default defineConfig(({ mode }) => ({
+  // Electron loads the packaged app via file://, so asset URLs must be
+  // relative — an absolute base ("/assets/...") resolves against the
+  // filesystem root instead of the app's dist folder and renders blank.
+  base: "./",
   build: {
     rollupOptions: {
       output: {
