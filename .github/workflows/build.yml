@@ -6,12 +6,19 @@ on:
       - 'v*'          # trigger on version tags e.g. v1.0.0
   workflow_dispatch:  # allow manual trigger from GitHub UI
 
+# Each platform job uploads straight to the GitHub Release instead of
+# staging through Actions artifact storage (which is capped at 0.5GB on
+# the free plan and fills up fast with 100MB+ installers).
+permissions:
+  contents: write
+
 jobs:
   # GitHub retired hosted Intel macOS runners, so we build both architectures
   # on the Apple Silicon runner. electron-builder cross-packages x64 fine
   # since this app has no native/compiled Node modules.
   build-mac:
     runs-on: macos-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -42,16 +49,17 @@ jobs:
       - name: Remove API key file
         if: always()
         run: rm -f apple_api_key.p8
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mac-release
-          path: |
-            release/*.dmg
-            release/*.zip
-          retention-days: 7
+
+      - name: Publish macOS installers to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes || true
+          gh release upload "${{ github.ref_name }}" release/*.dmg release/*.zip --clobber
 
   build-win:
     runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
@@ -71,29 +79,10 @@ jobs:
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
 
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: win-release
-          path: |
-            release/*.exe
-          retention-days: 7
-
-  publish:
-    needs: [build-mac, build-win]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: release-artifacts
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release-artifacts/**/*
-          generate_release_notes: true
+      - name: Publish Windows installers to release
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes || true
+          gh release upload "${{ github.ref_name }}" release/*.exe --clobber
