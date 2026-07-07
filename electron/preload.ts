@@ -2,9 +2,12 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Auto-updater
-  onUpdateAvailable: (cb: () => void) => ipcRenderer.on('update-available', cb),
-  onUpdateDownloaded: (cb: () => void) => ipcRenderer.on('update-downloaded', cb),
+  onUpdateAvailable: (cb: (version: string) => void) =>
+    ipcRenderer.on('update-available', (_e, version: string) => cb(version)),
+  onUpdateDownloaded: (cb: (version: string) => void) =>
+    ipcRenderer.on('update-downloaded', (_e, version: string) => cb(version)),
   installUpdate: () => ipcRenderer.send('install-update'),
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
 
   // Platform
   platform: process.platform,

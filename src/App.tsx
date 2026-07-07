@@ -16,6 +16,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMobileKeyboardScroll } from "@/hooks/useMobileKeyboardScroll";
 import { SyncProvider } from "@/components/SyncProvider";
+import { TitleBar } from "@/components/TitleBar";
+import { UpdateBanner } from "@/components/UpdateBanner";
 
 // Lazy-load every route so the initial bundle stays small and the app boots fast.
 const Auth = lazy(() => import("./pages/Auth"));
@@ -119,6 +121,8 @@ const App = () => {
     <TooltipProvider>
       <Toaster />
       <Sonner position="top-right" richColors />
+      <TitleBar />
+      <UpdateBanner />
       <HashRouter>
         <AuthProvider>
           <ShopProvider>

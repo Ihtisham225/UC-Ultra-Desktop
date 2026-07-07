@@ -14,9 +14,10 @@ declare global {
       getPrinters: () => Promise<PrinterInfo[]>
       printReceipt: (html: string, printerName?: string) => Promise<void>
       platform?: string
-      onUpdateAvailable?: (cb: () => void) => void
-      onUpdateDownloaded?: (cb: () => void) => void
+      onUpdateAvailable?: (cb: (version: string) => void) => void
+      onUpdateDownloaded?: (cb: (version: string) => void) => void
       installUpdate?: () => void
+      getAppVersion?: () => Promise<string>
     }
   }
 }

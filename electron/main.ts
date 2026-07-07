@@ -131,17 +131,21 @@ ipcMain.handle('print-receipt', async (_event, html: string, printerName?: strin
 
 // ─── Auto-updater ──────────────────────────────────────────────────────────
 
-autoUpdater.on('update-available', () => {
-  mainWindow?.webContents.send('update-available')
+autoUpdater.on('update-available', (info) => {
+  mainWindow?.webContents.send('update-available', info.version)
 })
 
-autoUpdater.on('update-downloaded', () => {
-  mainWindow?.webContents.send('update-downloaded')
+autoUpdater.on('update-downloaded', (info) => {
+  mainWindow?.webContents.send('update-downloaded', info.version)
 })
 
 ipcMain.on('install-update', () => {
+  // Bypass the minimise-to-tray close handler so the updater can quit
+  app.isQuitting = true
   autoUpdater.quitAndInstall()
 })
+
+ipcMain.handle('get-app-version', () => app.getVersion())
 
 // ─── App lifecycle ─────────────────────────────────────────────────────────
 
@@ -168,6 +172,9 @@ app.whenReady().then(() => {
 
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify()
+    // Long-running POS sessions: re-check every hour so the update
+    // banner appears without needing an app restart
+    setInterval(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 60 * 60 * 1000)
   }
 })
 
