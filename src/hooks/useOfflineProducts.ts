@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { supabase } from '@/integrations/supabase/client'
-import { cacheProducts, getCachedProducts, type CachedProduct } from '@/lib/offlineDb'
+import { getAll, onLocalChange } from '@/lib/localDb'
+import { syncAll } from '@/lib/syncEngine'
+import type { CachedProduct, CachedVariant } from '@/lib/offlineDb'
 
+// Raw synced rows (snake_case, from /api/sync/pull) as they land in the local store.
+interface ProductRow { id: string; name: string; barcode: string | null; price: number | string; stock: number | string; shop_id: string; is_active?: boolean }
+interface VariantRow { id: string; product_id: string; name: string; sku: string | null; barcode: string | null; price_override: number | string | null; stock: number | string; is_active?: boolean; sort_order?: number }
+
+/**
+ * POS product feed, backed by the two-way sync store (localDb `records`).
+ * The sync engine pulls products/product_variants from the backend in the
+ * background; this hook just assembles them into the CachedProduct shape POS
+ * expects and re-reads whenever the local store changes. Works fully offline.
+ */
 export function useOfflineProducts(shopId: string | undefined) {
   const [products, setProducts] = useState<CachedProduct[]>([])
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [lastSynced, setLastSynced] = useState<Date | null>(null)
-  const syncRef = useRef(false)
+  const syncingRef = useRef(false)
 
   // Track online state
   useEffect(() => {
@@ -17,66 +28,75 @@ export function useOfflineProducts(shopId: string | undefined) {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [])
 
-  const loadFromCache = useCallback(async () => {
-    if (!shopId) return
-    const cached = await getCachedProducts(shopId)
-    if (cached.length > 0) setProducts(cached)
-  }, [shopId])
-
-  const syncFromServer = useCallback(async () => {
-    if (!shopId || syncRef.current) return
-    syncRef.current = true
-    try {
-      const [{ data: prods }, { data: vars }] = await Promise.all([
-        supabase
-          .from('products')
-          .select('id, name, barcode, price, stock')
-          .eq('shop_id', shopId)
-          .eq('is_active', true)
-          .order('name'),
-        supabase
-          .from('product_variants')
-          .select('id, product_id, name, sku, barcode, price_override, stock')
-          .eq('shop_id', shopId)
-          .eq('is_active', true)
-          .order('sort_order'),
-      ])
-      if (!prods) return
-
-      const variantsByProduct = new Map<string, CachedProduct['variants']>()
-      ;(vars ?? []).forEach((v: any) => {
-        const arr = variantsByProduct.get(v.product_id) ?? []
-        arr.push(v)
-        variantsByProduct.set(v.product_id, arr)
+  const loadFromStore = useCallback(async () => {
+    if (!shopId) { setProducts([]); return }
+    const [prods, vars] = await Promise.all([
+      getAll<ProductRow>('products', shopId),
+      getAll<VariantRow>('product_variants', shopId),
+    ])
+    const variantsByProduct = new Map<string, CachedVariant[]>()
+    for (const v of vars) {
+      if (v.is_active === false) continue
+      const arr = variantsByProduct.get(v.product_id) ?? []
+      arr.push({
+        id: v.id,
+        product_id: v.product_id,
+        name: v.name,
+        sku: v.sku,
+        barcode: v.barcode,
+        price_override: v.price_override === null || v.price_override === undefined ? null : Number(v.price_override),
+        stock: Number(v.stock),
       })
-
-      const merged: CachedProduct[] = prods.map((p: any) => ({
-        ...p,
+      variantsByProduct.set(v.product_id, arr)
+    }
+    const merged: CachedProduct[] = prods
+      .filter((p) => p.is_active !== false)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        barcode: p.barcode,
+        price: Number(p.price),
+        stock: Number(p.stock),
         shop_id: shopId,
         variants: variantsByProduct.get(p.id) ?? [],
         _syncedAt: Date.now(),
       }))
-
-      await cacheProducts(shopId, merged)
-      setProducts(merged)
-      setLastSynced(new Date())
-    } finally {
-      syncRef.current = false
-    }
+      .sort((a, b) => a.name.localeCompare(b.name))
+    setProducts(merged)
   }, [shopId])
 
-  // On mount: load cache immediately, then sync from server in background
+  // Force a pull+push, then re-read from the store.
+  const refresh = useCallback(async () => {
+    if (!shopId || syncingRef.current) return
+    syncingRef.current = true
+    try {
+      if (navigator.onLine) {
+        await syncAll()
+        setLastSynced(new Date())
+      }
+      await loadFromStore()
+    } finally {
+      syncingRef.current = false
+    }
+  }, [shopId, loadFromStore])
+
+  // Initial: read the store immediately, then sync fresh in the background.
   useEffect(() => {
     if (!shopId) return
-    loadFromCache().then(() => {
-      if (navigator.onLine) syncFromServer()
-    })
-  }, [shopId, loadFromCache, syncFromServer])
+    loadFromStore().then(() => { if (navigator.onLine) refresh() })
+  }, [shopId, loadFromStore, refresh])
 
-  // When coming back online, sync
+  // Re-read when the sync engine (or another screen) writes products/variants.
   useEffect(() => {
-    if (isOnline && shopId) syncFromServer()
-  }, [isOnline, shopId, syncFromServer])
+    return onLocalChange((table) => {
+      if (table === 'products' || table === 'product_variants') loadFromStore()
+    })
+  }, [loadFromStore])
 
-  return { products, isOnline, lastSynced, refresh: syncFromServer }
+  // When coming back online, sync.
+  useEffect(() => {
+    if (isOnline && shopId) refresh()
+  }, [isOnline, shopId, refresh])
+
+  return { products, isOnline, lastSynced, refresh }
 }

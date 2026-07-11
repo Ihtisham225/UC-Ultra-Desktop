@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 
 export type SearchResult =
@@ -46,69 +46,10 @@ export const SearchProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     setLoading(true);
-    const term = `%${q.trim()}%`;
-    const shopId = currentShop.id;
-
     try {
-      const [productsRes, customersRes, salesRes, suppliersRes] = await Promise.all([
-        supabase
-          .from("products")
-          .select("id, name, sku, barcode, price, stock")
-          .eq("shop_id", shopId)
-          .or(`name.ilike.${term},sku.ilike.${term},barcode.ilike.${term}`)
-          .limit(6),
-        supabase
-          .from("customers")
-          .select("id, name, phone, email")
-          .eq("shop_id", shopId)
-          .or(`name.ilike.${term},phone.ilike.${term},email.ilike.${term}`)
-          .limit(5),
-        supabase
-          .from("sales")
-          .select("id, receipt_number, total, payment_method, created_at")
-          .eq("shop_id", shopId)
-          .ilike("receipt_number", term)
-          .order("created_at", { ascending: false })
-          .limit(5),
-        supabase
-          .from("suppliers")
-          .select("id, name, phone")
-          .eq("shop_id", shopId)
-          .or(`name.ilike.${term},phone.ilike.${term}`)
-          .limit(3),
-      ]);
-
-      const cur = currentShop.currency ?? "USD";
-      const out: SearchResult[] = [
-        ...((productsRes.data ?? []).map((p: any) => ({
-          type: "product" as const,
-          id: p.id,
-          title: p.name,
-          subtitle: [p.sku, p.barcode].filter(Boolean).join(" · ") || "Product",
-          meta: `${cur} ${Number(p.price).toFixed(2)} · ${Number(p.stock)} in stock`,
-        }))),
-        ...((customersRes.data ?? []).map((c: any) => ({
-          type: "customer" as const,
-          id: c.id,
-          title: c.name,
-          subtitle: c.phone || c.email || "Customer",
-        }))),
-        ...((salesRes.data ?? []).map((s: any) => ({
-          type: "sale" as const,
-          id: s.id,
-          title: s.receipt_number ?? "Receipt",
-          subtitle: `${s.payment_method} · ${new Date(s.created_at).toLocaleDateString()}`,
-          meta: `${cur} ${Number(s.total).toFixed(2)}`,
-        }))),
-        ...((suppliersRes.data ?? []).map((s: any) => ({
-          type: "supplier" as const,
-          id: s.id,
-          title: s.name,
-          subtitle: s.phone || "Supplier",
-        }))),
-      ];
-      setResults(out);
-    } catch (e) {
+      const out = await rpc<SearchResult[]>("globalSearchAction", q.trim());
+      setResults(out ?? []);
+    } catch {
       setResults([]);
     } finally {
       setLoading(false);

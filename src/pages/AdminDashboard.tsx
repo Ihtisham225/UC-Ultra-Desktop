@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -85,18 +85,20 @@ export default function AdminDashboard() {
 
   const load = async () => {
     setLoading(true);
-    const [s, u, sh] = await Promise.all([
-      supabase.rpc("admin_overview_stats"),
-      supabase.rpc("admin_list_users"),
-      supabase.rpc("admin_list_shops"),
-    ]);
-    if (s.error || u.error || sh.error) {
-      toast.error(s.error?.message ?? u.error?.message ?? sh.error?.message ?? "Failed to load");
+    try {
+      const [s, u, sh] = await Promise.all([
+        rpc<OverviewStats>("adminOverviewAction"),
+        rpc<AdminUser[]>("adminListUsersAction"),
+        rpc<AdminShop[]>("adminListShopsAction"),
+      ]);
+      setStats(s ?? null);
+      setUsers(u ?? []);
+      setShops(sh ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
     }
-    setStats((s.data?.[0] ?? null) as OverviewStats | null);
-    setUsers((u.data ?? []) as AdminUser[]);
-    setShops((sh.data ?? []) as AdminShop[]);
-    setLoading(false);
   };
   useEffect(() => { load(); }, []);
 
@@ -107,9 +109,14 @@ export default function AdminDashboard() {
   const confirmToggleBlock = async () => {
     if (!blockTarget) return;
     setBusy(true);
-    const { error } = await supabase.rpc("admin_set_user_blocked" as any, { _user_id: blockTarget.user_id, _blocked: !blockTarget.is_blocked });
-    setBusy(false);
-    if (error) { toast.error(error.message); return; }
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("adminSetUserBlockedAction", blockTarget.user_id, !blockTarget.is_blocked);
+      if (!res.ok) { toast.error(res.error ?? "Failed"); return; }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed"); return;
+    } finally {
+      setBusy(false);
+    }
     toast.success(blockTarget.is_blocked ? t("admin.users.unblocked") : t("admin.users.blocked2"));
     setBlockTarget(null);
     load();
@@ -125,9 +132,14 @@ export default function AdminDashboard() {
     const next = !active;
     if (next && (!proDays || proDays < 1)) { toast.error("Enter a valid number of days"); return; }
     setBusy(true);
-    const { error } = await supabase.rpc("admin_set_shop_pro" as any, { _shop_id: proTarget.shop_id, _is_pro: next, _days: next ? proDays : 0 });
-    setBusy(false);
-    if (error) { toast.error(error.message); return; }
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("adminSetShopProAction", proTarget.shop_id, next, next ? proDays : 0);
+      if (!res.ok) { toast.error(res.error ?? "Failed"); return; }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed"); return;
+    } finally {
+      setBusy(false);
+    }
     toast.success(next ? t("admin.shops.proGrantedMsg", { days: proDays }) : t("admin.shops.proRemovedMsg"));
     setProTarget(null);
     load();
@@ -141,9 +153,14 @@ export default function AdminDashboard() {
   const confirmDeleteUser = async () => {
     if (!deleteUserTarget) return;
     setBusy(true);
-    const { error } = await supabase.rpc("admin_delete_user" as any, { _user_id: deleteUserTarget.user_id });
-    setBusy(false);
-    if (error) { toast.error(error.message); return; }
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("adminDeleteUserAction", deleteUserTarget.user_id);
+      if (!res.ok) { toast.error(res.error ?? "Failed"); return; }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed"); return;
+    } finally {
+      setBusy(false);
+    }
     toast.success(t("admin.users.deleted"));
     setDeleteUserTarget(null);
     setDeleteConfirmText("");
@@ -157,9 +174,14 @@ export default function AdminDashboard() {
   const confirmDeleteShop = async () => {
     if (!deleteShopTarget) return;
     setBusy(true);
-    const { error } = await supabase.rpc("admin_delete_shop" as any, { _shop_id: deleteShopTarget.shop_id });
-    setBusy(false);
-    if (error) { toast.error(error.message); return; }
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("adminDeleteShopAction", deleteShopTarget.shop_id);
+      if (!res.ok) { toast.error(res.error ?? "Failed"); return; }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed"); return;
+    } finally {
+      setBusy(false);
+    }
     toast.success(t("admin.shops.deleted"));
     setDeleteShopTarget(null);
     setDeleteConfirmText("");
@@ -628,9 +650,14 @@ function PlansEditor() {
   const [saving, setSaving] = useState<string | null>(null);
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from("plans").select("*").order("sort_order");
-    setRows(data ?? []);
-    setLoading(false);
+    try {
+      const data = await rpc<any[]>("adminListPlansAction");
+      setRows(data ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -640,17 +667,23 @@ function PlansEditor() {
 
   const save = async (row: any) => {
     setSaving(row.id);
-    const { error } = await supabase.from("plans").update({
-      name: row.name,
-      price: Number(row.price),
-      currency: row.currency,
-      duration_days: Number(row.duration_days),
-      savings_label: row.savings_label,
-      is_active: row.is_active,
-      sort_order: Number(row.sort_order),
-    }).eq("id", row.id);
-    setSaving(null);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("adminUpdatePlanAction", {
+        id: row.id,
+        name: row.name,
+        price: Number(row.price),
+        currency: row.currency,
+        duration_days: Number(row.duration_days),
+        savings_label: row.savings_label,
+        is_active: row.is_active,
+        sort_order: Number(row.sort_order),
+      });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(null);
+    }
     toast.success("Plan updated");
     load();
   };

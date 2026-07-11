@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,10 +64,15 @@ export default function Suppliers() {
   const load = useCallback(async () => {
     if (!currentShop) return;
     setLoading(true);
-    const { data } = await supabase.from("suppliers").select("*").eq("shop_id", currentShop.id).order("name");
-    setItems((data as any) ?? []);
-    setLoading(false);
-  }, [currentShop]);
+    try {
+      const data = await rpc<Supplier[]>("listSuppliersAction");
+      setItems(data ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("common.error"));
+    } finally {
+      setLoading(false);
+    }
+  }, [currentShop, t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -90,16 +95,19 @@ export default function Suppliers() {
     }
 
     const payload = {
-      shop_id: currentShop.id,
       name,
       phone: editing.phone || null,
       email: editing.email || null,
       notes: editing.notes || null,
     };
-    const { error } = editing.id
-      ? await supabase.from("suppliers").update(payload).eq("id", editing.id)
-      : await supabase.from("suppliers").insert(payload);
-    if (error) return toast.error(error.message);
+    try {
+      const res = editing.id
+        ? await rpc<{ ok: boolean; error?: string }>("updateSupplierAction", editing.id, payload)
+        : await rpc<{ ok: boolean; error?: string }>("createSupplierAction", payload);
+      if (!res.ok) return toast.error(res.error || t("common.error"));
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("common.error"));
+    }
     toast.success(t("common.saved"));
     setEditing(null);
     load();
@@ -112,8 +120,11 @@ export default function Suppliers() {
       variant: "destructive",
     });
     if (!ok) return;
-    const { error } = await supabase.from("suppliers").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    try {
+      await rpc("deleteSuppliersAction", [id]);
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("common.error"));
+    }
     load();
   };
 
@@ -127,8 +138,11 @@ export default function Suppliers() {
       variant: "destructive",
     });
     if (!ok) return;
-    const { error } = await supabase.from("suppliers").delete().in("id", sel.ids);
-    if (error) return toast.error(error.message);
+    try {
+      await rpc("deleteSuppliersAction", sel.ids);
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("common.error"));
+    }
     toast.success(t("bulk.deleted", { count: sel.count }));
     sel.clear();
     load();

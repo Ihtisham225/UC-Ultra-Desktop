@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc, uploadShopLogo } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -67,9 +67,8 @@ export default function Settings() {
   }, [currentShop]);
 
   useEffect(() => {
-    if (!user) return;
-    supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => data && setDisplayName(data.display_name ?? ""));
+    // The display name is already in the cached device session.
+    if (user) setDisplayName(user.display_name ?? "");
   }, [user]);
 
   const canEdit = role === "owner";
@@ -78,18 +77,28 @@ export default function Settings() {
   const saveProfile = async () => {
     if (!user) return;
     setBusy(true);
-    const { error } = await supabase.from("profiles").update({ display_name: displayName }).eq("user_id", user.id);
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("updateProfileAction", displayName);
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
     toast.success(t("settings.profile.profileSaved"));
   };
 
   const changePassword = async () => {
     if (newPassword.length < 6) return toast.error(t("settings.profile.passwordMin"));
     setBusy(true);
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("changePasswordAction", newPassword);
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
     setNewPassword("");
     toast.success(t("settings.profile.passwordChanged"));
   };
@@ -97,12 +106,17 @@ export default function Settings() {
   const saveShop = async () => {
     if (!currentShop) return;
     setBusy(true);
-    const { error } = await supabase.from("shops").update({
-      name, currency, tax_rate: parseFloat(tax) || 0,
-      address: address || null, phone: phone || null, email: email || null,
-    }).eq("id", currentShop.id);
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("updateShopAction", {
+        name, currency, tax_rate: parseFloat(tax) || 0,
+        address: address || null, phone: phone || null, email: email || null,
+      });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
     toast.success(t("settings.shop.shopSaved"));
     refresh();
   };
@@ -110,11 +124,16 @@ export default function Settings() {
   const saveReceipt = async () => {
     if (!currentShop) return;
     setBusy(true);
-    const { error } = await supabase.from("shops").update({
-      receipt_header: header || null, receipt_footer: footer || null, show_tax_line: showTax,
-    }).eq("id", currentShop.id);
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("updateReceiptAction", {
+        header: header || null, footer: footer || null, show_tax_line: showTax,
+      });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
     toast.success(t("settings.receipt.receiptSaved"));
     refresh();
   };
@@ -122,11 +141,16 @@ export default function Settings() {
   const saveNotifications = async () => {
     if (!currentShop) return;
     setBusy(true);
-    const { error } = await supabase.from("shops").update({
-      notify_low_stock: notifyLow, notify_daily_summary: notifyDaily,
-    }).eq("id", currentShop.id);
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("updateNotificationsAction", {
+        notify_low_stock: notifyLow, notify_daily_summary: notifyDaily,
+      });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
     toast.success(t("settings.notifications.notificationsSaved"));
     refresh();
   };
@@ -134,26 +158,30 @@ export default function Settings() {
   const uploadLogo = async (file: File) => {
     if (!currentShop) return;
     setBusy(true);
-    const ext = file.name.split(".").pop() ?? "png";
-    const path = `${currentShop.id}/logo.${ext}`;
-    const { error: upErr } = await supabase.storage.from("shop-logos").upload(path, file, { upsert: true });
-    if (upErr) { setBusy(false); return toast.error(upErr.message); }
-    const { data: pub } = supabase.storage.from("shop-logos").getPublicUrl(path);
-    const url = `${pub.publicUrl}?t=${Date.now()}`;
-    const { error } = await supabase.from("shops").update({ logo_url: url }).eq("id", currentShop.id);
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    setLogoUrl(url);
-    toast.success(t("settings.logoUploaded"));
-    refresh();
+    try {
+      const url = await uploadShopLogo(file);
+      setLogoUrl(url);
+      toast.success(t("settings.logoUploaded"));
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const exportCsv = async (table: "sales" | "expenses" | "products" | "customers") => {
     if (!currentShop) return;
     setBusy(true);
-    const { data, error } = await supabase.from(table).select("*").eq("shop_id", currentShop.id);
+    let data: any[];
+    try {
+      data = await rpc<any[]>("exportTableAction", table);
+    } catch (e) {
+      setBusy(false);
+      return toast.error(e instanceof Error ? e.message : t("settings.data.noData"));
+    }
     setBusy(false);
-    if (error || !data || data.length === 0) return toast.error(t("settings.data.noData"));
+    if (!data || data.length === 0) return toast.error(t("settings.data.noData"));
     const headers = Object.keys(data[0]);
     const rows = data.map((r: any) => headers.map((h) => JSON.stringify(r[h] ?? "")).join(","));
     const csv = [headers.join(","), ...rows].join("\n");
@@ -168,8 +196,13 @@ export default function Settings() {
   const deleteShop = async () => {
     if (!currentShop) return;
     setBusy(true);
-    const { error } = await supabase.from("shops").delete().eq("id", currentShop.id);
-    if (error) { setBusy(false); return toast.error(error.message); }
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteShopAction");
+      if (!res.ok) { setBusy(false); return toast.error(res.error ?? "Failed"); }
+    } catch (e) {
+      setBusy(false);
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    }
     toast.success(t("settings.danger.shopDeleted"));
     localStorage.removeItem("pos.currentShopId");
     await refresh();

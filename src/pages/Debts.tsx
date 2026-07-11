@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import type { TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -114,37 +113,30 @@ export default function Debts() {
   const load = async () => {
     if (!currentShop) return [] as Debt[];
     setLoading(true);
-    const { data, error } = await supabase
-      .from("debts")
-      .select("*")
-      .eq("shop_id", currentShop.id)
-      .order("created_at", { ascending: false });
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
+    try {
+      const rows = await rpc<Debt[]>("listDebtsAction");
+      setItems(rows ?? []);
+      return rows ?? [];
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load");
       return [] as Debt[];
+    } finally {
+      setLoading(false);
     }
-    const rows = (data ?? []) as Debt[];
-    setItems(rows);
-    return rows;
   };
 
   const loadPayments = async (debtId: string) => {
     setPaymentsLoading(true);
-    const { data, error } = await supabase
-      .from("debt_payments")
-      .select("*")
-      .eq("debt_id", debtId)
-      .order("payment_date", { ascending: false })
-      .order("created_at", { ascending: false });
-    setPaymentsLoading(false);
-    if (error) {
-      toast.error(error.message);
+    try {
+      const rows = await rpc<DebtPayment[]>("listDebtPaymentsAction", debtId);
+      setPayments(rows ?? []);
+      return rows ?? [];
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load");
       return [] as DebtPayment[];
+    } finally {
+      setPaymentsLoading(false);
     }
-    const rows = (data ?? []) as DebtPayment[];
-    setPayments(rows);
-    return rows;
   };
 
   useEffect(() => {
@@ -237,36 +229,24 @@ export default function Debts() {
     }
     setSaving(true);
 
-    const paidAmount = editing?.paid_amount ?? 0;
-    const isSettled = paidAmount >= amt;
-    const nextStatus: Status = isSettled ? "settled" : "open";
-    const payload: TablesUpdate<"debts"> = {
-      shop_id: currentShop.id,
+    const payload = {
       direction: form.direction,
       person_name: form.person_name.trim(),
       phone: form.phone.trim() || null,
       amount: amt,
-      currency: cur,
       due_date: form.due_date || null,
       notes: form.notes.trim() || null,
-      status: nextStatus,
-      settled_at: isSettled ? editing?.settled_at ?? new Date().toISOString() : null,
     };
-
-    let error;
-    if (editing) {
-      ({ error } = await supabase
-        .from("debts")
-        .update(payload)
-        .eq("id", editing.id));
-    } else {
-      const insertPayload: TablesInsert<"debts"> = { ...payload, created_by: user.id, direction: form.direction, person_name: form.person_name.trim(), shop_id: currentShop.id };
-      ({ error } = await supabase
-        .from("debts")
-        .insert(insertPayload));
+    try {
+      const res = editing
+        ? await rpc<{ ok: boolean; error?: string }>("updateDebtAction", editing.id, payload)
+        : await rpc<{ ok: boolean; error?: string }>("createDebtAction", payload);
+      if (!res.ok) return toast.error(res.error || "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    if (error) return toast.error(error.message);
     toast.success(editing ? "Debt updated" : "Debt added");
     setOpen(false);
     await load();
@@ -282,20 +262,20 @@ export default function Debts() {
     }
 
     setPaymentSaving(true);
-    const paymentPayload: TablesInsert<"debt_payments"> = {
-      debt_id: selectedDebt.id,
-      shop_id: currentShop.id,
-      amount,
-      payment_date: paymentForm.payment_date,
-      notes: paymentForm.notes.trim() || null,
-      created_by: user.id,
-      kind: paymentForm.kind,
-    };
-    const { error } = await supabase
-      .from("debt_payments")
-      .insert(paymentPayload);
-    setPaymentSaving(false);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("createDebtPaymentAction", {
+        debt_id: selectedDebt.id,
+        kind: paymentForm.kind,
+        amount,
+        payment_date: paymentForm.payment_date,
+        notes: paymentForm.notes.trim() || null,
+      });
+      if (!res.ok) return toast.error(res.error || "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setPaymentSaving(false);
+    }
 
     toast.success(paymentForm.kind === "payment" ? "Payment recorded" : "Debt increased");
     setPaymentForm({ ...emptyPayment });
@@ -303,8 +283,12 @@ export default function Debts() {
   };
 
   const remove = async (id: string) => {
-    const { error } = await supabase.from("debts").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteDebtAction", id);
+      if (!res.ok) return toast.error(res.error || "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    }
     toast.success("Debt deleted");
     setConfirmId(null);
     await load();
@@ -312,8 +296,12 @@ export default function Debts() {
 
   const removePayment = async (id: string) => {
     const debtId = selectedDebt?.id;
-    const { error } = await supabase.from("debt_payments").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteDebtPaymentAction", id);
+      if (!res.ok) return toast.error(res.error || "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    }
     toast.success("Payment deleted");
     setConfirmPaymentDeleteId(null);
     if (debtId) await refreshDebtState(debtId);

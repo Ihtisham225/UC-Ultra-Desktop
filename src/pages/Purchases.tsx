@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc, uploadInvoiceImage } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -57,29 +57,11 @@ interface Line {
   quantity: number;
 }
 
-/** Convert a stored invoice value (path or legacy public URL) into a signed URL. */
-function extractInvoicePath(value: string): string {
-  // Legacy entries stored the full public URL; extract path after the bucket name.
-  const marker = "/purchase-invoices/";
-  const idx = value.indexOf(marker);
-  if (idx >= 0) return value.substring(idx + marker.length);
-  return value;
-}
-
 function InvoiceImage({ value }: { value: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const path = extractInvoicePath(value);
-    supabase.storage.from("purchase-invoices").createSignedUrl(path, 3600).then(({ data }) => {
-      if (!cancelled) setUrl(data?.signedUrl ?? null);
-    });
-    return () => { cancelled = true; };
-  }, [value]);
-  if (!url) return <div className="text-xs text-muted-foreground mt-1">Loading…</div>;
+  // Invoice images are now stored as public URLs (Vercel Blob) — render directly.
   return (
-    <a href={url} target="_blank" rel="noreferrer">
-      <img src={url} alt="invoice" className="max-h-64 rounded border mt-1" />
+    <a href={value} target="_blank" rel="noreferrer">
+      <img src={value} alt="invoice" className="max-h-64 rounded border mt-1" />
     </a>
   );
 }
@@ -144,16 +126,13 @@ export default function Purchases() {
     let cancelled = false;
     (async () => {
       setSearching(true);
-      const { data, error } = await supabase
-        .from("purchase_items")
-        .select("id, product_name, quantity, unit_cost, line_total, purchases!inner(id, reference_number, created_at, supplier_id, shop_id, payment_method, suppliers(name, phone))")
-        .eq("purchases.shop_id", currentShop.id)
-        .ilike("product_name", `%${debouncedSearch}%`)
-        .order("created_at", { referencedTable: "purchases", ascending: false })
-        .limit(200);
-      if (!cancelled) {
-        setSearchResults(error ? [] : ((data as any) ?? []));
-        setSearching(false);
+      try {
+        const data = await rpc<any[]>("searchPurchaseItemsAction", debouncedSearch);
+        if (!cancelled) setSearchResults(data ?? []);
+      } catch {
+        if (!cancelled) setSearchResults([]);
+      } finally {
+        if (!cancelled) setSearching(false);
       }
     })();
     return () => { cancelled = true; };
@@ -177,14 +156,14 @@ export default function Purchases() {
   }, [searchResults]);
 
   const openDetails = async (id: string) => {
-    const { data } = await supabase
-      .from("purchases")
-      .select("*, purchase_items(*), suppliers(name, phone)")
-      .eq("id", id)
-      .maybeSingle();
-    if (data) {
-      setDetailsItemSearch("");
-      setDetails(data);
+    try {
+      const data = await rpc<any>("getPurchaseDetailAction", id);
+      if (data) {
+        setDetailsItemSearch("");
+        setDetails(data);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("purchases.failed"));
     }
   };
 
@@ -196,12 +175,13 @@ export default function Purchases() {
   };
 
   const startEdit = async (purchaseId: string) => {
-    const { data, error } = await supabase
-      .from("purchases")
-      .select("*, purchase_items(*)")
-      .eq("id", purchaseId)
-      .maybeSingle();
-    if (error || !data) return toast.error(error?.message ?? t("purchases.failed"));
+    let data: any;
+    try {
+      data = await rpc<any>("getPurchaseDetailAction", purchaseId);
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("purchases.failed"));
+    }
+    if (!data) return toast.error(t("purchases.failed"));
     setEditingId(purchaseId);
     setSupplierId((data as any).supplier_id ?? "");
     setReference((data as any).reference_number ?? "");
@@ -227,8 +207,12 @@ export default function Purchases() {
       variant: "destructive",
     });
     if (!ok) return;
-    const { error } = await supabase.rpc("delete_purchase" as any, { _purchase_id: id });
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deletePurchaseAction", id);
+      if (!res.ok) return toast.error(res.error ?? t("purchases.failed"));
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("purchases.failed"));
+    }
     toast.success(t("common.deleted"));
     load();
   };
@@ -237,44 +221,26 @@ export default function Purchases() {
 
   useEffect(() => { document.title = "UCU"; }, []);
 
-  const fetchPurchasePage = useCallback(async (): Promise<{ rows: Purchase[]; count: number }> => {
-    if (!currentShop) return { rows: [], count: 0 };
-    const offset = (page - 1) * pageSize;
-    const { data, count } = await supabase.from("purchases")
-      .select(
-        "id, reference_number, supplier_id, total, payment_method, created_at",
-        { count: "exact" },
-      )
-      .eq("shop_id", currentShop.id)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + pageSize - 1);
-    return { rows: ((data as any) ?? []) as Purchase[], count: count ?? 0 };
-  }, [currentShop, page, pageSize]);
-
   const load = useCallback(async () => {
     if (!currentShop) return;
     setLoading(true);
-    const [{ rows, count }, { data: sups }, { data: prods }, { data: vars }, { data: allTotals }] = await Promise.all([
-      fetchPurchasePage(),
-      supabase.from("suppliers").select("id, name, phone").eq("shop_id", currentShop.id).order("name"),
-      supabase.from("products").select("id, name, price").eq("shop_id", currentShop.id).eq("is_active", true).order("name"),
-      supabase.from("product_variants").select("id, product_id, name, sku, barcode, price_override, stock").eq("shop_id", currentShop.id).eq("is_active", true).order("sort_order"),
-      supabase.from("purchases").select("total, paid_amount").eq("shop_id", currentShop.id),
-    ]);
-    const variantsByProduct = new Map<string, Variant[]>();
-    ((vars as any) ?? []).forEach((v: Variant) => {
-      const arr = variantsByProduct.get(v.product_id) ?? [];
-      arr.push(v); variantsByProduct.set(v.product_id, arr);
-    });
-    setPurchases(rows);
-    setTotalCount(count);
-    setSuppliers((sups as any) ?? []);
-    setProducts(((prods as any) ?? []).map((p: any) => ({ ...p, variants: variantsByProduct.get(p.id) ?? [] })));
-    const all = (allTotals as any[]) ?? [];
-    setGrandTotal(all.reduce((a, p) => a + Number(p.total ?? 0), 0));
-    setGrandPaid(all.reduce((a, p) => a + Number(p.paid_amount ?? 0), 0));
-    setLoading(false);
-  }, [currentShop, fetchPurchasePage]);
+    try {
+      const [list, formData] = await Promise.all([
+        rpc<{ rows: Purchase[]; count: number; grandTotal: number; grandPaid: number }>("listPurchasesAction", page, pageSize),
+        rpc<{ suppliers: Supplier[]; products: Product[] }>("loadPurchaseFormDataAction"),
+      ]);
+      setPurchases(list.rows ?? []);
+      setTotalCount(list.count ?? 0);
+      setGrandTotal(list.grandTotal ?? 0);
+      setGrandPaid(list.grandPaid ?? 0);
+      setSuppliers(formData.suppliers ?? []);
+      setProducts(formData.products ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("purchases.failed"));
+    } finally {
+      setLoading(false);
+    }
+  }, [currentShop, page, pageSize, t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -328,14 +294,15 @@ export default function Purchases() {
     if (!currentShop) return;
     if (file.size > 5 * 1024 * 1024) return toast.error(t("purchases.imageTooLarge"));
     setUploadingImage(true);
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `${currentShop.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const { error } = await supabase.storage.from("purchase-invoices").upload(path, file, { upsert: false });
-    if (error) { setUploadingImage(false); return toast.error(error.message); }
-    // Store the storage path (bucket is private — signed URLs are generated on display)
-    setInvoiceImageUrl(path);
-    setUploadingImage(false);
-    toast.success(t("purchases.imageUploaded"));
+    try {
+      const url = await uploadInvoiceImage(file);
+      setInvoiceImageUrl(url);
+      toast.success(t("purchases.imageUploaded"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("purchases.failed"));
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const save = async () => {
@@ -344,58 +311,31 @@ export default function Purchases() {
     if (lines.some((l) => l.quantity <= 0 || l.unit_cost == null || l.unit_cost < 0)) return toast.error(t("purchases.invalidLine"));
     setBusy(true);
 
-    if (editingId) {
-      const { error: rpcErr } = await supabase.rpc("replace_purchase_items" as any, {
-        _purchase_id: editingId,
-        _supplier_id: supplierId || null,
-        _reference_number: reference || null,
-        _payment_method: paymentMethod,
-        _notes: notes || null,
-        _items: lines.map((l) => ({
-          product_id: l.product_id || null,
-          variant_id: l.variant_id || null,
-          product_name: l.product_name,
-          unit_cost: l.unit_cost,
-          quantity: l.quantity,
-        })),
-      });
-      if (!rpcErr) {
-        await supabase.from("purchases").update({ invoice_image_url: invoiceImageUrl }).eq("id", editingId);
-      }
-      setBusy(false);
-      if (rpcErr) return toast.error(rpcErr.message);
-      toast.success(t("purchases.purchaseUpdated"));
-      setOpen(false);
-      reset();
-      load();
-      return;
-    }
-
-    const { data: purchase, error: err } = await supabase.from("purchases").insert({
-      shop_id: currentShop.id,
-      created_by: user.id,
+    const input = {
       supplier_id: supplierId || null,
       reference_number: reference || null,
-      subtotal, tax: 0, total: subtotal, paid_amount: subtotal,
       payment_method: paymentMethod,
       notes: notes || null,
       invoice_image_url: invoiceImageUrl,
-    }).select().single();
-    if (err || !purchase) { setBusy(false); return toast.error(err?.message ?? t("purchases.failed")); }
-    const { error: itemsErr } = await supabase.from("purchase_items").insert(
-      lines.map((l) => ({
-        purchase_id: purchase.id,
-        product_id: l.product_id,
-        variant_id: l.variant_id,
+      items: lines.map((l) => ({
+        product_id: l.product_id || null,
+        variant_id: l.variant_id || null,
         product_name: l.product_name,
-        unit_cost: l.unit_cost,
+        unit_cost: l.unit_cost ?? 0,
         quantity: l.quantity,
-        line_total: l.unit_cost * l.quantity,
-      }))
-    );
-    setBusy(false);
-    if (itemsErr) return toast.error(itemsErr.message);
-    toast.success(t("purchases.saved"));
+      })),
+    };
+    try {
+      const res = editingId
+        ? await rpc<{ ok: boolean; error?: string }>("updatePurchaseAction", editingId, input)
+        : await rpc<{ ok: boolean; id?: string; error?: string }>("createPurchaseAction", input);
+      if (!res.ok) return toast.error(res.error ?? t("purchases.failed"));
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("purchases.failed"));
+    } finally {
+      setBusy(false);
+    }
+    toast.success(editingId ? t("purchases.purchaseUpdated") : t("purchases.saved"));
     setOpen(false);
     reset();
     load();
@@ -417,19 +357,24 @@ export default function Purchases() {
       if (!ok) return;
     }
 
-    const { data, error } = await supabase.from("suppliers").insert({
-      shop_id: currentShop.id,
-      name,
-      phone: newSupplier.phone || null,
-      email: newSupplier.email || null,
-      notes: newSupplier.notes || null,
-    }).select().single();
-    if (error || !data) return toast.error(error?.message ?? t("purchases.failed"));
+    let supplier: Supplier;
+    try {
+      const res = await rpc<{ ok: boolean; supplier?: Supplier; error?: string }>("createSupplierAction", {
+        name,
+        phone: newSupplier.phone || null,
+        email: newSupplier.email || null,
+        notes: newSupplier.notes || null,
+      });
+      if (!res.ok || !res.supplier) return toast.error(res.error ?? t("purchases.failed"));
+      supplier = res.supplier;
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("purchases.failed"));
+    }
     toast.success(t("purchases.supplierAdded"));
     setNewSupplier({ name: "", phone: "", email: "", notes: "" });
     setSupplierOpen(false);
-    setSuppliers((prev) => [...prev, data as any]);
-    setSupplierId(data.id);
+    setSuppliers((prev) => [...prev, supplier]);
+    setSupplierId(supplier.id);
   };
 
   return (

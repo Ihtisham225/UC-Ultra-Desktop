@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -84,38 +84,34 @@ export default function Returns() {
   const loadCustomer = useCallback(async () => {
     if (!currentShop) return;
     setCustLoading(true);
-    const offset = (custPage - 1) * pageSize;
-    const { data, count } = await supabase
-      .from("sale_returns")
-      .select(
-        "id, return_number, total_refund, refund_method, reason, notes, created_at, sale_id, sales(receipt_number), sale_return_items(id, product_name, quantity, unit_price, line_total)",
-        { count: "exact" },
-      )
-      .eq("shop_id", currentShop.id)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + pageSize - 1);
-    setCustRows(((data as any) ?? []) as CustomerReturnRow[]);
-    setCustCount(count ?? 0);
-    setCustLoading(false);
-  }, [currentShop, custPage, pageSize]);
+    try {
+      const { rows, totalCount } = await rpc<{ rows: CustomerReturnRow[]; totalCount: number }>(
+        "listSaleReturnsAction", custPage, pageSize,
+      );
+      setCustRows(rows ?? []);
+      setCustCount(totalCount ?? 0);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("common.error"));
+    } finally {
+      setCustLoading(false);
+    }
+  }, [currentShop, custPage, pageSize, t]);
 
   const loadSupplier = useCallback(async () => {
     if (!currentShop) return;
     setSupLoading(true);
-    const offset = (supPage - 1) * pageSize;
-    const { data, count } = await (supabase
-      .from("supplier_returns" as any)
-      .select(
-        "id, return_number, total_refund, refund_method, reason, notes, created_at, purchase_id, supplier_id, purchases(reference_number), suppliers(name), supplier_return_items(id, product_name, quantity, unit_cost, line_total)",
-        { count: "exact" },
-      )
-      .eq("shop_id", currentShop.id)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + pageSize - 1) as any);
-    setSupRows(((data as any) ?? []) as SupplierReturnRow[]);
-    setSupCount(count ?? 0);
-    setSupLoading(false);
-  }, [currentShop, supPage, pageSize]);
+    try {
+      const { rows, totalCount } = await rpc<{ rows: SupplierReturnRow[]; totalCount: number }>(
+        "listSupplierReturnsAction", supPage, pageSize,
+      );
+      setSupRows(rows ?? []);
+      setSupCount(totalCount ?? 0);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("common.error"));
+    } finally {
+      setSupLoading(false);
+    }
+  }, [currentShop, supPage, pageSize, t]);
 
   useEffect(() => { loadCustomer(); }, [loadCustomer]);
   useEffect(() => { loadSupplier(); }, [loadSupplier]);
@@ -127,8 +123,12 @@ export default function Returns() {
       variant: "destructive",
     });
     if (!ok) return;
-    const { error } = await supabase.rpc("delete_sale_return" as any, { _return_id: id });
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteSaleReturnAction", id);
+      if (!res.ok) return toast.error(res.error ?? t("common.error"));
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("common.error"));
+    }
     toast.success(t("common.deleted"));
     loadCustomer();
   };
@@ -140,8 +140,12 @@ export default function Returns() {
       variant: "destructive",
     });
     if (!ok) return;
-    const { error } = await (supabase.rpc("delete_supplier_return" as any, { _return_id: id }) as any);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteSupplierReturnAction", id);
+      if (!res.ok) return toast.error(res.error ?? t("common.error"));
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("common.error"));
+    }
     toast.success(t("common.deleted"));
     loadSupplier();
   };

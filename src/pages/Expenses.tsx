@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -103,36 +103,31 @@ export default function Expenses() {
 
   const loadCategories = useCallback(async () => {
     if (!currentShop) return;
-    const { data } = await supabase
-      .from("expense_categories")
-      .select("id, name, color")
-      .eq("shop_id", currentShop.id)
-      .order("name");
-    setCategories((data as any) ?? []);
-    setForm((f) => ({ ...f, category_id: f.category_id || (data?.[0]?.id ?? "") }));
-  }, [currentShop]);
+    try {
+      const data = await rpc<Category[]>("listExpenseCategoriesAction");
+      setCategories(data ?? []);
+      setForm((f) => ({ ...f, category_id: f.category_id || (data?.[0]?.id ?? "") }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("common.error"));
+    }
+  }, [currentShop, t]);
 
   const load = useCallback(async () => {
     if (!currentShop) return;
     setLoading(true);
-    const offset = (page - 1) * pageSize;
-    let q = supabase
-      .from("expenses")
-      .select(
-        "id, amount, paid_to, description, expense_date, payment_method, category_id",
-        { count: "exact" },
-      )
-      .eq("shop_id", currentShop.id)
-      .gte("expense_date", from)
-      .lte("expense_date", to)
-      .order("expense_date", { ascending: false })
-      .range(offset, offset + pageSize - 1);
-    if (filterCat !== "all") q = q.eq("category_id", filterCat);
-    const { data, count } = await q;
-    setExpenses(((data as any) ?? []) as Expense[]);
-    setTotalCount(count ?? 0);
-    setLoading(false);
-  }, [currentShop, filterCat, from, to, page, pageSize]);
+    try {
+      const { expenses: rows, totalCount: count } = await rpc<{ expenses: Expense[]; totalCount: number }>(
+        "listExpensesAction",
+        { from, to, categoryId: filterCat, page, pageSize },
+      );
+      setExpenses(rows ?? []);
+      setTotalCount(count ?? 0);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("common.error"));
+    } finally {
+      setLoading(false);
+    }
+  }, [currentShop, filterCat, from, to, page, pageSize, t]);
 
   // Reset to page 1 whenever filters change.
   useEffect(() => { setPage(1); }, [filterCat, from, to]);
@@ -174,11 +169,16 @@ export default function Expenses() {
       payment_method: form.payment_method,
       category_id: form.category_id || null,
     };
-    const { error } = editingId
-      ? await supabase.from("expenses").update(payload).eq("id", editingId)
-      : await supabase.from("expenses").insert({ ...payload, shop_id: currentShop.id, created_by: user.id });
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    try {
+      const res = editingId
+        ? await rpc<{ ok: boolean; error?: string }>("updateExpenseAction", editingId, payload)
+        : await rpc<{ ok: boolean; error?: string }>("createExpenseAction", payload);
+      if (!res.ok) return toast.error(res.error || t("common.error"));
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("common.error"));
+    } finally {
+      setBusy(false);
+    }
     toast.success(editingId ? t("expenses.expenseUpdated") : t("expenses.expenseSaved"));
     setOpen(false);
     resetForm();
@@ -192,8 +192,12 @@ export default function Expenses() {
       variant: "destructive",
     });
     if (!ok) return;
-    const { error } = await supabase.from("expenses").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteExpenseAction", id);
+      if (!res.ok) return toast.error(res.error || t("common.error"));
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("common.error"));
+    }
     toast.success(t("common.deleted"));
     load();
   };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -38,13 +38,14 @@ export function StockAdjustmentDialog({ open, onOpenChange, initialProductId, on
   useEffect(() => {
     if (!open || !currentShop) return;
     (async () => {
-      const { data: prods } = await supabase
-        .from("products")
-        .select("id,name,stock, product_variants(id,name,stock)")
-        .eq("shop_id", currentShop.id)
-        .eq("is_active", true)
-        .order("name");
-      setProducts((prods as any) || []);
+      try {
+        const data = await rpc<{ id: string; name: string; stock: number; product_variants: { id: string; name: string; stock: number }[] }[]>(
+          "listAdjustableProductsAction",
+        );
+        setProducts((data ?? []).map((p) => ({ id: p.id, name: p.name, stock: p.stock, variants: p.product_variants })));
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to load");
+      }
     })();
   }, [open, currentShop]);
 
@@ -67,15 +68,20 @@ export function StockAdjustmentDialog({ open, onOpenChange, initialProductId, on
     if (hasVariants && !variantId) return toast.error("Pick a variant");
     if (!d || isNaN(d)) return toast.error("Enter a non-zero quantity");
     setSaving(true);
-    const { error } = await supabase.rpc("adjust_stock" as any, {
-      _product_id: productId,
-      _variant_id: variantId || null,
-      _delta: d,
-      _reason: reason,
-      _notes: notes || null,
-    });
-    setSaving(false);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("adjustStockAction", {
+        productId,
+        variantId: variantId || null,
+        delta: d,
+        reason,
+        notes: notes || null,
+      });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
     toast.success("Stock adjusted");
     onOpenChange(false);
     onDone?.();

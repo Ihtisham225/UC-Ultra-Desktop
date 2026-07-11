@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { getAll } from "@/lib/localDb";
 import { useShop } from "@/contexts/ShopContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card } from "@/components/ui/card";
@@ -39,24 +39,35 @@ export default function Analytics() {
     (async () => {
       setLoading(true);
       const since = startOfDay(subDays(new Date(), range)).toISOString();
-      const [s, p, e, c, pi] = await Promise.all([
-        supabase.from("sales").select("id, total, subtotal, tax, payment_method, created_at, customer_id, cashier_id, sale_items(product_id, variant_id, product_name, quantity, unit_price, line_total)").eq("shop_id", currentShop.id).gte("created_at", since).order("created_at"),
-        supabase.from("products").select("id, name, stock, price, low_stock_threshold").eq("shop_id", currentShop.id).eq("is_active", true),
-        perms.canManageExpenses ? supabase.from("expenses").select("amount, expense_date").eq("shop_id", currentShop.id).gte("expense_date", since.slice(0, 10)) : Promise.resolve({ data: [] as any[] }),
-        supabase.from("customers").select("id", { count: "exact", head: true }).eq("shop_id", currentShop.id),
-        // All purchase_items for this shop — used to build weighted avg cost per product/variant.
-        supabase.from("purchase_items").select("product_id, variant_id, quantity, unit_cost, purchases!inner(shop_id)").eq("purchases.shop_id", currentShop.id),
+      const shopId = currentShop.id;
+      // Read from the local sync store — offline-capable, all these tables sync.
+      const [allSales, allSaleItems, allProducts, allExpenses, allCustomers, allPurchaseItems] = await Promise.all([
+        getAll<any>("sales", shopId),
+        getAll<any>("sale_items", shopId),
+        getAll<any>("products", shopId),
+        perms.canManageExpenses ? getAll<any>("expenses", shopId) : Promise.resolve([] as any[]),
+        getAll<any>("customers", shopId),
+        getAll<any>("purchase_items", shopId),
       ]);
-      const salesData = (s.data ?? []) as any[];
+      const itemsBySale = new Map<string, any[]>();
+      for (const it of allSaleItems) {
+        const arr = itemsBySale.get(it.sale_id) ?? [];
+        arr.push(it);
+        itemsBySale.set(it.sale_id, arr);
+      }
+      const salesData = allSales
+        .filter((sl) => sl.created_at >= since)
+        .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+        .map((sl) => ({ ...sl, sale_items: itemsBySale.get(sl.id) ?? [] }));
       setSales(salesData);
       setItems(salesData.flatMap((sl: any) => (sl.sale_items ?? []).map((it: any) => ({ ...it, created_at: sl.created_at }))));
-      setProducts((p.data ?? []) as any[]);
-      setExpenses((e.data ?? []) as any[]);
-      setCustomerCount((c as any).count ?? 0);
+      setProducts(allProducts.filter((p) => p.is_active !== false));
+      setExpenses(allExpenses.filter((e) => String(e.expense_date) >= since.slice(0, 10)));
+      setCustomerCount(allCustomers.length);
 
       // Build weighted average cost: key = variant_id || product_id.
       const totals = new Map<string, { qty: number; cost: number }>();
-      ((pi.data ?? []) as any[]).forEach((row) => {
+      (allPurchaseItems as any[]).forEach((row) => {
         const key = row.variant_id ?? row.product_id;
         if (!key) return;
         const qty = Number(row.quantity);

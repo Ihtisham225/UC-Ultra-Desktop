@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -54,32 +54,24 @@ export default function Staff() {
   const load = useCallback(async () => {
     if (!currentShop) return;
     setLoading(true);
-    const [{ data: ms }, { data: rs }, { data: ura }] = await Promise.all([
-      supabase.from("shop_members").select("user_id, role, disabled").eq("shop_id", currentShop.id),
-      supabase.from("shop_custom_roles").select("id, name, is_system").eq("shop_id", currentShop.id).order("name"),
-      supabase.from("shop_user_role_assignments").select("user_id, role_id").eq("shop_id", currentShop.id),
-    ]);
-    const userIds = (ms ?? []).map((m: any) => m.user_id);
-    let profiles: any[] = [];
-    if (userIds.length) {
-      const { data } = await supabase.from("profiles").select("user_id, display_name, username").in("user_id", userIds);
-      profiles = data ?? [];
+    try {
+      const data = await rpc<{
+        members: Member[];
+        roles: Role[];
+        rolePerms: RP[];
+        assignments: URA[];
+        usernames: Record<string, string>;
+      }>("loadStaffDataAction");
+      setMembers(data.members ?? []);
+      setRoles(data.roles ?? []);
+      setRolePerms(data.rolePerms ?? []);
+      setAssignments(data.assignments ?? []);
+      setUsernames(data.usernames ?? {});
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
     }
-    setMembers(((ms as any) ?? []).map((m: any) => ({
-      ...m,
-      display_name: profiles.find((p) => p.user_id === m.user_id)?.display_name ?? null,
-    })));
-    const un: Record<string, string> = {};
-    profiles.forEach((p) => { if (p.username) un[p.user_id] = p.username; });
-    setUsernames(un);
-    setRoles((rs as any) ?? []);
-    setAssignments((ura as any) ?? []);
-    const roleIds = ((rs as any) ?? []).map((r: Role) => r.id);
-    if (roleIds.length) {
-      const { data: rp } = await supabase.from("shop_role_permissions").select("role_id, module, action").in("role_id", roleIds);
-      setRolePerms((rp as any) ?? []);
-    } else setRolePerms([]);
-    setLoading(false);
   }, [currentShop]);
 
   useEffect(() => { load(); }, [load]);
@@ -88,18 +80,20 @@ export default function Staff() {
     if (!currentShop) return;
     if (!newStaff.full_name.trim() || !newStaff.role_id) return toast.error("Name & role are required");
     setCreating(true);
-    const { data, error } = await supabase.functions.invoke("admin-create-staff", {
-      body: {
+    try {
+      const res = await rpc<{ ok: boolean; username?: string; temp_password?: string; error?: string }>("createStaffAction", {
         full_name: newStaff.full_name.trim(),
         role_id: newStaff.role_id,
-        shop_id: currentShop.id,
-      },
-    });
-    setCreating(false);
-    if (error || (data as any)?.error) return toast.error(error?.message ?? (data as any)?.error ?? "Failed");
-    setCreatedCreds({ username: (data as any).username, password: (data as any).temp_password });
-    setNewStaff({ full_name: "", role_id: "" });
-    setOpenCreate(false);
+      });
+      if (!res.ok || !res.username || !res.temp_password) return toast.error(res.error ?? "Failed");
+      setCreatedCreds({ username: res.username, password: res.temp_password });
+      setNewStaff({ full_name: "", role_id: "" });
+      setOpenCreate(false);
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setCreating(false);
+    }
     load();
   };
 
@@ -107,8 +101,12 @@ export default function Staff() {
     if (!currentShop) return;
     if (m.role === "owner") return toast.error("Cannot remove owner");
     if (!(await confirm({ title: "Remove staff?", description: `${m.display_name ?? "This member"} will lose access.`, variant: "destructive" }))) return;
-    const { data, error } = await supabase.functions.invoke("admin-delete-staff", { body: { user_id: m.user_id, shop_id: currentShop.id } });
-    if (error || (data as any)?.error) return toast.error(error?.message ?? (data as any)?.error ?? "Failed");
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteStaffAction", m.user_id);
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    }
     toast.success("Removed"); load();
   };
 
@@ -120,29 +118,34 @@ export default function Staff() {
       title: next ? "Block staff?" : "Unblock staff?",
       description: next ? "They will be signed out and unable to log in." : "They will be able to log in again.",
     }))) return;
-    const { data, error } = await supabase.functions.invoke("admin-set-staff-disabled", {
-      body: { user_id: m.user_id, shop_id: currentShop.id, disabled: next },
-    });
-    if (error || (data as any)?.error) return toast.error(error?.message ?? (data as any)?.error ?? "Failed");
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("setStaffDisabledAction", m.user_id, next);
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    }
     toast.success(next ? "Blocked" : "Unblocked"); load();
   };
 
   const resetPwd = async (m: Member) => {
     if (!currentShop) return;
     if (!(await confirm({ title: "Reset password?", description: "A new temporary password will be generated." }))) return;
-    const { data, error } = await supabase.functions.invoke("admin-reset-staff-password", {
-      body: { user_id: m.user_id, shop_id: currentShop.id },
-    });
-    if (error || (data as any)?.error) return toast.error(error?.message ?? (data as any)?.error ?? "Failed");
-    setResetCreds({ email: m.display_name ?? m.user_id, password: (data as any).temp_password });
+    try {
+      const res = await rpc<{ ok: boolean; temp_password?: string; error?: string }>("resetStaffPasswordAction", m.user_id);
+      if (!res.ok || !res.temp_password) return toast.error(res.error ?? "Failed");
+      setResetCreds({ email: m.display_name ?? m.user_id, password: res.temp_password });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    }
   };
 
   const assignRole = async (userId: string, roleId: string) => {
     if (!currentShop) return;
-    await supabase.from("shop_user_role_assignments").delete().eq("shop_id", currentShop.id).eq("user_id", userId);
-    if (roleId !== "__none") {
-      const { error } = await supabase.from("shop_user_role_assignments").insert({ shop_id: currentShop.id, user_id: userId, role_id: roleId });
-      if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("assignRoleAction", userId, roleId);
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
     }
     toast.success("Role updated"); load();
   };
@@ -168,25 +171,14 @@ export default function Staff() {
 
   const saveRole = async () => {
     if (!currentShop || !roleName.trim()) return toast.error("Role name required");
-    let roleId = editingRole?.id;
-    if (!editingRole) {
-      const { data, error } = await supabase.from("shop_custom_roles")
-        .insert({ shop_id: currentShop.id, name: roleName.trim(), is_system: false })
-        .select("id").single();
-      if (error || !data) return toast.error(error?.message ?? "Failed");
-      roleId = data.id;
-    } else {
-      const { error } = await supabase.from("shop_custom_roles").update({ name: roleName.trim() }).eq("id", editingRole.id);
-      if (error) return toast.error(error.message);
-      await supabase.from("shop_role_permissions").delete().eq("role_id", editingRole.id);
-    }
-    const rows = Array.from(roleMatrix).map((k) => {
-      const [module, action] = k.split(":");
-      return { role_id: roleId!, module: module as Module, action: action as Action };
-    });
-    if (rows.length) {
-      const { error: e2 } = await supabase.from("shop_role_permissions").insert(rows);
-      if (e2) return toast.error(e2.message);
+    const permissions = Array.from(roleMatrix);
+    try {
+      const res = editingRole
+        ? await rpc<{ ok: boolean; error?: string }>("updateRoleAction", editingRole.id, { name: roleName.trim(), permissions })
+        : await rpc<{ ok: boolean; error?: string }>("createRoleAction", { name: roleName.trim(), permissions });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
     }
     toast.success(editingRole ? "Role updated" : "Role created");
     setOpenRole(false); load();
@@ -195,8 +187,12 @@ export default function Staff() {
   const removeRole = async (r: Role) => {
     if (r.is_system) return toast.error("Cannot delete system role");
     if (!(await confirm({ title: "Delete role?", description: `"${r.name}" will be removed.`, variant: "destructive" }))) return;
-    const { error } = await supabase.from("shop_custom_roles").delete().eq("id", r.id);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteRoleAction", r.id);
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    }
     toast.success("Deleted"); load();
   };
 
@@ -433,16 +429,18 @@ export default function Staff() {
               onClick={async () => {
                 if (!editStaff || !currentShop) return;
                 setSavingEdit(true);
-                const { data, error } = await supabase.functions.invoke("admin-update-staff", {
-                  body: {
+                try {
+                  const res = await rpc<{ ok: boolean; error?: string }>("updateStaffAction", {
                     user_id: editStaff.user_id,
-                    shop_id: currentShop.id,
                     full_name: editStaff.full_name,
                     username: editStaff.username,
-                  },
-                });
-                setSavingEdit(false);
-                if (error || (data as any)?.error) return toast.error(error?.message ?? (data as any)?.error ?? "Failed");
+                  });
+                  if (!res.ok) return toast.error(res.error ?? "Failed");
+                } catch (e) {
+                  return toast.error(e instanceof Error ? e.message : "Failed");
+                } finally {
+                  setSavingEdit(false);
+                }
                 toast.success("Updated");
                 setEditStaff(null);
                 load();

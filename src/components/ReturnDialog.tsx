@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
@@ -48,19 +48,19 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
     (async () => {
       setLoading(true);
       setQtyMap({}); setReason(""); setNotes(""); setRefundMethod("cash");
-      const [{ data: sale }, { data: prevReturns }] = await Promise.all([
-        supabase.from("sales").select("receipt_number, sale_items(id, product_id, variant_id, product_name, quantity, unit_price)").eq("id", saleId).maybeSingle(),
-        supabase.from("sale_return_items").select("sale_item_id, quantity, sale_returns!inner(sale_id)").eq("sale_returns.sale_id", saleId),
-      ]);
-      const its = (sale as any)?.sale_items ?? [];
-      setItems(its);
-      setReceipt((sale as any)?.receipt_number ?? null);
-      const prev: Record<string, number> = {};
-      (prevReturns ?? []).forEach((r: any) => {
-        if (r.sale_item_id) prev[r.sale_item_id] = (prev[r.sale_item_id] ?? 0) + Number(r.quantity);
-      });
-      setAlreadyReturned(prev);
-      setLoading(false);
+      try {
+        const ctx = await rpc<{ receipt_number: string | null; items: SaleItem[]; alreadyReturned: Record<string, number> } | null>(
+          "getReturnContextAction",
+          saleId,
+        );
+        setItems(ctx?.items ?? []);
+        setReceipt(ctx?.receipt_number ?? null);
+        setAlreadyReturned(ctx?.alreadyReturned ?? {});
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to load");
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [open, saleId]);
 
@@ -82,32 +82,27 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
     if (lines.length === 0) return toast.error("Pick at least one item to return");
 
     setBusy(true);
-    const { data: ret, error } = await supabase.from("sale_returns").insert({
-      shop_id: currentShop.id,
-      sale_id: saleId,
-      processed_by: user.id,
-      return_number: `RET-${Date.now().toString(36).toUpperCase()}`,
-      total_refund: totalRefund,
-      refund_method: refundMethod,
-      reason: reason || null,
-      notes: notes || null,
-    }).select().single();
-    if (error || !ret) { setBusy(false); return toast.error(error?.message ?? "Failed"); }
-
-    const { error: itemsErr } = await supabase.from("sale_return_items").insert(
-      lines.map((l) => ({
-        return_id: ret.id,
-        sale_item_id: l.item.id,
-        product_id: l.item.product_id,
-        variant_id: l.item.variant_id,
-        product_name: l.item.product_name,
-        quantity: l.qty,
-        unit_price: l.item.unit_price,
-        line_total: Number(l.item.unit_price) * l.qty,
-      }))
-    );
-    setBusy(false);
-    if (itemsErr) return toast.error(itemsErr.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("createReturnAction", {
+        saleId,
+        refundMethod,
+        reason: reason || null,
+        notes: notes || null,
+        lines: lines.map((l) => ({
+          sale_item_id: l.item.id,
+          product_id: l.item.product_id,
+          variant_id: l.item.variant_id,
+          product_name: l.item.product_name,
+          quantity: l.qty,
+          unit_price: l.item.unit_price,
+        })),
+      });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
     toast.success(`Refund of ${formatMoney(totalRefund, cur)} processed — stock restored`);
     onDone?.();
     onClose();

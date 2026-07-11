@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { useLocalStore } from "@/hooks/useLocalStore";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,31 +19,29 @@ export const CustomerPicker = ({
   const { currentShop } = useShop();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [list, setList] = useState<CustomerLite[]>([]);
   const [form, setForm] = useState({ name: "", phone: "" });
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!currentShop) return;
-    supabase.from("customers").select("id, name, phone")
-      .eq("shop_id", currentShop.id).order("name")
-      .then(({ data }) => setList((data as any) ?? []));
-  }, [currentShop, createOpen]);
+  // Offline-first: customers come from the local sync store so the picker works
+  // during a sale with no connection. New customers are queued for push.
+  const { data: list, save } = useLocalStore<CustomerLite & { name: string }>(
+    "customers",
+    currentShop?.id,
+  );
 
   const create = async () => {
     if (!currentShop || !form.name.trim()) return toast.error("Name is required");
     setBusy(true);
-    const { data, error } = await supabase.from("customers").insert({
-      shop_id: currentShop.id,
-      name: form.name.trim(),
-      phone: form.phone || null,
-    }).select("id, name, phone").single();
-    setBusy(false);
-    if (error || !data) return toast.error(error?.message ?? "Failed");
-    toast.success("Customer added");
-    onChange(data as any);
-    setForm({ name: "", phone: "" });
-    setCreateOpen(false);
+    try {
+      const c = await save({ name: form.name.trim(), phone: form.phone || null });
+      toast.success("Customer added");
+      onChange({ id: c.id, name: c.name, phone: c.phone ?? null });
+      setForm({ name: "", phone: "" });
+      setCreateOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -62,7 +60,7 @@ export const CustomerPicker = ({
               <CommandList>
                 <CommandEmpty>No customers found</CommandEmpty>
                 <CommandGroup>
-                  {list.map((c) => (
+                  {[...list].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
                     <CommandItem key={c.id} value={c.name + " " + (c.phone ?? "")} onSelect={() => { onChange(c); setOpen(false); }}>
                       <Check className={"size-3.5 mr-2 " + (value?.id === c.id ? "opacity-100" : "opacity-0")} />
                       <div>

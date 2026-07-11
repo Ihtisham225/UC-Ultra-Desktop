@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
@@ -52,19 +52,25 @@ export default function Onboarding() {
     if (!user) return;
     const fd = new FormData(e.currentTarget);
     setBusy(true);
-    const { data, error } = await supabase.from("shops").insert({
-      name: String(fd.get("name")),
-      currency,
-      tax_rate: parseFloat(String(fd.get("tax") || "0")),
-      receipt_footer: String(fd.get("footer") || ""),
-      created_by: user.id,
-    }).select().single();
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    let shopId: string;
+    try {
+      const res = await rpc<{ ok: boolean; shopId?: string; error?: string }>("createShopAction", {
+        name: String(fd.get("name")),
+        currency,
+        taxRate: parseFloat(String(fd.get("tax") || "0")),
+        receiptFooter: String(fd.get("footer") || ""),
+      });
+      if (!res.ok || !res.shopId) return toast.error(res.error ?? "Failed to create shop");
+      shopId = res.shopId;
+    } catch (err) {
+      return toast.error(err instanceof Error ? err.message : "Failed to create shop");
+    } finally {
+      setBusy(false);
+    }
     localStorage.setItem("pos.signupIntent", "owner");
     toast.success(t("onboarding.shopCreated"));
     await refresh();
-    if (data) await setCurrentShopId(data.id);
+    await setCurrentShopId(shopId);
     navigate("/");
   };
 

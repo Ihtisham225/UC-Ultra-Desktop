@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,18 +12,9 @@ interface Props { shopId: string; canManage: boolean }
 
 type ApiKey = { id: string; label: string; key_prefix: string; created_at: string; last_used_at: string | null };
 
-const FUNCTIONS_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
-
-async function sha256Hex(s: string) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function randomKey() {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return "ucu_" + Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+// The other app reads/writes this shop's catalog through these endpoints on the backend.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "") || "https://ucultra.com";
+const FUNCTIONS_BASE = `${API_BASE}/api/catalog`;
 
 export function IntegrationsSection({ shopId, canManage }: Props) {
   const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -38,16 +29,19 @@ export function IntegrationsSection({ shopId, canManage }: Props) {
   const [syncing, setSyncing] = useState(false);
 
   const load = async () => {
-    const [{ data: ks }, { data: s }] = await Promise.all([
-      supabase.from("shop_api_keys").select("id,label,key_prefix,created_at,last_used_at").eq("shop_id", shopId).order("created_at", { ascending: false }),
-      supabase.from("shop_sync_settings").select("*").eq("shop_id", shopId).maybeSingle(),
-    ]);
-    setKeys(ks ?? []);
-    if (s) {
-      setRemoteUrl(s.remote_base_url ?? "");
-      setRemoteKey(s.remote_api_key ?? "");
-      setLastSync(s.last_sync_at);
-      setLastStatus(s.last_sync_status);
+    try {
+      const { keys: ks, sync: s } = await rpc<{ keys: ApiKey[]; sync: { remote_base_url: string | null; remote_api_key: string | null; last_sync_at: string | null; last_sync_status: string | null } | null }>(
+        "listApiKeysAction",
+      );
+      setKeys(ks ?? []);
+      if (s) {
+        setRemoteUrl(s.remote_base_url ?? "");
+        setRemoteKey(s.remote_api_key ?? "");
+        setLastSync(s.last_sync_at);
+        setLastStatus(s.last_sync_status);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load");
     }
   };
 
@@ -55,25 +49,26 @@ export function IntegrationsSection({ shopId, canManage }: Props) {
 
   const createKey = async () => {
     setBusy(true);
-    const plain = randomKey();
-    const hash = await sha256Hex(plain);
-    const { error } = await supabase.from("shop_api_keys").insert({
-      shop_id: shopId,
-      label: label || "External sync",
-      key_prefix: plain.slice(0, 12),
-      key_hash: hash,
-    });
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    setNewKey(plain);
-    toast.success("API key created — copy it now, you won't see it again");
+    try {
+      const res = await rpc<{ ok: boolean; key?: string; error?: string }>("createApiKeyAction", label || "External sync");
+      if (!res.ok || !res.key) return toast.error(res.error ?? "Failed");
+      setNewKey(res.key);
+      toast.success("API key created — copy it now, you won't see it again");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
     load();
   };
 
   const deleteKey = async (id: string) => {
     if (!confirm("Revoke this key? Apps using it will lose access.")) return;
-    const { error } = await supabase.from("shop_api_keys").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    try {
+      await rpc("deleteApiKeyAction", id);
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    }
     toast.success("Key revoked");
     load();
   };
@@ -82,26 +77,35 @@ export function IntegrationsSection({ shopId, canManage }: Props) {
 
   const saveRemote = async () => {
     setBusy(true);
-    const { error } = await supabase.from("shop_sync_settings").upsert({
-      shop_id: shopId,
-      remote_base_url: remoteUrl.replace(/\/+$/, ""),
-      remote_api_key: remoteKey,
-    });
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("saveSyncSettingsAction", {
+        remote_base_url: remoteUrl.replace(/\/+$/, ""),
+        remote_api_key: remoteKey,
+      });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
     toast.success("Sync settings saved");
   };
 
   const runSync = async () => {
     if (!remoteUrl || !remoteKey) return toast.error("Enter the remote URL and API key first");
     setSyncing(true);
-    const { data, error } = await supabase.functions.invoke("catalog-sync", {
-      body: { shop_id: shopId, remote_base_url: remoteUrl.replace(/\/+$/, ""), remote_api_key: remoteKey },
-    });
-    setSyncing(false);
-    if (error) return toast.error(error.message);
-    if ((data as any)?.error) return toast.error((data as any).error);
-    toast.success((data as any)?.summary ?? "Sync complete");
+    try {
+      const res = await rpc<{ ok: boolean; summary?: string; error?: string }>("runCatalogSyncAction", {
+        remote_base_url: remoteUrl.replace(/\/+$/, ""),
+        remote_api_key: remoteKey,
+      });
+      if (!res.ok) return toast.error(res.error ?? "Sync failed");
+      toast.success(res.summary ?? "Sync complete");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
     load();
   };
 
@@ -161,12 +165,12 @@ export function IntegrationsSection({ shopId, canManage }: Props) {
         <div className="space-y-2 text-xs text-muted-foreground">
           <p className="font-medium text-foreground">Endpoints for the other app:</p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 rounded bg-muted px-2 py-1 font-mono break-all">GET {FUNCTIONS_BASE}/catalog-export</code>
-            <Button variant="ghost" size="icon" onClick={() => copy(`${FUNCTIONS_BASE}/catalog-export`)}><Copy className="size-3.5" /></Button>
+            <code className="flex-1 rounded bg-muted px-2 py-1 font-mono break-all">GET {FUNCTIONS_BASE}/export</code>
+            <Button variant="ghost" size="icon" onClick={() => copy(`${FUNCTIONS_BASE}/export`)}><Copy className="size-3.5" /></Button>
           </div>
           <div className="flex items-center gap-2">
-            <code className="flex-1 rounded bg-muted px-2 py-1 font-mono break-all">POST {FUNCTIONS_BASE}/catalog-upsert</code>
-            <Button variant="ghost" size="icon" onClick={() => copy(`${FUNCTIONS_BASE}/catalog-upsert`)}><Copy className="size-3.5" /></Button>
+            <code className="flex-1 rounded bg-muted px-2 py-1 font-mono break-all">POST {FUNCTIONS_BASE}/upsert</code>
+            <Button variant="ghost" size="icon" onClick={() => copy(`${FUNCTIONS_BASE}/upsert`)}><Copy className="size-3.5" /></Button>
           </div>
           <p>Send the API key in the <code className="font-mono">x-api-key</code> header.</p>
         </div>
@@ -181,9 +185,9 @@ export function IntegrationsSection({ shopId, canManage }: Props) {
         </div>
 
         <div className="space-y-1.5">
-          <Label>Remote functions base URL</Label>
+          <Label>Remote catalog base URL</Label>
           <Input value={remoteUrl} onChange={(e) => setRemoteUrl(e.target.value)}
-            placeholder="https://<remote-project>.functions.supabase.co" />
+            placeholder="https://<remote-app>/api/catalog" />
           <p className="text-xs text-muted-foreground">
             On zapzetta: open Settings → Integrations → copy the base URL shown there.
           </p>

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Printer, MessageCircle, Sparkles } from "lucide-react";
 import { formatMoney } from "@/lib/format";
 import { format } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { useShop } from "@/contexts/ShopContext";
@@ -196,8 +196,9 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
 
   useEffect(() => {
     if (sale.customer || !sale.customer_id) return;
-    supabase.from("customers").select("name, phone").eq("id", sale.customer_id).maybeSingle()
-      .then(({ data }) => data && setCustomer(data as any));
+    rpc<{ name: string; phone: string | null } | null>("getCustomerLiteAction", sale.customer_id)
+      .then((data) => data && setCustomer(data))
+      .catch(() => { /* ignore — receipt still prints without the name */ });
   }, [sale.customer, sale.customer_id]);
 
   const print = () => {
@@ -243,16 +244,16 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
   const sendWhatsApp = async () => {
     if (!customer?.phone) return toast.error("Customer has no phone number");
     setSending(true);
-    const { data, error } = await supabase.functions.invoke("send-whatsapp-receipt", {
-      body: { sale_id: sale.id },
-    });
-    setSending(false);
-    if (error || (data as any)?.error) {
-      const msg = (data as any)?.error ?? error?.message ?? "Failed to send";
-      return toast.error(msg);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("sendWhatsAppReceiptAction", sale.id);
+      if (!res.ok) return toast.error(res.error ?? "Failed to send");
+      setSent(true);
+      toast.success("Receipt sent on WhatsApp");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to send");
+    } finally {
+      setSending(false);
     }
-    setSent(true);
-    toast.success("Receipt sent on WhatsApp");
   };
 
   const dashed = "border-t border-dashed border-black my-2";

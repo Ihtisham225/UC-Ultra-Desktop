@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Upload, FileSpreadsheet } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { upsertLocal, notifyChange } from "@/lib/localDb";
 import { generateSku, generateBarcode } from "@/lib/sku";
+import { v4 as uuid } from "uuid";
 import { toast } from "sonner";
 
 interface Props {
@@ -98,6 +99,8 @@ export function ImportProductsDialog({ open, onClose, shopId, onImported }: Prop
       return v === "" || v === null || v === undefined ? undefined : v;
     };
 
+    // Write to the offline sync store (like the Products screen) — queued for
+    // background push, so imports work with no connection too.
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const name = String(get(r, "name") ?? "").trim();
@@ -106,7 +109,9 @@ export function ImportProductsDialog({ open, onClose, shopId, onImported }: Prop
       const price = Number(priceRaw);
       if (Number.isNaN(price)) { fail++; continue; }
 
+      const now = new Date().toISOString();
       const payload = {
+        id: uuid(),
         shop_id: shopId,
         name,
         sku: String(get(r, "sku") ?? "").trim() || generateSku(name),
@@ -116,11 +121,19 @@ export function ImportProductsDialog({ open, onClose, shopId, onImported }: Prop
         stock: Number(get(r, "stock") ?? 0) || 0,
         low_stock_threshold: Number(get(r, "low_stock_threshold") ?? 5) || 5,
         unit: String(get(r, "unit") ?? "pcs").trim() || "pcs",
+        is_active: true,
+        created_at: now,
+        updated_at: now,
       };
-      const { error } = await supabase.from("products").insert(payload);
-      if (error) fail++; else ok++;
+      try {
+        await upsertLocal("products", payload, true);
+        ok++;
+      } catch {
+        fail++;
+      }
       setProgress(Math.round(((i + 1) / rows.length) * 100));
     }
+    if (ok > 0) notifyChange("products");
 
     setImporting(false);
     toast.success(`Imported ${ok} product(s)${fail ? `, ${fail} failed` : ""}`);

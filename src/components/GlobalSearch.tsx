@@ -5,7 +5,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSearch, SearchResult } from "@/contexts/SearchContext";
-import { supabase } from "@/integrations/supabase/client";
+import { getById, getAll } from "@/lib/localDb";
 import { useShop } from "@/contexts/ShopContext";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { cn } from "@/lib/utils";
@@ -51,18 +51,14 @@ export const GlobalSearch = ({ variant }: { variant: Variant }) => {
     else if (r.type === "customer") navigate(`/customers?q=${encodeURIComponent(r.title)}`);
     else if (r.type === "supplier") navigate(`/purchases?supplier=${r.id}`);
     else if (r.type === "sale" && currentShop) {
-      const { data } = await supabase
-        .from("sales")
-        .select("*, sale_items(*), customers(name, phone)")
-        .eq("id", r.id)
-        .maybeSingle();
-      if (data) {
-        setOpenSale({
-          ...data,
-          items: (data as any).sale_items,
-          customer: (data as any).customers,
-          shop: currentShop,
-        });
+      // Sales + items + customers are synced locally, so read the receipt from
+      // the offline store (works with no connection).
+      const sale = await getById<any>("sales", r.id);
+      if (sale) {
+        const allItems = await getAll<any>("sale_items", currentShop.id);
+        const items = allItems.filter((i) => i.sale_id === r.id);
+        const customer = sale.customer_id ? await getById<any>("customers", sale.customer_id) : null;
+        setOpenSale({ ...sale, items, customer, shop: currentShop });
       }
     }
   };

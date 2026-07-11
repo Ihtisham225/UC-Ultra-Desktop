@@ -1,7 +1,8 @@
 // Detailed reports hub: Sales / Purchases / Inventory / P&L / Expenses / Customers & Debts / Tax.
 // Each report has a date range, KPI cards, a sortable table, CSV export, and print-to-PDF.
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getAll } from "@/lib/localDb";
+import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
@@ -136,12 +137,25 @@ function SalesReport({ shopId, range, formatMoney, cur }: ReportProps) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from("sales")
-        .select("id, receipt_number, total, subtotal, tax, discount, payment_method, created_at, customer_id, cashier_id, customers(name), sale_items(quantity)")
-        .eq("shop_id", shopId).gte("created_at", fromISO).lte("created_at", toISO)
-        .order("created_at", { ascending: false });
-      setRows((data ?? []) as any[]);
+      const [allSales, allItems, allCustomers] = await Promise.all([
+        getAll<any>("sales", shopId),
+        getAll<any>("sale_items", shopId),
+        getAll<any>("customers", shopId),
+      ]);
+      const itemsBySale = new Map<string, any[]>();
+      for (const it of allItems) {
+        const arr = itemsBySale.get(it.sale_id) ?? []; arr.push(it); itemsBySale.set(it.sale_id, arr);
+      }
+      const custById = new Map(allCustomers.map((c) => [c.id, c]));
+      const data = allSales
+        .filter((s) => s.created_at >= fromISO && s.created_at <= toISO)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .map((s) => ({
+          ...s,
+          customers: s.customer_id ? { name: custById.get(s.customer_id)?.name ?? "—" } : null,
+          sale_items: itemsBySale.get(s.id) ?? [],
+        }));
+      setRows(data);
       setLoading(false);
     })();
   }, [shopId, fromISO, toISO]);
@@ -218,12 +232,25 @@ function PurchasesReport({ shopId, range, formatMoney, cur }: ReportProps) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from("purchases")
-        .select("id, reference_number, total, paid_amount, payment_method, created_at, suppliers(name), purchase_items(quantity)")
-        .eq("shop_id", shopId).gte("created_at", fromISO).lte("created_at", toISO)
-        .order("created_at", { ascending: false });
-      setRows((data ?? []) as any[]);
+      const [allPurchases, allItems, allSuppliers] = await Promise.all([
+        getAll<any>("purchases", shopId),
+        getAll<any>("purchase_items", shopId),
+        getAll<any>("suppliers", shopId),
+      ]);
+      const itemsByPurchase = new Map<string, any[]>();
+      for (const it of allItems) {
+        const arr = itemsByPurchase.get(it.purchase_id) ?? []; arr.push(it); itemsByPurchase.set(it.purchase_id, arr);
+      }
+      const supById = new Map(allSuppliers.map((s) => [s.id, s]));
+      const data = allPurchases
+        .filter((p) => p.created_at >= fromISO && p.created_at <= toISO)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .map((p) => ({
+          ...p,
+          suppliers: p.supplier_id ? { name: supById.get(p.supplier_id)?.name ?? "—" } : null,
+          purchase_items: itemsByPurchase.get(p.id) ?? [],
+        }));
+      setRows(data);
       setLoading(false);
     })();
   }, [shopId, fromISO, toISO]);
@@ -294,12 +321,13 @@ function InventoryReport({ shopId, formatMoney, cur }: Omit<ReportProps, "range"
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [{ data: products }, { data: pi }] = await Promise.all([
-        supabase.from("products").select("id, name, sku, category, stock, price, low_stock_threshold, is_active").eq("shop_id", shopId).eq("is_active", true),
-        supabase.from("purchase_items").select("product_id, quantity, unit_cost, purchases!inner(shop_id)").eq("purchases.shop_id", shopId),
+      const [allProducts, pi] = await Promise.all([
+        getAll<any>("products", shopId),
+        getAll<any>("purchase_items", shopId),
       ]);
+      const products = allProducts.filter((p) => p.is_active !== false);
       const totals = new Map<string, { qty: number; cost: number }>();
-      ((pi ?? []) as any[]).forEach((r) => {
+      (pi as any[]).forEach((r) => {
         if (!r.product_id) return;
         const cur = totals.get(r.product_id) ?? { qty: 0, cost: 0 };
         cur.qty += Number(r.quantity); cur.cost += Number(r.quantity) * Number(r.unit_cost);
@@ -392,18 +420,21 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
 
   useEffect(() => {
     (async () => {
-      const [s, e, pi, cats] = await Promise.all([
-        supabase.from("sales").select("total, subtotal, tax, sale_items(product_id, variant_id, quantity)").eq("shop_id", shopId).gte("created_at", fromISO).lte("created_at", toISO),
-        supabase.from("expenses").select("amount, category_id").eq("shop_id", shopId).gte("expense_date", fromDate).lte("expense_date", toDate),
-        supabase.from("purchase_items").select("product_id, variant_id, quantity, unit_cost, purchases!inner(shop_id)").eq("purchases.shop_id", shopId),
-        supabase.from("expense_categories").select("id, name").eq("shop_id", shopId),
+      const [allSales, allSaleItems, allExpenses, pi, cats] = await Promise.all([
+        getAll<any>("sales", shopId),
+        getAll<any>("sale_items", shopId),
+        getAll<any>("expenses", shopId),
+        getAll<any>("purchase_items", shopId),
+        rpc<{ id: string; name: string }[]>("listExpenseCategoriesAction").catch(() => [] as { id: string; name: string }[]),
       ]);
-      const sales = (s.data ?? []) as any[];
-      const exps = (e.data ?? []) as any[];
-      const items = sales.flatMap((sl) => sl.sale_items ?? []);
+      const itemsBySale = new Map<string, any[]>();
+      for (const it of allSaleItems) { const arr = itemsBySale.get(it.sale_id) ?? []; arr.push(it); itemsBySale.set(it.sale_id, arr); }
+      const sales = allSales.filter((sl) => sl.created_at >= fromISO && sl.created_at <= toISO);
+      const exps = allExpenses.filter((ex) => String(ex.expense_date) >= fromDate && String(ex.expense_date) <= toDate);
+      const items = sales.flatMap((sl) => itemsBySale.get(sl.id) ?? []);
       const avg = new Map<string, number>();
       const totals = new Map<string, { qty: number; cost: number }>();
-      ((pi.data ?? []) as any[]).forEach((r) => {
+      (pi as any[]).forEach((r) => {
         const k = r.variant_id ?? r.product_id; if (!k) return;
         const cur = totals.get(k) ?? { qty: 0, cost: 0 };
         cur.qty += Number(r.quantity); cur.cost += Number(r.quantity) * Number(r.unit_cost);
@@ -414,7 +445,7 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
         const k = it.variant_id ?? it.product_id;
         return a + Number(it.quantity) * (k ? avg.get(k) ?? 0 : 0);
       }, 0);
-      const catMap = new Map<string, string>(((cats.data ?? []) as any[]).map((c) => [c.id, c.name]));
+      const catMap = new Map<string, string>((cats as any[]).map((c) => [c.id, c.name]));
       const byCat = new Map<string, number>();
       exps.forEach((ex) => {
         const name = ex.category_id ? catMap.get(ex.category_id) ?? "Other" : "Uncategorized";
@@ -491,12 +522,16 @@ function ExpensesReport({ shopId, range, formatMoney, cur }: ReportProps) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from("expenses")
-        .select("id, amount, description, expense_date, payment_method, paid_to, expense_categories(name, color)")
-        .eq("shop_id", shopId).gte("expense_date", fromDate).lte("expense_date", toDate)
-        .order("expense_date", { ascending: false });
-      setRows((data ?? []) as any[]);
+      const [allExpenses, cats] = await Promise.all([
+        getAll<any>("expenses", shopId),
+        rpc<{ id: string; name: string; color: string }[]>("listExpenseCategoriesAction").catch(() => [] as { id: string; name: string; color: string }[]),
+      ]);
+      const catById = new Map((cats as any[]).map((c) => [c.id, c]));
+      const data = allExpenses
+        .filter((e) => String(e.expense_date) >= fromDate && String(e.expense_date) <= toDate)
+        .sort((a, b) => String(b.expense_date).localeCompare(String(a.expense_date)))
+        .map((e) => ({ ...e, expense_categories: e.category_id ? catById.get(e.category_id) ?? null : null }));
+      setRows(data);
       setLoading(false);
     })();
   }, [shopId, fromDate, toDate]);
@@ -568,18 +603,23 @@ function CustomersReport({ shopId, range, formatMoney, cur }: ReportProps) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [s, d] = await Promise.all([
-        supabase.from("sales").select("total, customer_id, customers(name, phone)").eq("shop_id", shopId).gte("created_at", fromISO).lte("created_at", toISO),
-        supabase.from("debts").select("id, person_name, phone, amount, paid_amount, direction, status, due_date").eq("shop_id", shopId).eq("status", "open"),
+      const [allSales, allCustomers, allDebts] = await Promise.all([
+        getAll<any>("sales", shopId),
+        getAll<any>("customers", shopId),
+        getAll<any>("debts", shopId),
       ]);
+      const custById = new Map(allCustomers.map((c) => [c.id, c]));
       const map = new Map<string, { name: string; phone: string; spent: number; visits: number }>();
-      ((s.data ?? []) as any[]).filter((r) => r.customer_id).forEach((r) => {
-        const cur = map.get(r.customer_id) ?? { name: r.customers?.name ?? "—", phone: r.customers?.phone ?? "", spent: 0, visits: 0 };
-        cur.spent += Number(r.total); cur.visits += 1;
-        map.set(r.customer_id, cur);
-      });
+      allSales
+        .filter((r) => r.customer_id && r.created_at >= fromISO && r.created_at <= toISO)
+        .forEach((r) => {
+          const c = custById.get(r.customer_id);
+          const cur = map.get(r.customer_id) ?? { name: c?.name ?? "—", phone: c?.phone ?? "", spent: 0, visits: 0 };
+          cur.spent += Number(r.total); cur.visits += 1;
+          map.set(r.customer_id, cur);
+        });
       setTopCustomers(Array.from(map.values()).sort((a, b) => b.spent - a.spent).slice(0, 50));
-      setDebts((d.data ?? []) as any[]);
+      setDebts(allDebts.filter((d) => d.status === "open"));
       setLoading(false);
     })();
   }, [shopId, fromISO, toISO]);
@@ -672,11 +712,8 @@ function TaxReport({ shopId, range, formatMoney, cur }: ReportProps) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from("sales")
-        .select("created_at, subtotal, tax, total")
-        .eq("shop_id", shopId).gte("created_at", fromISO).lte("created_at", toISO);
-      setRows((data ?? []) as any[]);
+      const allSales = await getAll<any>("sales", shopId);
+      setRows(allSales.filter((s) => s.created_at >= fromISO && s.created_at <= toISO));
       setLoading(false);
     })();
   }, [shopId, fromISO, toISO]);

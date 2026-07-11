@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -80,43 +80,20 @@ export function MovementHistoryTable({ productId, variantId, compact }: Props) {
     if (!currentShop) return;
     const load = async () => {
       setLoading(true);
-      let q = supabase.from("inventory_movements" as any)
-        .select("*")
-        .eq("shop_id", currentShop.id)
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (productId) q = q.eq("product_id", productId);
-      if (variantId) q = q.eq("variant_id", variantId);
-      if (from) q = q.gte("created_at", new Date(from).toISOString());
-      if (to) {
-        const end = new Date(to); end.setHours(23, 59, 59, 999);
-        q = q.lte("created_at", end.toISOString());
+      try {
+        // listMovementsAction returns rows with product/variant/user names resolved.
+        const data = await rpc<Movement[]>("listMovementsAction", {
+          productId: productId || undefined,
+          variantId: variantId || undefined,
+          from: from || undefined,
+          to: to || undefined,
+        });
+        setRows(data ?? []);
+      } catch {
+        setRows([]);
+      } finally {
+        setLoading(false);
       }
-      const { data, error } = await q;
-      if (error) { setLoading(false); return; }
-      const movements = (data as any as Movement[]) || [];
-
-      // Resolve names
-      const productIds = Array.from(new Set(movements.map(m => m.product_id).filter(Boolean))) as string[];
-      const variantIds = Array.from(new Set(movements.map(m => m.variant_id).filter(Boolean))) as string[];
-      const userIds = Array.from(new Set(movements.map(m => m.created_by).filter(Boolean))) as string[];
-
-      const [{ data: prods }, { data: vars }, { data: profs }] = await Promise.all([
-        productIds.length ? supabase.from("products").select("id,name").in("id", productIds) : Promise.resolve({ data: [] as any }),
-        variantIds.length ? supabase.from("product_variants").select("id,name").in("id", variantIds) : Promise.resolve({ data: [] as any }),
-        userIds.length ? supabase.from("profiles").select("user_id,display_name").in("user_id", userIds) : Promise.resolve({ data: [] as any }),
-      ]);
-      const pMap = new Map<string, string>((prods || []).map((p: any) => [p.id, p.name as string]));
-      const vMap = new Map<string, string>((vars || []).map((v: any) => [v.id, v.name as string]));
-      const uMap = new Map<string, string>((profs || []).map((u: any) => [u.user_id, (u.display_name as string) || ""]));
-
-      setRows(movements.map(m => ({
-        ...m,
-        product_name: m.product_id ? pMap.get(m.product_id) : undefined,
-        variant_name: m.variant_id ? vMap.get(m.variant_id) : undefined,
-        user_name: m.created_by ? uMap.get(m.created_by) : undefined,
-      })));
-      setLoading(false);
     };
     load();
   }, [currentShop, productId, variantId, from, to]);

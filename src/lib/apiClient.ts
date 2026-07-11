@@ -71,6 +71,7 @@ export interface DeviceUser {
   email: string;
   display_name: string | null;
   username: string | null;
+  is_super_admin?: boolean;
 }
 
 export interface DeviceLoginResult {
@@ -111,6 +112,26 @@ export function logout() {
   setToken(null);
 }
 
+// ─── Password reset (unauthenticated) ─────────────────────────────────────────
+
+/** Request a password-reset email. Always resolves (server never reveals if the email exists). */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await request("/api/desktop/forgot-password", { method: "POST", body: JSON.stringify({ email }) }, false);
+}
+
+/** Complete a password reset using the email + token from the reset link. */
+export async function resetPasswordWithToken(input: {
+  email: string;
+  token: string;
+  password: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  return request<{ ok: boolean; error?: string }>(
+    "/api/desktop/reset-password",
+    { method: "POST", body: JSON.stringify(input) },
+    false,
+  );
+}
+
 // ─── Sync ────────────────────────────────────────────────────────────────────
 
 export interface PullResult {
@@ -134,4 +155,57 @@ export interface PushResult {
 }
 export async function syncPush(ops: PushOp[]): Promise<PushResult> {
   return request<PushResult>("/api/sync/push", { method: "POST", body: JSON.stringify({ ops }) });
+}
+
+// ─── RPC ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Invoke a server action on the Next backend by name via /api/desktop/rpc.
+ * The dispatcher runs the real web server action, shop-scoped by our device
+ * token, so the desktop's online-only screens (staff, settings, reports,
+ * analytics, admin, catalog…) reuse the exact web logic instead of talking to
+ * Supabase directly. Throws the action's error message on failure.
+ *
+ * These calls are ONLINE-ONLY — they hit the network every time (unlike the
+ * offline-first POS domain, which goes through the sync engine). `request()`
+ * already throws "offline" when navigator.onLine is false.
+ */
+export async function rpc<T = unknown>(action: string, ...args: unknown[]): Promise<T> {
+  const { result } = await request<{ result: T }>("/api/desktop/rpc", {
+    method: "POST",
+    body: JSON.stringify({ action, args }),
+  });
+  return result;
+}
+
+/**
+ * Upload a shop logo. Multipart (a File can't go through the JSON RPC
+ * dispatcher), so it hits a dedicated token-authed endpoint. Returns the new
+ * public URL. Online-only.
+ */
+export async function uploadShopLogo(file: File): Promise<string> {
+  if (!navigator.onLine) throw new Error("offline");
+  const form = new FormData();
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/desktop/upload-logo`, { method: "POST", headers, body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !(body as { url?: string }).url) throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+  return (body as { url: string }).url;
+}
+
+/** Upload a purchase-invoice image, returning its public URL (stored on the purchase when saved). */
+export async function uploadInvoiceImage(file: File): Promise<string> {
+  if (!navigator.onLine) throw new Error("offline");
+  const form = new FormData();
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/desktop/upload-invoice`, { method: "POST", headers, body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !(body as { url?: string }).url) throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+  return (body as { url: string }).url;
 }

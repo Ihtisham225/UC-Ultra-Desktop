@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { resetPasswordWithToken } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { ArrowLeft, KeyRound } from "lucide-react";
@@ -10,23 +9,23 @@ import { toast } from "sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
 
+/** Pull `token` and `email` from the reset link (works with the hash router). */
+function readResetParams(): { token: string; email: string } {
+  const search = window.location.search.replace(/^\?/, "");
+  const hashQuery = window.location.hash.includes("?") ? window.location.hash.split("?")[1] : "";
+  const params = new URLSearchParams(search || hashQuery);
+  return { token: params.get("token") ?? "", email: params.get("email") ?? "" };
+}
+
 export default function ResetPassword() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [{ token, email }, setParams] = useState({ token: "", email: "" });
+  const ready = Boolean(token && email);
 
   useEffect(() => {
     document.title = "Set new password — UCU";
-    // When the user clicks the email link, Supabase places a recovery session
-    // in the URL hash. The auth client picks it up automatically and emits
-    // PASSWORD_RECOVERY. We just wait until a session exists.
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY" || session) setReady(true);
-    });
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setReady(true);
-    });
-    return () => sub.subscription.unsubscribe();
+    setParams(readResetParams());
   }, []);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -37,11 +36,19 @@ export default function ResetPassword() {
     if (password.length < 8) return toast.error("Password must be at least 8 characters");
     if (password !== confirm) return toast.error("Passwords do not match");
     setBusy(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    toast.success("Password updated. You're signed in.");
-    navigate("/", { replace: true });
+    try {
+      const res = await resetPasswordWithToken({ email, token, password });
+      if (res.ok) {
+        toast.success("Password updated. Please sign in.");
+        navigate("/auth", { replace: true });
+      } else {
+        toast.error(res.error ?? "Reset failed");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Reset failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -75,7 +82,7 @@ export default function ResetPassword() {
           </div>
           <h1 className="text-xl font-bold mb-1">Set a new password</h1>
           <p className="text-sm text-muted-foreground mb-5">
-            {ready ? "Choose a strong password you haven't used before." : "Verifying your reset link…"}
+            {ready ? "Choose a strong password you haven't used before." : "Open the reset link from your email to continue."}
           </p>
 
           <form onSubmit={onSubmit} className="space-y-4">
