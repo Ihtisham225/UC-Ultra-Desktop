@@ -13,6 +13,8 @@ import { RequireRole } from "@/components/RequireRole";
 import { RequireSubscription } from "@/components/RequireSubscription";
 import { RequireSuperAdmin } from "@/components/RequireSuperAdmin";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { AdminLayout } from "@/components/layout/AdminLayout";
+import { OAuthBridge } from "@/components/OAuthBridge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMobileKeyboardScroll } from "@/hooks/useMobileKeyboardScroll";
 import { SyncProvider } from "@/components/SyncProvider";
@@ -60,6 +62,11 @@ const Shell = ({ children }: { children: React.ReactNode }) => (
 
 const SubShell = ({ children }: { children: React.ReactNode }) => (
   <RequireAuth><RequireShop><RequireSubscription><AppLayout>{children}</AppLayout></RequireSubscription></RequireShop></RequireAuth>
+);
+
+// Dedicated super-admin shell — no store (POS) chrome, and no shop required.
+const AdminShell = ({ children }: { children: React.ReactNode }) => (
+  <RequireAuth><RequireSuperAdmin><AdminLayout>{children}</AdminLayout></RequireSuperAdmin></RequireAuth>
 );
 
 
@@ -111,6 +118,8 @@ const HomeRoute = () => {
   const { user, loading } = useAuth();
   if (loading) return <RouteFallback />;
   if (!user) return <Auth />;
+  // Super admins get the dedicated admin dashboard as their home, not the store.
+  if (user.is_super_admin) return <AdminShell><AdminDashboard /></AdminShell>;
   return <SubShell><Dashboard /></SubShell>;
 };
 
@@ -128,6 +137,7 @@ const App = () => {
           <ShopProvider>
             <SyncProvider>
             <SearchProvider>
+            <OAuthBridge />
             <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/auth" element={<Auth />} />
@@ -155,7 +165,7 @@ const App = () => {
               <Route path="/reports" element={<SubShell><RequireRole roles={["owner", "manager"]}><Reports /></RequireRole></SubShell>} />
               <Route path="/inventory" element={<SubShell><RequireRole roles={["owner", "manager"]}><Inventory /></RequireRole></SubShell>} />
               <Route path="/billing" element={<Shell><Billing /></Shell>} />
-              <Route path="/admin" element={<Shell><RequireSuperAdmin><AdminDashboard /></RequireSuperAdmin></Shell>} />
+              <Route path="/admin" element={<AdminShell><AdminDashboard /></AdminShell>} />
               
               <Route path="/settings" element={<Shell><Settings /></Shell>} />
               <Route path="/support" element={<Shell><Support /></Shell>} />

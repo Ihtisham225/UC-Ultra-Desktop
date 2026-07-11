@@ -92,6 +92,25 @@ export async function deviceLogin(identifier: string, password: string, shopId?:
   return result;
 }
 
+export interface DeviceSessionResult {
+  user: DeviceUser;
+  currentShopId: string;
+  shops: DeviceShop[];
+  permissionsByShop: Record<string, string[]>;
+}
+
+/**
+ * Re-hydrate the session for the given device token (defaults to the stored
+ * one). Validates the token server-side and returns fresh user/shops. Throws
+ * "HTTP 401" when the token is expired/invalid so callers can prompt for a
+ * password instead. Online-only.
+ */
+export async function getDeviceSession(token?: string): Promise<DeviceSessionResult> {
+  const init: RequestInit = {};
+  if (token) init.headers = { Authorization: `Bearer ${token}` };
+  return request<DeviceSessionResult>("/api/desktop/session", init, !token);
+}
+
 export interface SwitchShopResult {
   token: string;
   currentShopId: string;

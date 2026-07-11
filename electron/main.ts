@@ -147,6 +147,75 @@ ipcMain.on('install-update', () => {
 
 ipcMain.handle('get-app-version', () => app.getVersion())
 
+// ─── Google OAuth deep link (ucultra://auth?token=…&state=…) ────────────────
+
+const PROTOCOL = 'ucultra'
+let pendingOAuth: { token?: string; state?: string; error?: string } | null = null
+
+function registerProtocol() {
+  // In dev the runner is the electron binary, so the launch args must be passed
+  // explicitly for the OS to route the protocol back to this instance.
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])])
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL)
+  }
+}
+
+function handleDeepLink(url?: string) {
+  if (!url || !url.startsWith(`${PROTOCOL}://`)) return
+  try {
+    const u = new URL(url)
+    if (u.host !== 'auth') return
+    pendingOAuth = {
+      token: u.searchParams.get('token') ?? undefined,
+      state: u.searchParams.get('state') ?? undefined,
+      error: u.searchParams.get('error') ?? undefined,
+    }
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+      mainWindow.webContents.send('oauth-callback', pendingOAuth)
+    }
+  } catch {
+    /* ignore malformed links */
+  }
+}
+
+// Open a URL in the user's default browser (used to start Google sign-in).
+ipcMain.handle('open-external', (_e, url: string) => shell.openExternal(url))
+
+// The renderer pulls any deep link that arrived before it was listening
+// (e.g. a cold start launched by the protocol).
+ipcMain.handle('consume-pending-oauth', () => {
+  const p = pendingOAuth
+  pendingOAuth = null
+  return p
+})
+
+// macOS delivers the deep link through open-url.
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  handleDeepLink(url)
+})
+
+// Only one instance may own the protocol; the OS hands the link to it.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    // Windows/Linux deliver the deep link as a CLI arg to the second instance.
+    handleDeepLink(argv.find((a) => a.startsWith(`${PROTOCOL}://`)))
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
+
 // ─── App lifecycle ─────────────────────────────────────────────────────────
 
 app.on('window-all-closed', () => {
@@ -167,8 +236,12 @@ app.on('before-quit', () => {
 })
 
 app.whenReady().then(() => {
+  registerProtocol()
   createWindow()
   createTray()
+
+  // Cold start via the protocol (Windows/Linux pass the URL in argv).
+  handleDeepLink(process.argv.find((a) => a.startsWith(`${PROTOCOL}://`)))
 
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify()

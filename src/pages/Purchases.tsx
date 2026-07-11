@@ -17,8 +17,9 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, X, PackageOpen, Truck, Eye, Edit2, Trash2, Search, Check, Undo2 } from "lucide-react";
+import { Plus, X, PackageOpen, Truck, Eye, Edit2, Trash2, Search, Check, Undo2, Printer } from "lucide-react";
 import { SupplierReturnDialog } from "@/components/SupplierReturnDialog";
+import { PurchaseReceiptDialog } from "@/components/PurchaseReceiptDialog";
 import { PageTip } from "@/components/PageTip";
 import { DetailsDialog } from "@/components/DetailsDialog";
 import { VariantPickerDialog } from "@/components/VariantPickerDialog";
@@ -106,6 +107,7 @@ export default function Purchases() {
 
   const [newSupplier, setNewSupplier] = useState({ name: "", phone: "", email: "", notes: "" });
   const [details, setDetails] = useState<any | null>(null);
+  const [printPurchase, setPrintPurchase] = useState<any | null>(null);
   const [detailsItemSearch, setDetailsItemSearch] = useState("");
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [supplierReturnFor, setSupplierReturnFor] = useState<string | null>(null);
@@ -861,11 +863,20 @@ export default function Purchases() {
             }] : []),
           ]}
           footer={
-            <Button variant="outline" onClick={() => startEdit(details.id)}>
-              <Edit2 className="size-4 mr-1" /> {t("common.edit")}
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setPrintPurchase(details)}>
+                <Printer className="size-4 mr-1" /> {t("common.print", "Print")}
+              </Button>
+              <Button variant="outline" onClick={() => startEdit(details.id)}>
+                <Edit2 className="size-4 mr-1" /> {t("common.edit")}
+              </Button>
+            </>
           }
         />
+      )}
+
+      {printPurchase && (
+        <PurchaseReceiptDialog purchase={printPurchase} onClose={() => setPrintPurchase(null)} />
       )}
 
       {variantPicker && (

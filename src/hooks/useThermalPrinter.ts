@@ -18,6 +18,9 @@ declare global {
       onUpdateDownloaded?: (cb: (version: string) => void) => void
       installUpdate?: () => void
       getAppVersion?: () => Promise<string>
+      openExternal?: (url: string) => Promise<void>
+      onOAuthCallback?: (cb: (data: { token?: string; state?: string; error?: string }) => void) => void
+      consumePendingOAuth?: () => Promise<{ token?: string; state?: string; error?: string } | null>
     }
   }
 }

@@ -190,22 +190,13 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
         <nav className="flex-1 px-3 py-4 space-y-1">
           {nav.map((item) => renderItem(item))}
           {isSuperAdmin && (
-            <>
-              <NavLink to="/admin" className={({ isActive }) => cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                isActive ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}>
-                <ShieldAlert className="size-4" /> {t("nav.adminDashboard")}
-              </NavLink>
-              <NavLink to="/admin/payments" className={({ isActive }) => cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                isActive ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}>
-                <ShieldCheck className="size-4" /> {t("nav.adminPayments")}
-              </NavLink>
-            </>
+            <NavLink to="/admin" className={({ isActive }) => cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+              isActive ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            )}>
+              <ShieldAlert className="size-4" /> {t("nav.adminDashboard")}
+            </NavLink>
           )}
         </nav>
 

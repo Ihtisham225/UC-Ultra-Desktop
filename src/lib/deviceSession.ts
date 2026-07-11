@@ -10,11 +10,14 @@
 import {
   deviceLogin,
   switchShop as apiSwitchShop,
+  getDeviceSession,
   logout as apiLogout,
   setToken,
   type DeviceUser,
   type DeviceShop,
 } from "./apiClient";
+import { rememberAccount, getRememberedAccount, forgetAccount } from "./rememberedAccounts";
+import type { RememberedLoginProvider } from "./rememberedAuth";
 
 export interface StoredSession {
   token: string;
@@ -63,8 +66,54 @@ export async function signIn(identifier: string, password: string): Promise<Stor
     permissionsByShop: r.permissionsByShop,
   };
   persist(s);
+  rememberAccount(s, "password");
   return s;
 }
+
+/** Persist a session obtained out-of-band (e.g. the Google OAuth bridge). */
+export function adoptSession(s: StoredSession, provider: RememberedLoginProvider = "password") {
+  persist(s);
+  rememberAccount(s, provider);
+}
+
+/**
+ * One-tap resume of a remembered account. Re-validates its saved token online
+ * (refreshing user/shops); if offline, resumes optimistically from the cached
+ * session. Returns "expired" when the token is no longer valid so the caller
+ * can fall back to the password form.
+ */
+export async function resumeAccount(
+  userId: string,
+): Promise<{ ok: boolean; reason?: "expired" | "gone"; email?: string }> {
+  const acc = getRememberedAccount(userId);
+  if (!acc) return { ok: false, reason: "gone" };
+
+  if (!navigator.onLine) {
+    // Offline: trust the cached session (the app works fully offline).
+    persist(acc.session);
+    return { ok: true };
+  }
+
+  try {
+    const fresh = await getDeviceSession(acc.session.token);
+    const s: StoredSession = { token: acc.session.token, ...fresh };
+    persist(s);
+    rememberAccount(s, acc.provider);
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (msg.includes("401") || /unauthor/i.test(msg)) {
+      // Token expired/revoked — keep the account listed but require a password.
+      return { ok: false, reason: "expired", email: acc.email };
+    }
+    // Other/transient error — fall back to the cached session so the terminal
+    // still opens (offline-first).
+    persist(acc.session);
+    return { ok: true };
+  }
+}
+
+export { forgetAccount };
 
 /** Re-scope the token to another shop the user belongs to (needs online). */
 export async function switchToShop(shopId: string): Promise<void> {

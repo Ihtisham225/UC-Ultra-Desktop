@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Store, UserCircle2 } from "lucide-react";
+import { Store, X, UserPlus, ChevronLeft } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageToggle } from "@/components/LanguageToggle";
-import { getRememberedLogin, saveRememberedLogin } from "@/lib/rememberedAuth";
+import { listRememberedAccounts, forgetAccount, type RememberedAccount } from "@/lib/rememberedAccounts";
+import { resumeAccount } from "@/lib/deviceSession";
+import { startGoogleSignIn } from "@/lib/googleAuth";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
 export default function Auth() {
@@ -20,8 +22,10 @@ export default function Auth() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
-  const [rememberedLogin, setRememberedLogin] = useState(() => getRememberedLogin());
-  const [signInEmail, setSignInEmail] = useState(() => getRememberedLogin()?.email ?? "");
+  const [accounts, setAccounts] = useState<RememberedAccount[]>(() => listRememberedAccounts());
+  // Show the credential form directly when there are no remembered accounts.
+  const [addingAccount, setAddingAccount] = useState(() => listRememberedAccounts().length === 0);
+  const [signInEmail, setSignInEmail] = useState(() => listRememberedAccounts()[0]?.email ?? "");
   const passwordRef = useRef<HTMLInputElement | null>(null);
 
   usePageMeta({
@@ -41,15 +45,46 @@ export default function Auth() {
     setBusy(true);
     try {
       // The backend accepts email OR staff username directly.
+      // signIn() also records the account for one-tap resume next time.
       await signIn(raw, password);
-      saveRememberedLogin(raw, "password");
-      setRememberedLogin(getRememberedLogin());
       navigate("/");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Invalid username or password");
     } finally {
       setBusy(false);
     }
+  };
+
+  // One-tap: resume a remembered account using its saved device token.
+  const resume = async (acc: RememberedAccount) => {
+    setBusy(true);
+    try {
+      const r = await resumeAccount(acc.userId);
+      if (r.ok) {
+        navigate("/");
+        return;
+      }
+      if (r.reason === "gone") {
+        setAccounts(listRememberedAccounts());
+        return;
+      }
+      // Token expired — prefill and ask for the password.
+      setSignInEmail(acc.email);
+      setAddingAccount(true);
+      requestAnimationFrame(() => passwordRef.current?.focus());
+      toast.message(t("auth.sessionExpired", "Session expired — please sign in again."));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't sign in");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forget = (userId: string) => {
+    forgetAccount(userId);
+    const next = listRememberedAccounts();
+    setAccounts(next);
+    if (next.length === 0) setAddingAccount(true);
   };
 
   const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -59,24 +94,13 @@ export default function Auth() {
     toast.message("Create your shop at ucultra.com, then sign in here.");
   };
 
-  const handleGoogle = async () => {
-    // Google OAuth runs in the browser flow on the web app.
-    toast.message("Sign in with Google on ucultra.com, then use your email + password here.");
+  const handleGoogle = () => {
+    // Opens the system browser; the app is signed back in via the ucultra://
+    // deep link once Google auth completes (see OAuthBridge + googleAuth.ts).
+    startGoogleSignIn();
+    toast.message(t("auth.googleOpening", "Opening your browser to continue with Google…"));
   };
 
-
-  const useRememberedLogin = async () => {
-    if (!rememberedLogin) return;
-
-    if (rememberedLogin.provider === "google") {
-      await handleGoogle();
-      return;
-    }
-
-    setSignInEmail(rememberedLogin.email);
-    requestAnimationFrame(() => passwordRef.current?.focus());
-    toast.message(t("auth.useDifferentAccount"));
-  };
 
   return (
     <main
@@ -186,11 +210,49 @@ export default function Auth() {
             </TabsList>
 
             <TabsContent value="signin" className="space-y-4">
-              {rememberedLogin && (
-                <Button type="button" variant="outline" className="w-full justify-start" size="lg" onClick={useRememberedLogin} disabled={busy}>
-                  <UserCircle2 className="size-4 me-2" />
-                  {t("auth.rememberedAs", { email: rememberedLogin.email })}
-                </Button>
+              {accounts.length > 0 && !addingAccount ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">{t("auth.tapToContinue", "Tap your account to continue")}</p>
+                  <ul className="space-y-2">
+                    {accounts.map((acc) => (
+                      <li key={acc.userId} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => resume(acc)}
+                          disabled={busy}
+                          className="w-full flex items-center gap-3 p-3 pe-10 rounded-xl border hover:bg-accent hover:border-primary/40 transition-colors text-start disabled:opacity-60"
+                        >
+                          <div className="size-10 rounded-full bg-gradient-primary text-primary-foreground grid place-items-center font-bold shrink-0 uppercase">
+                            {(acc.displayName || acc.email).slice(0, 1)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold truncate">{acc.displayName || acc.email}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {acc.displayName ? acc.email : (acc.provider === "google" ? "Google" : t("common.signIn"))}
+                            </div>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => forget(acc.userId)}
+                          title={t("auth.forgetAccount", "Remove account")}
+                          className="absolute end-2 top-1/2 -translate-y-1/2 size-7 grid place-items-center rounded-md text-muted-foreground hover:text-destructive hover:bg-muted"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <Button type="button" variant="outline" className="w-full" size="lg" onClick={() => { setSignInEmail(""); setAddingAccount(true); }} disabled={busy}>
+                    <UserPlus className="size-4 me-2" /> {t("auth.useAnotherAccount", "Use another account")}
+                  </Button>
+                </div>
+              ) : (
+              <>
+              {accounts.length > 0 && (
+                <button type="button" onClick={() => setAddingAccount(false)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                  <ChevronLeft className="size-3.5" /> {t("auth.backToAccounts", "Back to saved accounts")}
+                </button>
               )}
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div className="space-y-1.5">
@@ -215,6 +277,8 @@ export default function Auth() {
               <Button type="button" variant="outline" className="w-full" size="lg" onClick={handleGoogle} disabled={busy}>
                 <GoogleIcon /> {t("auth.googleSignIn")}
               </Button>
+              </>
+              )}
             </TabsContent>
 
             <TabsContent value="signup" className="space-y-4">
