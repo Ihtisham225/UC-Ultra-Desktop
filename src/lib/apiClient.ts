@@ -44,11 +44,41 @@ async function request<T>(path: string, init: RequestInit = {}, auth = true): Pr
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
+export type ShopRole = "owner" | "manager" | "cashier";
+
+export interface DeviceShop {
+  id: string;
+  name: string;
+  currency: string;
+  tax_rate: number;
+  receipt_footer: string | null;
+  receipt_header: string | null;
+  logo_url: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  show_tax_line: boolean;
+  notify_low_stock: boolean;
+  notify_daily_summary: boolean;
+  is_pro: boolean;
+  pro_until: string | null;
+  created_by: string;
+  role: ShopRole;
+}
+
+export interface DeviceUser {
+  id: string;
+  email: string;
+  display_name: string | null;
+  username: string | null;
+}
+
 export interface DeviceLoginResult {
   token: string;
-  user: { id: string; email: string; display_name: string | null; username: string | null };
-  shop: { id: string; name: string; role: string };
-  shops: { id: string; name: string; role: string }[];
+  user: DeviceUser;
+  currentShopId: string;
+  shops: DeviceShop[];
+  permissionsByShop: Record<string, string[]>;
 }
 
 export async function deviceLogin(identifier: string, password: string, shopId?: string): Promise<DeviceLoginResult> {
@@ -56,6 +86,22 @@ export async function deviceLogin(identifier: string, password: string, shopId?:
     "/api/desktop/login",
     { method: "POST", body: JSON.stringify({ identifier, password, shopId }) },
     false
+  );
+  setToken(result.token);
+  return result;
+}
+
+export interface SwitchShopResult {
+  token: string;
+  currentShopId: string;
+  shops: DeviceShop[];
+  permissionsByShop: Record<string, string[]>;
+}
+
+export async function switchShop(shopId: string): Promise<SwitchShopResult> {
+  const result = await request<SwitchShopResult>(
+    "/api/desktop/switch-shop",
+    { method: "POST", body: JSON.stringify({ shopId }) },
   );
   setToken(result.token);
   return result;

@@ -1,58 +1,43 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import { consumePendingAuthProvider, getRememberedLogin, saveRememberedLogin } from "@/lib/rememberedAuth";
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
+import { getSession, subscribe, signIn as sessionSignIn, signOut as sessionSignOut } from "@/lib/deviceSession";
+import type { DeviceUser } from "@/lib/apiClient";
+import { saveRememberedLogin } from "@/lib/rememberedAuth";
 
 interface AuthContextValue {
-  user: User | null;
-  session: Session | null;
+  user: DeviceUser | null;
   loading: boolean;
+  signIn: (identifier: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<DeviceUser | null>(() => getSession()?.user ?? null);
+  const [loading, setLoading] = useState(false);
 
+  // Restore the cached session on mount (works fully offline) and stay in sync.
   useEffect(() => {
-    let hydrated = false;
-
-    const applySession = (s: Session | null) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-    };
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      applySession(s);
-      if (hydrated) {
-        setLoading(false);
-      }
-    });
-
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      hydrated = true;
-      applySession(s);
-      if (s?.user?.email) {
-        const pendingProvider = consumePendingAuthProvider();
-        const remembered = getRememberedLogin();
-        saveRememberedLogin(s.user.email, pendingProvider ?? remembered?.provider ?? "password");
-      }
-      setLoading(false);
-    });
-
-    return () => {
-      hydrated = false;
-      subscription.unsubscribe();
-    };
+    setUser(getSession()?.user ?? null);
+    return subscribe(() => setUser(getSession()?.user ?? null));
   }, []);
 
-  const signOut = async () => { await supabase.auth.signOut(); };
+  const signIn = useCallback(async (identifier: string, password: string) => {
+    setLoading(true);
+    try {
+      const s = await sessionSignIn(identifier, password);
+      if (s.user.email) saveRememberedLogin(s.user.email, "password");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const signOut = useCallback(async () => {
+    sessionSignOut();
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, Navigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,11 +12,11 @@ import { Logo } from "@/components/Logo";
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageToggle } from "@/components/LanguageToggle";
-import { getRememberedLogin, saveRememberedLogin, setPendingAuthProvider } from "@/lib/rememberedAuth";
+import { getRememberedLogin, saveRememberedLogin } from "@/lib/rememberedAuth";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
 export default function Auth() {
-  const { user, loading } = useAuth();
+  const { user, loading, signIn } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
@@ -41,59 +39,29 @@ export default function Auth() {
     const raw = String(fd.get("email")).trim();
     const password = String(fd.get("password"));
     setBusy(true);
-    let email = raw;
-    if (!raw.includes("@")) {
-      const { data, error } = await supabase.rpc("find_email_by_username", { _username: raw });
-      if (error || !data) { setBusy(false); return toast.error("Invalid username or password"); }
-      email = data as string;
+    try {
+      // The backend accepts email OR staff username directly.
+      await signIn(raw, password);
+      saveRememberedLogin(raw, "password");
+      setRememberedLogin(getRememberedLogin());
+      navigate("/");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Invalid username or password");
+    } finally {
+      setBusy(false);
     }
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    saveRememberedLogin(raw, "password");
-    setRememberedLogin(getRememberedLogin());
-    navigate("/");
   };
 
   const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const email = String(fd.get("email"));
-    const password = String(fd.get("password"));
-    const displayName = String(fd.get("name"));
-    setBusy(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        data: { display_name: displayName, signup_role: "owner" },
-      },
-    });
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    toast.success(t("common.created"));
-    navigate("/");
+    // New shops are created on the web (onboarding). The desktop signs in
+    // existing accounts and syncs.
+    toast.message("Create your shop at ucultra.com, then sign in here.");
   };
 
   const handleGoogle = async () => {
-    setPendingAuthProvider("google");
-    setBusy(true);
-    try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: `${window.location.origin}/auth`,
-      });
-      if (result.redirected) return;
-      if (result.error) {
-        toast.error(t("common.error"));
-        return;
-      }
-      navigate("/");
-    } catch {
-      toast.error(t("common.error"));
-    } finally {
-      setBusy(false);
-    }
+    // Google OAuth runs in the browser flow on the web app.
+    toast.message("Sign in with Google on ucultra.com, then use your email + password here.");
   };
 
 
