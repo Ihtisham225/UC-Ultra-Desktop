@@ -333,15 +333,16 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
           <DialogTitle>Receipt {sale.receipt_number}</DialogTitle>
         </DialogHeader>
 
+        {/* Receipt is a white "paper" preview, so keep the footer buttons light in any theme. */}
         <DialogFooter className="p-4 pt-0 print:hidden flex-col sm:flex-row gap-2 bg-white">
           {customer?.phone && (
             isPro ? (
-              <Button variant="outline" onClick={sendWhatsApp} disabled={sending || sent} className="w-full sm:w-auto">
+              <Button variant="outline" onClick={sendWhatsApp} disabled={sending || sent} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
                 <MessageCircle className="size-4 mr-2" />
                 {sent ? "Sent" : sending ? "Sending…" : "WhatsApp"}
               </Button>
             ) : (
-              <Button asChild variant="outline" className="w-full sm:w-auto">
+              <Button asChild variant="outline" className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
                 <Link to="/billing">
                   <Sparkles className="size-4 mr-2" />
                   WhatsApp (Pro)
@@ -349,10 +350,10 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
               </Button>
             )
           )}
-          <Button variant="outline" onClick={print} className="w-full sm:w-auto">
+          <Button variant="outline" onClick={print} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
             <Printer className="size-4 mr-2" /> Print
           </Button>
-          <Button onClick={onClose} className="w-full sm:w-auto">New sale</Button>
+          <Button onClick={onClose} className="w-full sm:w-auto bg-gradient-primary text-white border-0 hover:opacity-90">New sale</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

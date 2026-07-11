@@ -208,9 +208,10 @@ export const PurchaseReceiptDialog = ({ purchase, onClose }: { purchase: Purchas
             <div className="text-center text-[11px] mt-2">** Goods received **</div>
           </div>
         </div>
-        <div className="flex gap-2 p-4 border-t bg-muted/30">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Close</Button>
-          <Button className="flex-1 bg-gradient-primary hover:opacity-90 text-primary-foreground" onClick={print}>
+        {/* Receipt is a white "paper" preview, so keep the footer buttons light in any theme. */}
+        <div className="flex gap-2 p-4 border-t border-gray-200 bg-gray-50">
+          <Button variant="outline" className="flex-1 border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900" onClick={onClose}>Close</Button>
+          <Button className="flex-1 bg-gradient-primary text-white border-0 hover:opacity-90" onClick={print}>
             <Printer className="size-4 mr-2" /> Print
           </Button>
         </div>
