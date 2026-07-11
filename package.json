@@ -1,7 +1,7 @@
 {
   "name": "uc-ultra-desktop",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "UC-Ultra — Multi-Vendor Point of Sale",
   "author": "UCU Team <support@ucultra.com>",
   "homepage": "https://ucultra.com",
@@ -37,8 +37,20 @@
       "category": "public.app-category.business",
       "icon": "public/icon-512.png",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] },
-        { "target": "zip", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "darkModeSupport": true,
       "hardenedRuntime": true,
@@ -49,13 +61,26 @@
     "dmg": {
       "title": "UC-Ultra ${version}",
       "background": null,
-      "window": { "width": 540, "height": 380 }
+      "window": {
+        "width": 540,
+        "height": 380
+      }
     },
     "win": {
       "icon": "public/icon-512.png",
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
