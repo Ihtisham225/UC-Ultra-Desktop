@@ -26,14 +26,20 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
-    electron({
-      main: {
-        entry: "electron/main.ts",
-      },
-      preload: {
-        input: "electron/preload.ts",
-      },
-    }),
+    // `--mode renderer` runs the web renderer standalone (no Electron shell) —
+    // handy for driving the UI in a browser against a local backend.
+    ...(mode === "renderer"
+      ? []
+      : [
+          electron({
+            main: {
+              entry: "electron/main.ts",
+            },
+            preload: {
+              input: "electron/preload.ts",
+            },
+          }),
+        ]),
   ],
   resolve: {
     alias: {
