@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { HashRouter, Route, Routes } from "react-router-dom";
+import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -118,9 +118,11 @@ const HomeRoute = () => {
   const { user, loading } = useAuth();
   if (loading) return <RouteFallback />;
   if (!user) return <Auth />;
-  // Super admins get the dedicated admin dashboard as their home, not the store.
-  if (user.is_super_admin) return <AdminShell><AdminDashboard /></AdminShell>;
-  return <SubShell><Dashboard /></SubShell>;
+  // Pure dispatcher: super admins land on the admin dashboard, everyone else
+  // on the store dashboard. The store nav links to /dashboard directly so a
+  // super admin browsing a store isn't bounced back to the admin area.
+  if (user.is_super_admin) return <Navigate to="/admin" replace />;
+  return <Navigate to="/dashboard" replace />;
 };
 
 const App = () => {
@@ -151,6 +153,7 @@ const App = () => {
               <Route path="/pending-invite" element={<RequireAuth><PendingInvite /></RequireAuth>} />
               <Route path="/plan-required" element={<RequireAuth><RequireShop><PlanRequired /></RequireShop></RequireAuth>} />
               <Route path="/" element={<HomeRoute />} />
+              <Route path="/dashboard" element={<SubShell><Dashboard /></SubShell>} />
               <Route path="/pos" element={<SubShell><POS /></SubShell>} />
               <Route path="/products" element={<SubShell><Products /></SubShell>} />
               <Route path="/sales" element={<SubShell><Sales /></SubShell>} />

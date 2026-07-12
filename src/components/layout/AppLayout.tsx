@@ -49,7 +49,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   }, [user]);
 
   const nav: NavItem[] = [
-    { to: "/", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
+    { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
     { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: true },
     { to: "/products", label: t("nav.products"), icon: Package, show: true },
     { to: "/inventory", label: "Inventory", icon: Boxes, show: perms.canManageProducts },

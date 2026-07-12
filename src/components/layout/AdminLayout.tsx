@@ -10,6 +10,7 @@ import {
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { isMacDesktop } from "@/components/TitleBar";
 import { ShieldAlert, Store, LogOut, ChevronDown } from "lucide-react";
 
 /**
@@ -33,8 +34,10 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div className="min-h-screen bg-gradient-surface flex flex-col">
-      <header className="sticky top-0 z-20 border-b bg-card/80 backdrop-blur">
-        <div className="container mx-auto px-4 h-14 flex items-center gap-3">
+      <header className="drag-region sticky top-0 z-20 border-b bg-card/80 backdrop-blur">
+        <div className="px-4 h-14 flex items-center gap-3">
+          {/* Traffic-light spacer — with px-4 this matches AppLayout's 5.5rem inset */}
+          {isMacDesktop() && <div className="w-[4.5rem] shrink-0" aria-hidden="true" />}
           <Logo size="sm" />
           <div className="flex items-center gap-2">
             <span className="font-bold leading-none">UC Ultra</span>
@@ -43,7 +46,7 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
             </span>
           </div>
 
-          <div className="ms-auto flex items-center gap-1.5">
+          <div className="no-drag-region ms-auto flex items-center gap-1.5">
             {shops.length === 1 ? (
               <Button variant="outline" size="sm" onClick={() => openStore(shops[0].id)}>
                 <Store className="size-4 me-1.5" /> Open {shops[0].name}

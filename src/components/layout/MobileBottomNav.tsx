@@ -27,7 +27,7 @@ export const MobileBottomNav = () => {
   const isActive = (to: string) => loc.pathname === to || (to !== "/" && loc.pathname.startsWith(to));
 
   const allNav: NavItem[] = [
-    { to: "/", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
+    { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
     { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: true },
     { to: "/products", label: t("nav.products"), icon: Package, show: true },
     { to: "/inventory", label: "Inventory", icon: Boxes, show: perms.canManageProducts },
@@ -48,10 +48,10 @@ export const MobileBottomNav = () => {
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border safe-area-bottom">
         <div className="grid grid-cols-4 h-16">
           <Link
-            to="/"
+            to="/dashboard"
             className={cn(
               "flex flex-col items-center justify-center gap-1 transition-colors",
-              isActive("/") ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              isActive("/dashboard") ? "text-primary" : "text-muted-foreground hover:text-foreground"
             )}
           >
             <LayoutDashboard className="size-5" />
