@@ -155,6 +155,7 @@ export function WhatsAppSettingsCard() {
           />
         </div>
         <p className="sm:col-span-2 text-xs text-muted-foreground">
+          The receipt PDF is attached automatically via the template&apos;s <b>document header</b>.
           The approved template&apos;s body must use exactly four variables, in this order:
           {" "}<code>{"{{1}}"}</code> shop name, <code>{"{{2}}"}</code> receipt number,
           {" "}<code>{"{{3}}"}</code> total, <code>{"{{4}}"}</code> date.
