@@ -54,8 +54,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # latest-mac.yml is what electron-updater polls to discover new
+          # versions — without it installed apps never see the update.
+          # Blockmaps enable differential (delta) downloads.
+          shopt -s nullglob
           gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes || true
-          gh release upload "${{ github.ref_name }}" release/*.dmg release/*.zip --clobber
+          gh release upload "${{ github.ref_name }}" release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml --clobber
 
   build-win:
     runs-on: windows-latest
@@ -84,5 +88,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # latest.yml is what electron-updater polls on Windows — required
+          # for installed apps to discover new versions.
+          shopt -s nullglob
           gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes || true
-          gh release upload "${{ github.ref_name }}" release/*.exe --clobber
+          gh release upload "${{ github.ref_name }}" release/*.exe release/*.blockmap release/latest.yml --clobber
