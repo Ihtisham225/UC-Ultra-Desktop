@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { MessageCircle, Send, Loader2 } from "lucide-react";
+import { MessageCircle, Send, Loader2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,9 @@ interface WhatsAppSettings {
   template_lang: string;
   /** Whether an access token is stored (the token itself never leaves the server). */
   has_token: boolean;
+  /** Paste these into Meta's "Configure Webhooks" step to get delivery statuses. */
+  webhook_url: string;
+  webhook_verify_token: string;
 }
 
 type ActionResult = { ok: boolean; error?: string };
@@ -37,6 +40,8 @@ export function WhatsAppSettingsCard() {
   const [templateName, setTemplateName] = useState("");
   const [templateLang, setTemplateLang] = useState("en");
   const [testPhone, setTestPhone] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookToken, setWebhookToken] = useState("");
 
   useEffect(() => {
     rpc<WhatsAppSettings>("adminGetWhatsAppSettingsAction")
@@ -46,6 +51,8 @@ export function WhatsAppSettingsCard() {
         setTemplateName(s.template_name);
         setTemplateLang(s.template_lang);
         setHasToken(s.has_token);
+        setWebhookUrl(s.webhook_url);
+        setWebhookToken(s.webhook_verify_token);
       })
       .catch(() => toast.error("Couldn't load WhatsApp settings"))
       .finally(() => setLoading(false));
@@ -156,6 +163,47 @@ export function WhatsAppSettingsCard() {
           <Button onClick={save} disabled={saving}>
             {saving ? "Saving…" : "Save settings"}
           </Button>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-3">
+        <div>
+          <div className="font-medium text-sm">Webhook (delivery statuses)</div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            In Meta&apos;s <b>Configure Webhooks</b> step, paste these and subscribe to the{" "}
+            <code>messages</code> field. Receipts then update from &quot;sent&quot; to
+            delivered/read/failed in the notification log.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="wa-webhook-url">Callback URL</Label>
+            <div className="flex gap-1.5">
+              <Input id="wa-webhook-url" value={webhookUrl} readOnly className="font-mono text-xs" />
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Copy callback URL"
+                onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success("Callback URL copied"); }}
+              >
+                <Copy className="size-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="wa-webhook-token">Verify token</Label>
+            <div className="flex gap-1.5">
+              <Input id="wa-webhook-token" value={webhookToken} readOnly className="font-mono text-xs" />
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Copy verify token"
+                onClick={() => { navigator.clipboard.writeText(webhookToken); toast.success("Verify token copied"); }}
+              >
+                <Copy className="size-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
