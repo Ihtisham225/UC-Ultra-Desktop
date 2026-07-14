@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { rpc } from "@/lib/apiClient";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WhatsAppSettingsCard } from "@/components/WhatsAppSettingsCard";
+import { SiteSettingsCard } from "@/components/SiteSettingsCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -236,8 +237,9 @@ export default function AdminDashboard() {
             <TabsTrigger value="shops">{t("admin.tabs.shops")} ({shops.length})</TabsTrigger>
             <TabsTrigger value="plans">Plans</TabsTrigger>
             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+            <TabsTrigger value="site">Site</TabsTrigger>
           </TabsList>
-          {tab !== "overview" && tab !== "whatsapp" && (
+          {tab !== "overview" && tab !== "whatsapp" && tab !== "site" && (
             <div className="relative w-full sm:w-72">
               <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("admin.searchPlaceholder")} className="ps-8" />
@@ -431,6 +433,10 @@ export default function AdminDashboard() {
 
         <TabsContent value="whatsapp" className="mt-4">
           <WhatsAppSettingsCard />
+        </TabsContent>
+
+        <TabsContent value="site" className="mt-4">
+          <SiteSettingsCard />
         </TabsContent>
       </Tabs>
 

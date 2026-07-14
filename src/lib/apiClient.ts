@@ -215,6 +215,21 @@ export async function uploadShopLogo(file: File): Promise<string> {
   return (body as { url: string }).url;
 }
 
+/** Upload a site-branding asset (og | logo | favicon) — super-admin only; URL is saved server-side. */
+export async function uploadSiteAsset(kind: "og" | "logo" | "favicon", file: File): Promise<string> {
+  if (!navigator.onLine) throw new Error("offline");
+  const form = new FormData();
+  form.append("kind", kind);
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/desktop/upload-site-asset`, { method: "POST", headers, body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !(body as { url?: string }).url) throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+  return (body as { url: string }).url;
+}
+
 /** Upload a purchase-invoice image, returning its public URL (stored on the purchase when saved). */
 export async function uploadInvoiceImage(file: File): Promise<string> {
   if (!navigator.onLine) throw new Error("offline");
