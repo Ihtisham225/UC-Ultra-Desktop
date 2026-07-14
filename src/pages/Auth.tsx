@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Store, X, UserPlus, ChevronLeft } from "lucide-react";
+import { Store, X, UserPlus, ChevronLeft, ExternalLink, RefreshCw } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -15,6 +15,7 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 import { listRememberedAccounts, forgetAccount, type RememberedAccount } from "@/lib/rememberedAccounts";
 import { resumeAccount } from "@/lib/deviceSession";
 import { startGoogleSignIn } from "@/lib/googleAuth";
+import { API_BASE } from "@/lib/apiClient";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
 export default function Auth() {
@@ -87,11 +88,14 @@ export default function Auth() {
     if (next.length === 0) setAddingAccount(true);
   };
 
-  const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    // New shops are created on the web (onboarding). The desktop signs in
-    // existing accounts and syncs.
-    toast.message("Create your shop at ucultra.com, then sign in here.");
+  // Account creation happens on the web: signup + shop onboarding run at
+  // ucultra.com, then the web offers to hand the session straight back to
+  // this app via the ucultra:// deep link (OAuthBridge adopts it).
+  const openWebSignup = () => {
+    const url = `${API_BASE}/auth?signup=1&from=desktop`;
+    if (window.electronAPI?.openExternal) window.electronAPI.openExternal(url);
+    else window.open(url, "_blank");
+    toast.message(t("auth.webSignupOpening", "Opening your browser to create your account…"));
   };
 
   const handleGoogle = () => {
@@ -282,33 +286,23 @@ export default function Auth() {
             </TabsContent>
 
             <TabsContent value="signup" className="space-y-4">
-              <div className="rounded-lg border bg-muted/30 p-3 flex items-start gap-2 text-xs text-muted-foreground">
-                <Store className="size-4 mt-0.5 text-primary shrink-0" />
-                <p>{t("auth.ownerOnlyHint")}</p>
-              </div>
-
-              <form onSubmit={handleSignUp} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="su-name">{t("auth.nameLabel")}</Label>
-                  <Input id="su-name" name="name" required placeholder={t("auth.namePlaceholder")} />
+              <div className="rounded-xl border bg-card p-5 space-y-4 text-center">
+                <div className="mx-auto size-12 rounded-full bg-primary/10 grid place-items-center">
+                  <Store className="size-6 text-primary" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="su-email">{t("common.email")}</Label>
-                  <Input id="su-email" name="email" type="email" required autoComplete="email" />
+                <div className="space-y-1">
+                  <p className="font-semibold">{t("auth.webSignupTitle", "Create your account on the web")}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {t("auth.webSignupBody", "Sign up and set up your shop at ucultra.com — it takes a minute. When you're done, we'll offer to bring you right back into this app, already signed in.")}
+                  </p>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="su-password">{t("common.password")}</Label>
-                  <PasswordInput id="su-password" name="password" required minLength={8} autoComplete="new-password" />
-                </div>
-                <Button disabled={busy} className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground" size="lg">
-                  {busy ? t("common.loading") : t("auth.createAccount")}
+                <Button size="lg" className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground" onClick={openWebSignup}>
+                  <ExternalLink className="size-4 me-2" /> {t("auth.webSignupCta", "Create account on ucultra.com")}
                 </Button>
-              </form>
-
-              <GoogleDivider label={t("auth.or")} />
-              <Button type="button" variant="outline" className="w-full" size="lg" onClick={handleGoogle} disabled={busy}>
-                <GoogleIcon /> {t("auth.googleSignUp")}
-              </Button>
+                <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
+                  <RefreshCw className="size-3" /> {t("auth.webSignupSync", "Your data syncs between web and desktop automatically.")}
+                </p>
+              </div>
             </TabsContent>
           </Tabs>
         </div>
