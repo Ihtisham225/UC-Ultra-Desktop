@@ -56,6 +56,8 @@ interface Line {
   product_name: string;
   unit_cost: number | null;
   quantity: number;
+  /** Landed-cost charges for the whole line (transport, loading, …). */
+  expense_amount: number | null;
 }
 
 function InvoiceImage({ value }: { value: string }) {
@@ -197,6 +199,7 @@ export default function Purchases() {
       product_name: it.product_name,
       unit_cost: Number(it.unit_cost),
       quantity: Number(it.quantity),
+      expense_amount: Number(it.expense_amount ?? 0) || null,
     })));
     setDetails(null);
     setOpen(true);
@@ -253,6 +256,36 @@ export default function Purchases() {
   }, [totalCount, pageSize, page]);
 
   const subtotal = useMemo(() => lines.reduce((a, l) => a + (l.unit_cost ?? 0) * l.quantity, 0), [lines]);
+  const expensesTotal = useMemo(() => lines.reduce((a, l) => a + (l.expense_amount ?? 0), 0), [lines]);
+  const [sharedExpense, setSharedExpense] = useState<string>("");
+
+  /**
+   * Split a shared charge (e.g. one transport bill) across the lines,
+   * proportionally to each line's goods value (equally when all costs are
+   * still blank). Rounded to 2dp; the rounding remainder lands on the last line.
+   */
+  const distributeShared = () => {
+    const amount = parseFloat(sharedExpense) || 0;
+    if (amount <= 0 || lines.length === 0) return;
+    const values = lines.map((l) => (l.unit_cost ?? 0) * l.quantity);
+    const totalValue = values.reduce((a, v) => a + v, 0);
+    const shares = lines.map((_, i) =>
+      totalValue > 0 ? (values[i] / totalValue) * amount : amount / lines.length,
+    );
+    let assigned = 0;
+    const rounded = shares.map((sh, i) => {
+      if (i === shares.length - 1) return Math.round((amount - assigned) * 100) / 100;
+      const r = Math.round(sh * 100) / 100;
+      assigned += r;
+      return r;
+    });
+    setLines((prev) => prev.map((l, i) => ({
+      ...l,
+      expense_amount: Math.round(((l.expense_amount ?? 0) + rounded[i]) * 100) / 100,
+    })));
+    setSharedExpense("");
+    toast.success(t("purchases.sharedSplit", { defaultValue: "Shared expense split across items" }));
+  };
 
   const [variantPicker, setVariantPicker] = useState<Product | null>(null);
 
@@ -267,6 +300,7 @@ export default function Purchases() {
       product_name: display_name,
       unit_cost: null,
       quantity: 1,
+      expense_amount: null,
     }]);
   };
 
@@ -289,6 +323,7 @@ export default function Purchases() {
   const reset = () => {
     setEditingId(null);
     setSupplierId(""); setReference(generateReference()); setPaymentMethod("cash"); setNotes(""); setLines([]);
+    setSharedExpense("");
     setInvoiceImageUrl(null);
   };
 
@@ -325,6 +360,7 @@ export default function Purchases() {
         product_name: l.product_name,
         unit_cost: l.unit_cost ?? 0,
         quantity: l.quantity,
+        expense_amount: l.expense_amount ?? 0,
       })),
     };
     try {
@@ -497,15 +533,16 @@ export default function Purchases() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>{t("purchases.productCol")}</TableHead>
-                          <TableHead className="w-44">{t("purchases.unitCost")}</TableHead>
-                          <TableHead className="w-32">{t("purchases.qty")}</TableHead>
+                          <TableHead className="w-36">{t("purchases.unitCost")}</TableHead>
+                          <TableHead className="w-24">{t("purchases.qty")}</TableHead>
+                          <TableHead className="w-36">{t("purchases.expenses", { defaultValue: "Expenses" })}</TableHead>
                           <TableHead className="w-36 text-end">{t("purchases.lineTotal")}</TableHead>
                           <TableHead className="w-10"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {lines.length === 0 ? (
-                          <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6 text-sm">{t("purchases.addProductFirst")}</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6 text-sm">{t("purchases.addProductFirst")}</TableCell></TableRow>
                         ) : lines.map((l) => (
                           <TableRow key={l.key}>
                             <TableCell className="font-medium">{l.product_name}</TableCell>
@@ -520,7 +557,14 @@ export default function Purchases() {
                               <Input type="number" inputMode="numeric" step="1" value={l.quantity}
                                 onChange={(e) => updateLine(l.key, { quantity: parseFloat(e.target.value) || 0 })} />
                             </TableCell>
-                            <TableCell className="text-end tabular-nums">{formatMoney((l.unit_cost ?? 0) * l.quantity, cur)}</TableCell>
+                            <TableCell>
+                              <Input type="number" inputMode="decimal" step="0.01" placeholder="0.00" value={l.expense_amount ?? ""}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  updateLine(l.key, { expense_amount: v === "" ? null : (parseFloat(v) || 0) });
+                                }} />
+                            </TableCell>
+                            <TableCell className="text-end tabular-nums">{formatMoney((l.unit_cost ?? 0) * l.quantity + (l.expense_amount ?? 0), cur)}</TableCell>
                             <TableCell>
                               <Button variant="ghost" size="icon" onClick={() => removeLine(l.key)}><X className="size-4" /></Button>
                             </TableCell>
@@ -544,7 +588,7 @@ export default function Purchases() {
                             <X className="size-4" />
                           </Button>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
                           <div className="space-y-1">
                             <Label className="text-xs">{t("purchases.unitCost")}</Label>
                             <Input type="number" inputMode="decimal" step="0.01" placeholder="0.00"
@@ -562,14 +606,37 @@ export default function Purchases() {
                               value={l.quantity}
                               onChange={(e) => updateLine(l.key, { quantity: parseFloat(e.target.value) || 0 })} />
                           </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">{t("purchases.expenses", { defaultValue: "Expenses" })}</Label>
+                            <Input type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                              className="h-11 text-base"
+                              value={l.expense_amount ?? ""}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                updateLine(l.key, { expense_amount: v === "" ? null : (parseFloat(v) || 0) });
+                              }} />
+                          </div>
                         </div>
                         <div className="flex justify-between text-sm pt-1 border-t">
                           <span className="text-muted-foreground">{t("purchases.lineTotal")}</span>
-                          <span className="font-semibold tabular-nums">{formatMoney((l.unit_cost ?? 0) * l.quantity, cur)}</span>
+                          <span className="font-semibold tabular-nums">{formatMoney((l.unit_cost ?? 0) * l.quantity + (l.expense_amount ?? 0), cur)}</span>
                         </div>
                       </div>
                     ))}
                   </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-end rounded-lg border bg-muted/30 p-3">
+                  <div className="space-y-1.5 flex-1">
+                    <Label>{t("purchases.sharedExpenses", { defaultValue: "Shared expenses (transport, loading…)" })}</Label>
+                    <Input type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+                      value={sharedExpense}
+                      onChange={(e) => setSharedExpense(e.target.value)} />
+                  </div>
+                  <Button type="button" variant="outline" onClick={distributeShared}
+                    disabled={!(parseFloat(sharedExpense) > 0) || lines.length === 0}>
+                    {t("purchases.splitAcrossItems", { defaultValue: "Split across items" })}
+                  </Button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -585,10 +652,18 @@ export default function Purchases() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>{t("common.total")}</Label>
-                    <div className="h-10 px-3 flex items-center text-xl font-bold text-primary tabular-nums">
-                      {formatMoney(subtotal, cur)}
+                  <div className="space-y-0.5 text-sm px-1">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">{t("purchases.goodsSubtotal", { defaultValue: "Goods subtotal" })}</span>
+                      <span className="tabular-nums">{formatMoney(subtotal, cur)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">{t("purchases.expenses", { defaultValue: "Expenses" })}</span>
+                      <span className="tabular-nums">{formatMoney(expensesTotal, cur)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4 text-lg font-bold text-primary pt-0.5 border-t">
+                      <span>{t("common.total")}</span>
+                      <span className="tabular-nums">{formatMoney(subtotal + expensesTotal, cur)}</span>
                     </div>
                   </div>
                 </div>
@@ -807,6 +882,7 @@ export default function Purchases() {
             { label: t("purchases.paymentMethod"), value: <span className="capitalize">{details.payment_method}</span> },
             { label: t("common.items"), value: details.purchase_items?.length ?? 0 },
             { label: t("common.subtotal"), value: formatMoney(Number(details.subtotal), cur) },
+            { label: t("purchases.expenses", { defaultValue: "Expenses" }), value: formatMoney(Number(details.expenses_total ?? 0), cur) },
             { label: t("common.tax"), value: formatMoney(Number(details.tax), cur) },
             { label: t("common.total"), value: <span className="font-bold">{formatMoney(Number(details.total), cur)}</span> },
             { label: t("common.paid"), value: formatMoney(Number(details.paid_amount), cur) },
@@ -843,9 +919,12 @@ export default function Purchases() {
                             <div className="font-medium truncate">{it.product_name}</div>
                             <div className="text-muted-foreground">
                               {Number(it.quantity)} × {formatMoney(Number(it.unit_cost), cur)} {t("purchases.perItem")}
+                              {Number(it.expense_amount ?? 0) > 0 && (
+                                <> + {formatMoney(Number(it.expense_amount), cur)} {t("purchases.expensesShort", { defaultValue: "expenses" })}</>
+                              )}
                             </div>
                           </div>
-                          <span className="tabular-nums font-medium whitespace-nowrap">{formatMoney(Number(it.line_total), cur)}</span>
+                          <span className="tabular-nums font-medium whitespace-nowrap">{formatMoney(Number(it.line_total) + Number(it.expense_amount ?? 0), cur)}</span>
                         </div>
                       ))}
                     </div>
