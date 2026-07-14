@@ -57,6 +57,7 @@ interface AdminShop {
   currency: string;
   is_pro: boolean;
   pro_until: string | null;
+  trial_ends_at?: string | null;
   created_at: string;
   owner_email: string | null;
   member_count: number;
@@ -76,6 +77,7 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState("overview");
   const [blockTarget, setBlockTarget] = useState<AdminUser | null>(null);
   const [proTarget, setProTarget] = useState<AdminShop | null>(null);
+  const [proMode, setProMode] = useState<"grant" | "deactivate">("grant");
   const [proDays, setProDays] = useState<number>(30);
   const [deleteUserTarget, setDeleteUserTarget] = useState<AdminUser | null>(null);
   const [deleteShopTarget, setDeleteShopTarget] = useState<AdminShop | null>(null);
@@ -123,25 +125,31 @@ export default function AdminDashboard() {
     load();
   };
 
-  const requestTogglePro = (s: AdminShop) => {
+  // Granting stacks days onto any remaining time (incl. an active free trial),
+  // so a trial shop can be put on a paid plan without losing trial days.
+  const requestGrantPro = (s: AdminShop) => {
+    setProMode("grant");
     setProDays(30);
+    setProTarget(s);
+  };
+  const requestDeactivatePro = (s: AdminShop) => {
+    setProMode("deactivate");
     setProTarget(s);
   };
   const confirmTogglePro = async () => {
     if (!proTarget) return;
-    const active = proTarget.is_pro && (!proTarget.pro_until || new Date(proTarget.pro_until) > new Date());
-    const next = !active;
-    if (next && (!proDays || proDays < 1)) { toast.error("Enter a valid number of days"); return; }
+    const grant = proMode === "grant";
+    if (grant && (!proDays || proDays < 1)) { toast.error("Enter a valid number of days"); return; }
     setBusy(true);
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("adminSetShopProAction", proTarget.shop_id, next, next ? proDays : 0);
+      const res = await rpc<{ ok: boolean; error?: string }>("adminSetShopProAction", proTarget.shop_id, grant, grant ? proDays : 0);
       if (!res.ok) { toast.error(res.error ?? "Failed"); return; }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed"); return;
     } finally {
       setBusy(false);
     }
-    toast.success(next ? t("admin.shops.proGrantedMsg", { days: proDays }) : t("admin.shops.proRemovedMsg"));
+    toast.success(grant ? t("admin.shops.proGrantedMsg", { days: proDays }) : t("admin.shops.proRemovedMsg"));
     setProTarget(null);
     load();
   };
@@ -370,7 +378,7 @@ export default function AdminDashboard() {
                     <tr key={s.shop_id} className="border-t hover:bg-muted/20">
                       <td className="p-3 font-medium">{s.name} <span className="text-xs text-muted-foreground">({s.currency})</span></td>
                       <td className="p-3 text-muted-foreground text-xs">{s.owner_email ?? "—"}</td>
-                      <td className="p-3"><ProTag is_pro={s.is_pro} pro_until={s.pro_until} /></td>
+                      <td className="p-3"><ProTag is_pro={s.is_pro} pro_until={s.pro_until} trial_ends_at={s.trial_ends_at} /></td>
                       <td className="p-3 text-end">{s.member_count}</td>
                       <td className="p-3 text-end">{s.sales_count}</td>
                       <td className="p-3 text-end">{fmt(s.sales_total)}</td>
@@ -380,11 +388,21 @@ export default function AdminDashboard() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => requestTogglePro(s)}
-                            className={cn("h-7 px-2 text-xs", active ? "text-muted-foreground" : "border-primary/40 text-primary hover:bg-primary/10")}
+                            onClick={() => requestGrantPro(s)}
+                            className="h-7 px-2 text-xs border-primary/40 text-primary hover:bg-primary/10"
                           >
-                            {active ? <><ArrowDownCircle className="size-3.5 mr-1" /> {t("admin.shops.deactivate")}</> : <><ArrowUpCircle className="size-3.5 mr-1" /> {t("admin.shops.activate")}</>}
+                            <ArrowUpCircle className="size-3.5 mr-1" /> {active ? t("admin.shops.extend", { defaultValue: "Extend" }) : t("admin.shops.activate")}
                           </Button>
+                          {active && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => requestDeactivatePro(s)}
+                              className="h-7 px-2 text-xs text-muted-foreground"
+                            >
+                              <ArrowDownCircle className="size-3.5 mr-1" /> {t("admin.shops.deactivate")}
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="ghost"
@@ -453,7 +471,7 @@ export default function AdminDashboard() {
       <Dialog open={!!proTarget} onOpenChange={(o) => !o && setProTarget(null)}>
         <DialogContent className="sm:max-w-md">
           {(() => {
-            const active = !!proTarget && proTarget.is_pro && (!proTarget.pro_until || new Date(proTarget.pro_until) > new Date());
+            const active = proMode === "deactivate";
             return (
               <>
                 <DialogHeader>
@@ -636,10 +654,17 @@ function Empty({ label }: { label: string }) {
   return <div className="text-sm text-muted-foreground py-4 text-center">{label}</div>;
 }
 
-const ProTag = forwardRef<HTMLSpanElement, { is_pro: boolean; pro_until: string | null }>(
-  ({ is_pro, pro_until }, ref) => {
+const ProTag = forwardRef<HTMLSpanElement, { is_pro: boolean; pro_until: string | null; trial_ends_at?: string | null }>(
+  ({ is_pro, pro_until, trial_ends_at }, ref) => {
     const { t } = useTranslation();
     const active = is_pro && (!pro_until || new Date(pro_until) > new Date());
+    // Still on the free-trial grant: pro time doesn't extend past the trial window.
+    const onTrial =
+      active && !!trial_ends_at && !!pro_until &&
+      new Date(pro_until) <= new Date(trial_ends_at) && new Date(trial_ends_at) > new Date();
+    if (onTrial) {
+      return <span ref={ref} className="text-xs font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400">{t("admin.shops.trial", { defaultValue: "Trial" })}</span>;
+    }
     return active ? (
       <span ref={ref} className="text-xs font-bold px-2 py-0.5 rounded bg-success/15 text-success">{t("admin.shops.active")}</span>
     ) : (
