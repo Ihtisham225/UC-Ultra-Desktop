@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { LayoutDashboard, ScanBarcode, Menu, Settings as SettingsIcon, Package, Receipt, Users, BarChart3, PackageOpen, Wallet, ShieldCheck, ShieldAlert, Sparkles, LogOut, Undo2, LifeBuoy, HandCoins, Truck, FileBarChart, Boxes } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Menu, Settings as SettingsIcon, Package, Receipt, Users, BarChart3, PackageOpen, Wallet, ShieldCheck, ShieldAlert, Sparkles, LogOut, Undo2, LifeBuoy, HandCoins, Truck, FileBarChart, Boxes, FolderTree } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ export const MobileBottomNav = () => {
     { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
     { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: true },
     { to: "/products", label: t("nav.products"), icon: Package, show: true },
+    { to: "/categories", label: "Categories", icon: FolderTree, show: perms.canManageProducts },
     { to: "/inventory", label: "Inventory", icon: Boxes, show: perms.canManageProducts },
     { to: "/sales", label: t("nav.sales"), icon: Receipt, show: true },
     { to: "/returns", label: t("nav.returns"), icon: Undo2, show: true },

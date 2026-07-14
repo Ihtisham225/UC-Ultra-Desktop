@@ -30,6 +30,7 @@ const PendingInvite = lazy(() => import("./pages/PendingInvite"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const POS = lazy(() => import("./pages/POS"));
 const Products = lazy(() => import("./pages/Products"));
+const Categories = lazy(() => import("./pages/Categories"));
 const Sales = lazy(() => import("./pages/Sales"));
 const Returns = lazy(() => import("./pages/Returns"));
 const Customers = lazy(() => import("./pages/Customers"));
@@ -156,6 +157,7 @@ const App = () => {
               <Route path="/dashboard" element={<SubShell><Dashboard /></SubShell>} />
               <Route path="/pos" element={<SubShell><POS /></SubShell>} />
               <Route path="/products" element={<SubShell><Products /></SubShell>} />
+              <Route path="/categories" element={<SubShell><RequireRole roles={["owner", "manager"]}><Categories /></RequireRole></SubShell>} />
               <Route path="/sales" element={<SubShell><Sales /></SubShell>} />
               <Route path="/returns" element={<SubShell><Returns /></SubShell>} />
               <Route path="/customers" element={<SubShell><Customers /></SubShell>} />

@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { upsertLocal, deleteLocal, notifyChange } from "@/lib/localDb";
+import { CategorySelect } from "@/components/CategorySelect";
 import { v4 as uuid } from "uuid";
 
 interface Variant {
@@ -47,6 +48,7 @@ interface Product {
   sku: string | null;
   barcode: string | null;
   category: string | null;
+  category_id: string | null;
   price: number;
   stock: number;
   low_stock_threshold: number;
@@ -150,7 +152,8 @@ export default function Products() {
       name,
       sku,
       barcode,
-      category: null,
+      category: editing.category ?? null,
+      category_id: editing.category_id ?? null,
       price: Number(editing.price) || 0,
       stock: editing.id
         ? (items.find((p) => p.id === editing.id)?.stock ?? 0)
@@ -507,9 +510,18 @@ export default function Products() {
                   <Input type="number" step="0.01" value={editing.low_stock_threshold ?? ""} onChange={(e) => setEditing({ ...editing, low_stock_threshold: e.target.value === "" ? undefined : parseFloat(e.target.value) })} />
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>{t("products.unit")}</Label>
-                <Input value={editing.unit ?? "pcs"} onChange={(e) => setEditing({ ...editing, unit: e.target.value })} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>{t("products.unit")}</Label>
+                  <Input value={editing.unit ?? "pcs"} onChange={(e) => setEditing({ ...editing, unit: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Category</Label>
+                  <CategorySelect
+                    value={editing.category_id ?? null}
+                    onChange={(id, catName) => setEditing({ ...editing, category_id: id, category: catName })}
+                  />
+                </div>
               </div>
 
               <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
