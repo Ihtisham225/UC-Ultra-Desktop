@@ -28,7 +28,10 @@ import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { upsertLocal, deleteLocal, notifyChange } from "@/lib/localDb";
-import { CategorySelect } from "@/components/CategorySelect";
+import { CategorySelect, flattenCategories, type CategoryDto, type CategoryOption } from "@/components/CategorySelect";
+import { BrandSelect, type BrandDto } from "@/components/BrandSelect";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { rpc } from "@/lib/apiClient";
 import { v4 as uuid } from "uuid";
 
 interface Variant {
@@ -49,6 +52,8 @@ interface Product {
   barcode: string | null;
   category: string | null;
   category_id: string | null;
+  brand: string | null;
+  brand_id: string | null;
   price: number;
   stock: number;
   low_stock_threshold: number;
@@ -71,6 +76,10 @@ export default function Products() {
   const formatMoney = useFormatMoney();
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState(params.get("q") ?? "");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(params.get("category"));
+  const [brandFilter, setBrandFilter] = useState<string | null>(params.get("brand"));
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [brands, setBrands] = useState<BrandDto[]>([]);
   const [editing, setEditing] = useState<EditingProduct | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [stickerProduct, setStickerProduct] = useState<Product | null>(null);
@@ -86,13 +95,33 @@ export default function Products() {
   useEffect(() => {
     const q = params.get("q") ?? "";
     if (q !== search) setSearch(q);
+    const cat = params.get("category");
+    if (cat !== categoryFilter) setCategoryFilter(cat);
+    const brand = params.get("brand");
+    if (brand !== brandFilter) setBrandFilter(brand);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
+
+  const updateParams = (q: string, category: string | null, brand: string | null) => {
+    const next: Record<string, string> = {};
+    if (q) next.q = q;
+    if (category) next.category = category;
+    if (brand) next.brand = brand;
+    setParams(next, { replace: true });
+  };
 
   const { data: items, loading, refresh: load } = useLocalStore<Product>(
     "products",
     currentShop?.id,
   );
+
+  // Categories & brands feed the filter dropdowns (online-only; the products
+  // themselves keep working offline).
+  useEffect(() => {
+    if (!currentShop) return;
+    rpc<CategoryDto[]>("listCategoriesAction").then((rows) => setCategories(flattenCategories(rows))).catch(() => {});
+    rpc<BrandDto[]>("listBrandsAction").then(setBrands).catch(() => {});
+  }, [currentShop]);
 
   const startEdit = (p: Product) => {
     const variants = (p.product_variants ?? []).map((v) => ({ ...v }));
@@ -154,6 +183,8 @@ export default function Products() {
       barcode,
       category: editing.category ?? null,
       category_id: editing.category_id ?? null,
+      brand: editing.brand ?? null,
+      brand_id: editing.brand_id ?? null,
       price: Number(editing.price) || 0,
       stock: editing.id
         ? (items.find((p) => p.id === editing.id)?.stock ?? 0)
@@ -234,7 +265,27 @@ export default function Products() {
     load();
   };
 
+  // Category filter includes the whole subtree so picking a parent shows the
+  // products of its sub-categories too.
+  const categoryIds = (() => {
+    if (!categoryFilter) return null;
+    const ids = new Set<string>([categoryFilter]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const c of categories) {
+        if (c.parent_id && ids.has(c.parent_id) && !ids.has(c.id)) {
+          ids.add(c.id);
+          grew = true;
+        }
+      }
+    }
+    return ids;
+  })();
+
   const filtered = items.filter((p) => {
+    if (categoryIds && (!p.category_id || !categoryIds.has(p.category_id))) return false;
+    if (brandFilter && p.brand_id !== brandFilter) return false;
     const q = search.toLowerCase();
     if (!q) return true;
     if (p.name.toLowerCase().includes(q)) return true;
@@ -248,7 +299,7 @@ export default function Products() {
 
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(
     filtered,
-    { key: "products", defaultSize: 20, resetDeps: [search, items.length] },
+    { key: "products", defaultSize: 20, resetDeps: [search, categoryFilter, brandFilter, items.length] },
   );
 
   const cur = currentShop?.currency ?? "USD";
@@ -290,6 +341,7 @@ export default function Products() {
       { header: "SKU", value: (r) => r.sku ?? "" },
       { header: "Barcode", value: (r) => r.barcode ?? "" },
       { header: "Category", value: (r) => r.category ?? "" },
+      { header: "Brand", value: (r) => r.brand ?? "" },
       { header: "Selling Price", value: (r) => r.price },
       { header: "Stock", value: (r) => totalStock(r) },
       { header: "Variants", value: (r) => (r.product_variants ?? []).length },
@@ -324,12 +376,50 @@ export default function Products() {
         at checkout, and use <b>variants</b> (size / color / flavor) when one product has several options. Tap <b>Import</b> to load a CSV.
       </PageTip>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
 
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input placeholder={t("products.searchPlaceholder")} aria-label={t("products.searchPlaceholder")} value={search} onChange={(e) => { setSearch(e.target.value); setParams(e.target.value ? { q: e.target.value } : {}, { replace: true }); }} className="ps-9" />
+          <Input placeholder={t("products.searchPlaceholder")} aria-label={t("products.searchPlaceholder")} value={search} onChange={(e) => { setSearch(e.target.value); updateParams(e.target.value, categoryFilter, brandFilter); }} className="ps-9" />
         </div>
+        <Select
+          value={categoryFilter ?? "__all__"}
+          onValueChange={(v) => {
+            const next = v === "__all__" ? null : v;
+            setCategoryFilter(next);
+            updateParams(search, next, brandFilter);
+          }}
+        >
+          <SelectTrigger className="w-full sm:w-44" aria-label="Filter by category">
+            <SelectValue placeholder="All categories" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All categories</SelectItem>
+            {categories.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {`${"   ".repeat(c.depth)}${c.depth > 0 ? "↳ " : ""}${c.name}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={brandFilter ?? "__all__"}
+          onValueChange={(v) => {
+            const next = v === "__all__" ? null : v;
+            setBrandFilter(next);
+            updateParams(search, categoryFilter, next);
+          }}
+        >
+          <SelectTrigger className="w-full sm:w-40" aria-label="Filter by brand">
+            <SelectValue placeholder="All brands" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All brands</SelectItem>
+            {brands.map((b) => (
+              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button variant="outline" onClick={() => setScannerOpen(true)} aria-label="Scan barcode"><ScanBarcode className="size-4" /></Button>
       </div>
 
@@ -419,7 +509,11 @@ export default function Products() {
                             </span>
                           )}
                         </div>
-                        {p.category && <div className="text-xs text-muted-foreground">{p.category}</div>}
+                        {(p.category || p.brand) && (
+                          <div className="text-xs text-muted-foreground">
+                            {[p.category, p.brand].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
                       </td>
                       <td className="p-3 hidden md:table-cell font-mono text-xs text-muted-foreground">
                         {p.sku || "—"} {p.barcode && <span className="ms-2">· {p.barcode}</span>}
@@ -523,6 +617,15 @@ export default function Products() {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Brand</Label>
+                  <BrandSelect
+                    value={editing.brand_id ?? null}
+                    onChange={(id, brandName) => setEditing({ ...editing, brand_id: id, brand: brandName })}
+                  />
+                </div>
+              </div>
 
               <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                 <p className="text-xs text-muted-foreground">📦 {t("products.stockNote")}</p>
@@ -594,8 +697,9 @@ export default function Products() {
           open={!!details}
           onClose={() => setDetails(null)}
           title={details.name}
-          subtitle={details.category ?? undefined}
+          subtitle={[details.category, details.brand].filter(Boolean).join(" · ") || undefined}
           rows={[
+            { label: "Brand", value: details.brand ?? "—" },
             { label: t("products.sku"), value: details.sku ?? "—" },
             { label: t("products.barcode"), value: details.barcode ?? "—" },
             { label: t("products.sellingPrice"), value: formatMoney(details.price, cur) },

@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, HelpCircle, FolderTree } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, HelpCircle, FolderTree, Tag } from "lucide-react";
 import { WelcomeTour } from "@/components/WelcomeTour";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
@@ -53,6 +53,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: true },
     { to: "/products", label: t("nav.products"), icon: Package, show: true },
     { to: "/categories", label: "Categories", icon: FolderTree, show: perms.canManageProducts },
+    { to: "/brands", label: "Brands", icon: Tag, show: perms.canManageProducts },
     { to: "/inventory", label: "Inventory", icon: Boxes, show: perms.canManageProducts },
     { to: "/sales", label: t("nav.sales"), icon: Receipt, show: true },
     { to: "/returns", label: t("nav.returns"), icon: Undo2, show: true },

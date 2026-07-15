@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Package, Users, Receipt, Truck, Loader2, X } from "lucide-react";
+import { Search, Package, Users, Receipt, Truck, Loader2, X, FolderTree, Tag } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ type Variant = "desktop-bar" | "mobile-icon";
 const iconFor = (type: SearchResult["type"]) => {
   switch (type) {
     case "product": return Package;
+    case "category": return FolderTree;
+    case "brand": return Tag;
     case "sale": return Receipt;
     case "customer": return Users;
     case "supplier": return Truck;
@@ -23,6 +25,8 @@ const iconFor = (type: SearchResult["type"]) => {
 
 const labelFor = (type: SearchResult["type"]) => ({
   product: "Product",
+  category: "Categorie",
+  brand: "Brand",
   sale: "Sale",
   customer: "Customer",
   supplier: "Supplier",
@@ -48,6 +52,8 @@ export const GlobalSearch = ({ variant }: { variant: Variant }) => {
   const handleSelect = async (r: SearchResult) => {
     setOpen(false);
     if (r.type === "product") navigate(`/products?q=${encodeURIComponent(r.title)}`);
+    else if (r.type === "category") navigate(`/products?category=${r.id}`);
+    else if (r.type === "brand") navigate(`/products?brand=${r.id}`);
     else if (r.type === "customer") navigate(`/customers?q=${encodeURIComponent(r.title)}`);
     else if (r.type === "supplier") navigate(`/purchases?supplier=${r.id}`);
     else if (r.type === "sale" && currentShop) {
@@ -112,7 +118,7 @@ export const GlobalSearch = ({ variant }: { variant: Variant }) => {
               <div className="p-10 text-center text-sm text-muted-foreground">
                 <Search className="size-8 mx-auto mb-2 opacity-40" />
                 Start typing to search across your shop
-                <div className="text-xs mt-2 opacity-70">Products · Sales · Customers · Suppliers</div>
+                <div className="text-xs mt-2 opacity-70">Products · Categories · Brands · Sales · Customers · Suppliers</div>
               </div>
             ) : results.length === 0 && !loading ? (
               <div className="p-10 text-center text-sm text-muted-foreground">
@@ -120,7 +126,7 @@ export const GlobalSearch = ({ variant }: { variant: Variant }) => {
               </div>
             ) : (
               <div className="py-2">
-                {(["product", "customer", "sale", "supplier"] as const).map((type) => {
+                {(["category", "brand", "product", "customer", "sale", "supplier"] as const).map((type) => {
                   const items = grouped[type];
                   if (!items?.length) return null;
                   const Icon = iconFor(type);

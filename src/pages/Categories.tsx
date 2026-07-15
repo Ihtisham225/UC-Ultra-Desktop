@@ -1,8 +1,9 @@
 // Dedicated category management page — mirror of the web app's /categories.
 // Online-only (RPC), like the other management screens.
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { FolderTree, Plus, Pencil, Trash2, CornerDownRight, WifiOff } from "lucide-react";
+import { FolderTree, Plus, Pencil, Trash2, CornerDownRight, WifiOff, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,9 +28,11 @@ interface EditingCategory {
 
 export default function Categories() {
   const { role } = useShop();
+  const navigate = useNavigate();
   const [items, setItems] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
+  const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<EditingCategory | null>(null);
   const [saving, setSaving] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -111,6 +114,24 @@ export default function Categories() {
     return items.filter((c) => !blocked.has(c.id));
   };
 
+  // Search keeps matches plus their ancestors so the tree indentation stays
+  // meaningful.
+  const q = search.trim().toLowerCase();
+  const visibleItems = (() => {
+    if (!q) return items;
+    const byId = new Map(items.map((c) => [c.id, c]));
+    const keep = new Set<string>();
+    for (const c of items) {
+      if (!c.name.toLowerCase().includes(q)) continue;
+      let cur: CategoryOption | undefined = c;
+      while (cur && !keep.has(cur.id)) {
+        keep.add(cur.id);
+        cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
+      }
+    }
+    return items.filter((c) => keep.has(c.id));
+  })();
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -129,6 +150,17 @@ export default function Categories() {
         )}
       </div>
 
+      <div className="relative">
+        <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <Input
+          placeholder="Search categories…"
+          aria-label="Search categories"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="ps-9"
+        />
+      </div>
+
       <div className="rounded-xl border bg-card overflow-hidden">
         {offline ? (
           <div className="p-10 text-center space-y-2">
@@ -137,24 +169,32 @@ export default function Categories() {
           </div>
         ) : loading ? (
           <div className="p-8 text-center text-muted-foreground">Loading…</div>
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className="p-10 text-center space-y-2">
             <FolderTree className="size-8 mx-auto text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
-              No categories yet. Add one — you can nest sub-categories under it.
+              {items.length === 0
+                ? "No categories yet. Add one — you can nest sub-categories under it."
+                : `No categories match “${search}”.`}
             </p>
           </div>
         ) : (
           <div className="divide-y">
-            {items.map((c) => (
+            {visibleItems.map((c) => (
               <div key={c.id} className="flex items-center gap-2 px-4 py-2.5">
-                <div className="flex items-center gap-1.5 min-w-0 flex-1" style={{ paddingInlineStart: `${c.depth * 1.5}rem` }}>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 min-w-0 flex-1 text-start hover:underline underline-offset-2"
+                  title="View products in this category"
+                  style={{ paddingInlineStart: `${c.depth * 1.5}rem` }}
+                  onClick={() => navigate(`/products?category=${c.id}`)}
+                >
                   {c.depth > 0 && <CornerDownRight className="size-3.5 shrink-0 text-muted-foreground rtl-flip" />}
                   <span className="font-medium truncate">{c.name}</span>
                   <span className="text-xs text-muted-foreground shrink-0">
                     {c.product_count > 0 ? `· ${c.product_count} product${c.product_count === 1 ? "" : "s"}` : ""}
                   </span>
-                </div>
+                </button>
                 {canEdit && (
                   <div className="flex items-center gap-0.5 shrink-0">
                     <Button variant="ghost" size="icon" title="Add sub-category" aria-label="Add sub-category"

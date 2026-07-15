@@ -31,6 +31,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const POS = lazy(() => import("./pages/POS"));
 const Products = lazy(() => import("./pages/Products"));
 const Categories = lazy(() => import("./pages/Categories"));
+const Brands = lazy(() => import("./pages/Brands"));
 const Sales = lazy(() => import("./pages/Sales"));
 const Returns = lazy(() => import("./pages/Returns"));
 const Customers = lazy(() => import("./pages/Customers"));
@@ -158,6 +159,7 @@ const App = () => {
               <Route path="/pos" element={<SubShell><POS /></SubShell>} />
               <Route path="/products" element={<SubShell><Products /></SubShell>} />
               <Route path="/categories" element={<SubShell><RequireRole roles={["owner", "manager"]}><Categories /></RequireRole></SubShell>} />
+              <Route path="/brands" element={<SubShell><RequireRole roles={["owner", "manager"]}><Brands /></RequireRole></SubShell>} />
               <Route path="/sales" element={<SubShell><Sales /></SubShell>} />
               <Route path="/returns" element={<SubShell><Returns /></SubShell>} />
               <Route path="/customers" element={<SubShell><Customers /></SubShell>} />

@@ -4,6 +4,8 @@ import { useShop } from "@/contexts/ShopContext";
 
 export type SearchResult =
   | { type: "product"; id: string; title: string; subtitle: string; meta?: string }
+  | { type: "category"; id: string; title: string; subtitle: string; meta?: string }
+  | { type: "brand"; id: string; title: string; subtitle: string; meta?: string }
   | { type: "sale"; id: string; title: string; subtitle: string; meta?: string }
   | { type: "customer"; id: string; title: string; subtitle: string; meta?: string }
   | { type: "supplier"; id: string; title: string; subtitle: string; meta?: string };
