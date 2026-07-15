@@ -529,14 +529,14 @@ export default function Purchases() {
                   </div>
                   {/* Desktop table */}
                   <div className="hidden sm:block border rounded-lg overflow-auto max-h-80">
-                    <Table>
+                    <Table className="min-w-[600px]">
                       <TableHeader>
                         <TableRow>
                           <TableHead>{t("purchases.productCol")}</TableHead>
-                          <TableHead className="w-36">{t("purchases.unitCost")}</TableHead>
+                          <TableHead className="w-32">{t("purchases.unitCost")}</TableHead>
                           <TableHead className="w-24">{t("purchases.qty")}</TableHead>
-                          <TableHead className="w-36">{t("purchases.expenses", { defaultValue: "Expenses" })}</TableHead>
-                          <TableHead className="w-36 text-end">{t("purchases.lineTotal")}</TableHead>
+                          <TableHead className="w-32">{t("purchases.expenses", { defaultValue: "Expenses" })}</TableHead>
+                          <TableHead className="w-32 text-end">{t("purchases.lineTotal")}</TableHead>
                           <TableHead className="w-10"></TableHead>
                         </TableRow>
                       </TableHeader>
@@ -546,19 +546,22 @@ export default function Purchases() {
                         ) : lines.map((l) => (
                           <TableRow key={l.key}>
                             <TableCell className="font-medium">{l.product_name}</TableCell>
-                            <TableCell>
+                            <TableCell className="p-2">
                               <Input type="number" inputMode="decimal" step="0.01" placeholder="0.00" value={l.unit_cost ?? ""}
+                                className="h-9 px-2 text-sm tabular-nums"
                                 onChange={(e) => {
                                   const v = e.target.value;
                                   updateLine(l.key, { unit_cost: v === "" ? null : (parseFloat(v) || 0) });
                                 }} />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="p-2">
                               <Input type="number" inputMode="numeric" step="1" value={l.quantity}
+                                className="h-9 px-2 text-sm tabular-nums"
                                 onChange={(e) => updateLine(l.key, { quantity: parseFloat(e.target.value) || 0 })} />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="p-2">
                               <Input type="number" inputMode="decimal" step="0.01" placeholder="0.00" value={l.expense_amount ?? ""}
+                                className="h-9 px-2 text-sm tabular-nums"
                                 onChange={(e) => {
                                   const v = e.target.value;
                                   updateLine(l.key, { expense_amount: v === "" ? null : (parseFloat(v) || 0) });
