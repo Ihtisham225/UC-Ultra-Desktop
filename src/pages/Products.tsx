@@ -26,7 +26,7 @@ import { generateSku, generateBarcode } from "@/lib/sku";
 import { VariantsBuilder, type BuilderVariant } from "@/components/VariantsBuilder";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { useLocalStore } from "@/hooks/useLocalStore";
+import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { upsertLocal, deleteLocal, notifyChange } from "@/lib/localDb";
 import { CategorySelect, flattenCategories, type CategoryDto, type CategoryOption } from "@/components/CategorySelect";
 import { BrandSelect, type BrandDto } from "@/components/BrandSelect";
@@ -110,8 +110,9 @@ export default function Products() {
     setParams(next, { replace: true });
   };
 
-  const { data: items, loading, refresh: load } = useLocalStore<Product>(
-    "products",
+  // Joined read: synced product rows are flat, variants live in their own
+  // local table — this hook attaches `product_variants` to every product.
+  const { data: items, loading, refresh: load } = useProductsWithVariants<Product>(
     currentShop?.id,
   );
 
@@ -559,42 +560,44 @@ export default function Products() {
       </Card>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing?.id ? t("products.edit") : t("products.newProduct")}</DialogTitle></DialogHeader>
           {editing && (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label>{t("common.name")} *</Label>
-                <Input
-                  value={editing.name ?? ""}
-                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                  onBlur={() => {
-                    if (editing && !editing.sku && editing.name) {
-                      setEditing({ ...editing, sku: generateSku(editing.name) });
-                    }
-                  }}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>{t("products.skuAuto")}</Label>
-                <div className="flex gap-2">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>{t("common.name")} *</Label>
                   <Input
-                    value={editing.sku ?? ""}
-                    placeholder={t("products.skuPlaceholder")}
-                    onChange={(e) => setEditing({ ...editing, sku: e.target.value })}
+                    value={editing.name ?? ""}
+                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                    onBlur={() => {
+                      if (editing && !editing.sku && editing.name) {
+                        setEditing({ ...editing, sku: generateSku(editing.name) });
+                      }
+                    }}
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    title={t("products.regenerateSku")}
-                    onClick={() => setEditing({ ...editing, sku: generateSku(editing.name || "") })}
-                  >
-                    <RefreshCw className="size-4" />
-                  </Button>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("products.skuAuto")}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={editing.sku ?? ""}
+                      placeholder={t("products.skuPlaceholder")}
+                      onChange={(e) => setEditing({ ...editing, sku: e.target.value })}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      title={t("products.regenerateSku")}
+                      onClick={() => setEditing({ ...editing, sku: generateSku(editing.name || "") })}
+                    >
+                      <RefreshCw className="size-4" />
+                    </Button>
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <Label>{t("products.sellingPrice")} *</Label>
                   <Input type="number" step="0.01" min="0" value={editing.price ?? ""} onChange={(e) => setEditing({ ...editing, price: e.target.value === "" ? undefined : parseFloat(e.target.value) })} />
@@ -603,12 +606,12 @@ export default function Products() {
                   <Label>{t("products.lowAt")}</Label>
                   <Input type="number" step="0.01" value={editing.low_stock_threshold ?? ""} onChange={(e) => setEditing({ ...editing, low_stock_threshold: e.target.value === "" ? undefined : parseFloat(e.target.value) })} />
                 </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>{t("products.unit")}</Label>
                   <Input value={editing.unit ?? "pcs"} onChange={(e) => setEditing({ ...editing, unit: e.target.value })} />
                 </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Category</Label>
                   <CategorySelect
@@ -616,8 +619,6 @@ export default function Products() {
                     onChange={(id, catName) => setEditing({ ...editing, category_id: id, category: catName })}
                   />
                 </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Brand</Label>
                   <BrandSelect
@@ -627,19 +628,12 @@ export default function Products() {
                 </div>
               </div>
 
-              <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                <p className="text-xs text-muted-foreground">📦 {t("products.stockNote")}</p>
-              </div>
-
               <div className="rounded-lg border bg-card p-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <Label htmlFor="hasVariants" className="cursor-pointer flex items-center gap-2">
-                      <Layers className="size-4 text-primary" />
-                      {t("products.hasVariants")}
-                    </Label>
-                    <p className="text-xs text-muted-foreground mt-0.5">{t("products.hasVariantsHelp")}</p>
-                  </div>
+                  <Label htmlFor="hasVariants" className="cursor-pointer flex items-center gap-2">
+                    <Layers className="size-4 text-primary" />
+                    {t("products.hasVariants")}
+                  </Label>
                   <Switch
                     id="hasVariants"
                     checked={!!editing.hasVariants}
@@ -662,8 +656,6 @@ export default function Products() {
                   />
                 )}
               </div>
-
-              <p className="text-xs text-muted-foreground">{t("products.barcodeAutoNote")}</p>
             </div>
           )}
           <DialogFooter>

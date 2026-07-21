@@ -200,20 +200,25 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange }: Pro
             <div className="space-y-2.5">
               {groups.map((g, i) => (
                 <div key={i} className="rounded-lg border bg-card p-3 space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <Tag className="size-3.5 text-muted-foreground shrink-0" />
-                    <Input
-                      value={g.name}
-                      onChange={(e) => updateGroupName(i, e.target.value)}
-                      placeholder={t("variantsBuilder.optionNamePlaceholder")}
-                      className="h-8 text-sm font-medium border-0 px-1 focus-visible:ring-1 bg-transparent"
-                    />
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                        <Tag className="size-3 shrink-0" />
+                        {t("variantsBuilder.optionNameLabel")}
+                      </Label>
+                      <Input
+                        value={g.name}
+                        onChange={(e) => updateGroupName(i, e.target.value)}
+                        placeholder={t("variantsBuilder.optionNamePlaceholder")}
+                        className="h-8 text-sm font-medium"
+                      />
+                    </div>
                     {groups.length > 1 && (
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="size-7 shrink-0"
+                        className="size-8 shrink-0"
                         onClick={() => removeGroup(i)}
                         title={t("variantsBuilder.removeOption")}
                       >
@@ -222,39 +227,43 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange }: Pro
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1.5 min-h-[28px]">
-                    {g.values.map((v) => (
-                      <Badge
-                        key={v}
-                        variant="secondary"
-                        className="gap-1 pe-1 py-1 font-normal"
-                      >
-                        {v}
-                        <button
-                          type="button"
-                          onClick={() => removeValue(i, v)}
-                          className="hover:text-destructive"
-                          aria-label={t("common.delete")}
-                        >
-                          <X className="size-3" />
-                        </button>
-                      </Badge>
-                    ))}
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground">{t("variantsBuilder.valuesLabel")}</Label>
+                    {g.values.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {g.values.map((v) => (
+                          <Badge
+                            key={v}
+                            variant="secondary"
+                            className="gap-1 pe-1 py-1 font-normal"
+                          >
+                            {v}
+                            <button
+                              type="button"
+                              onClick={() => removeValue(i, v)}
+                              className="hover:text-destructive"
+                              aria-label={t("common.delete")}
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    <Input
+                      value={pendingValue[i] ?? ""}
+                      onChange={(e) => setPendingValue((p) => ({ ...p, [i]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === ",") {
+                          e.preventDefault();
+                          addValue(i, pendingValue[i] ?? "");
+                        }
+                      }}
+                      onBlur={() => addValue(i, pendingValue[i] ?? "")}
+                      placeholder={t("variantsBuilder.valuePlaceholder")}
+                      className="h-8 text-sm"
+                    />
                   </div>
-
-                  <Input
-                    value={pendingValue[i] ?? ""}
-                    onChange={(e) => setPendingValue((p) => ({ ...p, [i]: e.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === ",") {
-                        e.preventDefault();
-                        addValue(i, pendingValue[i] ?? "");
-                      }
-                    }}
-                    onBlur={() => addValue(i, pendingValue[i] ?? "")}
-                    placeholder={t("variantsBuilder.valuePlaceholder")}
-                    className="h-8 text-sm"
-                  />
                 </div>
               ))}
             </div>

@@ -10,6 +10,7 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { PageTip } from "@/components/PageTip";
 import { useLocalStore } from "@/hooks/useLocalStore";
+import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 
 export default function Dashboard() {
   usePageMeta({ title: "Dashboard — UCU", description: "Real-time overview of your shop sales, top products, low-stock alerts and revenue trends." });
@@ -21,7 +22,7 @@ export default function Dashboard() {
   useEffect(() => { document.title = `${t("nav.dashboard")} — UCU`; }, [t]);
 
   const { data: allSales, loading: salesLoading } = useLocalStore<any>("sales", currentShop?.id);
-  const { data: allProducts, loading: productsLoading } = useLocalStore<any>("products", currentShop?.id);
+  const { data: allProducts, loading: productsLoading } = useProductsWithVariants<any>(currentShop?.id);
 
   const loading = salesLoading || productsLoading;
 
@@ -33,11 +34,24 @@ export default function Dashboard() {
       .reduce((a: number, s: any) => a + Number(s.total ?? 0), 0);
     const todayCount = allSales.filter((s) => s.created_at && new Date(s.created_at) >= startOfDay).length;
     const activeProducts = allProducts.filter((p: any) => p.is_active !== false);
-    const lowStock = activeProducts
-      .filter((p: any) => Number(p.stock) <= Number(p.low_stock_threshold ?? 5))
-      .slice(0, 5)
-      .map((p: any) => ({ id: p.id, name: p.name, stock: Number(p.stock) }));
-    return { todaySales, todayCount, productCount: activeProducts.length, lowStock };
+    // Variant products track stock per variant — alert per low variant, and
+    // only use the parent row's stock for simple products.
+    const lowStock: { id: string; name: string; stock: number }[] = [];
+    for (const p of activeProducts) {
+      const variants = (p.product_variants ?? []).filter((v: any) => v.is_active !== false);
+      if (variants.length > 0) {
+        for (const v of variants) {
+          const threshold = Number(v.low_stock_threshold ?? p.low_stock_threshold ?? 5);
+          if (Number(v.stock) <= threshold) {
+            lowStock.push({ id: v.id, name: `${p.name} — ${v.name}`, stock: Number(v.stock) });
+          }
+        }
+      } else if (Number(p.stock) <= Number(p.low_stock_threshold ?? 5)) {
+        lowStock.push({ id: p.id, name: p.name, stock: Number(p.stock) });
+      }
+    }
+    lowStock.sort((a, b) => a.stock - b.stock);
+    return { todaySales, todayCount, productCount: activeProducts.length, lowStock: lowStock.slice(0, 5) };
   }, [allSales, allProducts]);
 
   const cur = currentShop?.currency ?? "USD";

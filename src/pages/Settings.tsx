@@ -15,8 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, Plug } from "lucide-react";
-import { IntegrationsSection } from "@/components/IntegrationsSection";
+import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield } from "lucide-react";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR", "JOD", "EGP", "INR", "PKR", "NGN", "KES", "ZAR", "BRL", "MXN"];
@@ -44,6 +43,7 @@ export default function Settings() {
 
   const [notifyLow, setNotifyLow] = useState(true);
   const [notifyDaily, setNotifyDaily] = useState(false);
+  const [investorsOn, setInvestorsOn] = useState(false);
 
   const [busy, setBusy] = useState(false);
 
@@ -63,6 +63,7 @@ export default function Settings() {
       setShowTax(currentShop.show_tax_line ?? true);
       setNotifyLow(currentShop.notify_low_stock ?? true);
       setNotifyDaily(currentShop.notify_daily_summary ?? false);
+      setInvestorsOn(currentShop.investors_enabled ?? false);
     }
   }, [currentShop]);
 
@@ -155,6 +156,24 @@ export default function Settings() {
     refresh();
   };
 
+  const toggleInvestors = async (on: boolean) => {
+    setInvestorsOn(on);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("setInvestorsEnabledAction", on);
+      if (!res.ok) {
+        setInvestorsOn(!on);
+        return toast.error(res.error ?? "Failed");
+      }
+    } catch (e) {
+      setInvestorsOn(!on);
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    }
+    toast.success(on
+      ? t("investors.enabledToast", { defaultValue: "Investors enabled — find it under Debts in the menu" })
+      : t("investors.disabledToast", { defaultValue: "Investors disabled" }));
+    refresh();
+  };
+
   const uploadLogo = async (file: File) => {
     if (!currentShop) return;
     setBusy(true);
@@ -225,13 +244,8 @@ export default function Settings() {
           <TabsTrigger value="receipt"><Receipt className="size-3.5 mr-1.5" />{t("settings.tabs.receipt")}</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="size-3.5 mr-1.5" />{t("settings.tabs.notifications")}</TabsTrigger>
           <TabsTrigger value="data"><Download className="size-3.5 mr-1.5" />{t("settings.tabs.data")}</TabsTrigger>
-          <TabsTrigger value="integrations"><Plug className="size-3.5 mr-1.5" />Integrations</TabsTrigger>
           {canEdit && <TabsTrigger value="danger"><Shield className="size-3.5 mr-1.5" />{t("settings.tabs.danger")}</TabsTrigger>}
         </TabsList>
-
-        <TabsContent value="integrations">
-          {currentShop && <IntegrationsSection shopId={currentShop.id} canManage={canEdit} />}
-        </TabsContent>
 
         <TabsContent value="profile">
           <Card className="shadow-card p-6 space-y-5">
@@ -289,6 +303,15 @@ export default function Settings() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5"><Label>{t("common.phone")}</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.phonePlaceholder")} /></div>
               <div className="space-y-1.5"><Label>{t("common.email")}</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.emailPlaceholder")} /></div>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-2 border-t pt-4">
+              <div>
+                <Label>{t("investors.title", { defaultValue: "Investors" })}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("investors.settingHelp", { defaultValue: "Fund purchases with investor capital and pay them back automatically as that stock sells." })}
+                </p>
+              </div>
+              <Switch checked={investorsOn} onCheckedChange={toggleInvestors} disabled={role !== "owner"} />
             </div>
             {canEditShop && <Button disabled={busy} onClick={saveShop} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.shop.saveShop")}</Button>}
           </Card>

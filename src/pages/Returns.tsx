@@ -21,6 +21,7 @@ interface CustomerReturnRow {
   id: string;
   return_number: string | null;
   total_refund: number;
+  deduction?: number;
   refund_method: string;
   reason: string | null;
   notes: string | null;
@@ -188,15 +189,16 @@ export default function Returns() {
                   <TableHead>{t("common.items")}</TableHead>
                   <TableHead>{t("returns.method")}</TableHead>
                   <TableHead>{t("returns.reason")}</TableHead>
+                  <TableHead className="text-end">Deduction</TableHead>
                   <TableHead className="text-end">{t("returns.refund")}</TableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {custLoading ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
                 ) : custRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-12">{t("returns.empty")}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-12">{t("returns.empty")}</TableCell></TableRow>
                 ) : custRows.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
@@ -205,6 +207,9 @@ export default function Returns() {
                     <TableCell className="tabular-nums">{r.sale_return_items.reduce((a, i) => a + Number(i.quantity), 0)}</TableCell>
                     <TableCell className="capitalize">{r.refund_method}</TableCell>
                     <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{r.reason ?? "—"}</TableCell>
+                    <TableCell className="text-end tabular-nums text-destructive">
+                      {Number(r.deduction ?? 0) > 0 ? `−${formatMoney(Number(r.deduction), cur)}` : "—"}
+                    </TableCell>
                     <TableCell className="text-end tabular-nums font-medium">{formatMoney(Number(r.total_refund), cur)}</TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={() => setCustDetails(r)}><Eye className="size-4" /></Button>
@@ -293,6 +298,9 @@ export default function Returns() {
           subtitle={`${format(new Date(custDetails.created_at), "PPp")} · ${t("returns.receiptCol")} ${custDetails.sales?.receipt_number ?? "—"}`}
           rows={[
             { label: t("returns.refundMethod"), value: <span className="capitalize">{custDetails.refund_method}</span> },
+            ...(Number(custDetails.deduction ?? 0) > 0
+              ? [{ label: "Deduction", value: <span className="text-destructive">−{formatMoney(Number(custDetails.deduction), cur)}</span> }]
+              : []),
             { label: t("returns.totalRefund"), value: <span className="font-bold">{formatMoney(Number(custDetails.total_refund), cur)}</span> },
             { label: t("returns.reason"), value: custDetails.reason ?? "—", full: true },
             ...(custDetails.notes ? [{ label: t("common.notes"), value: custDetails.notes, full: true }] : []),

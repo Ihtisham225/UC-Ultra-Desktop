@@ -28,11 +28,14 @@ import { Pagination } from "@/components/Pagination";
 import { toast } from "sonner";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
+import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
+import { syncAll } from "@/lib/syncEngine";
 
 const PAGE_SIZE_KEY = "pos.pageSize.purchases";
 const DEFAULT_PAGE_SIZE = 20;
 
 interface Supplier { id: string; name: string; phone: string | null; }
+interface Investor { id: string; name: string; balance: number; }
 interface Variant {
   id: string; product_id: string; name: string;
   sku: string | null; barcode: string | null;
@@ -77,7 +80,34 @@ export default function Purchases() {
   const formatMoney = useFormatMoney();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  // Product picker feeds from the local offline store, not the server — a
+  // just-added product must appear instantly, before background sync runs.
+  const { data: localProducts } = useProductsWithVariants<{
+    id: string; name: string; price: number | string; is_active?: boolean;
+  }>(currentShop?.id);
+  const products: Product[] = useMemo(
+    () =>
+      localProducts
+        .filter((p) => p.is_active !== false)
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          price: Number(p.price),
+          variants: p.product_variants
+            .filter((v) => v.is_active !== false)
+            .map((v) => ({
+              id: v.id,
+              product_id: v.product_id,
+              name: v.name,
+              sku: v.sku,
+              barcode: v.barcode,
+              price_override: v.price_override,
+              stock: v.stock,
+            })),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [localProducts],
+  );
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [grandTotal, setGrandTotal] = useState(0);
@@ -108,6 +138,13 @@ export default function Purchases() {
   const [uploadingImage, setUploadingImage] = useState(false);
 
   const [newSupplier, setNewSupplier] = useState({ name: "", phone: "", email: "", notes: "" });
+
+  // Investors module (Settings toggle): who funds this purchase.
+  const investorsEnabled = !!currentShop?.investors_enabled;
+  const [investors, setInvestors] = useState<Investor[]>([]);
+  const [investorId, setInvestorId] = useState<string>("");
+  const [investorOpen, setInvestorOpen] = useState(false);
+  const [newInvestor, setNewInvestor] = useState({ name: "", phone: "", amount: "" });
   const [details, setDetails] = useState<any | null>(null);
   const [printPurchase, setPrintPurchase] = useState<any | null>(null);
   const [detailsItemSearch, setDetailsItemSearch] = useState("");
@@ -191,6 +228,7 @@ export default function Purchases() {
     setReference((data as any).reference_number ?? "");
     setPaymentMethod(((data as any).payment_method as any) ?? "cash");
     setNotes((data as any).notes ?? "");
+    setInvestorId((data as any).investor_id ?? "");
     setInvoiceImageUrl((data as any).invoice_image_url ?? null);
     setLines((((data as any).purchase_items ?? []) as any[]).map((it) => ({
       key: it.variant_id ?? it.product_id ?? it.id,
@@ -230,22 +268,23 @@ export default function Purchases() {
     if (!currentShop) return;
     setLoading(true);
     try {
-      const [list, formData] = await Promise.all([
+      const [list, formData, investorList] = await Promise.all([
         rpc<{ rows: Purchase[]; count: number; grandTotal: number; grandPaid: number }>("listPurchasesAction", page, pageSize),
         rpc<{ suppliers: Supplier[]; products: Product[] }>("loadPurchaseFormDataAction"),
+        investorsEnabled ? rpc<Investor[]>("listInvestorsAction") : Promise.resolve([] as Investor[]),
       ]);
       setPurchases(list.rows ?? []);
       setTotalCount(list.count ?? 0);
       setGrandTotal(list.grandTotal ?? 0);
       setGrandPaid(list.grandPaid ?? 0);
       setSuppliers(formData.suppliers ?? []);
-      setProducts(formData.products ?? []);
+      setInvestors(investorList ?? []);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("purchases.failed"));
     } finally {
       setLoading(false);
     }
-  }, [currentShop, page, pageSize, t]);
+  }, [currentShop, page, pageSize, t, investorsEnabled]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -322,7 +361,7 @@ export default function Purchases() {
 
   const reset = () => {
     setEditingId(null);
-    setSupplierId(""); setReference(generateReference()); setPaymentMethod("cash"); setNotes(""); setLines([]);
+    setSupplierId(""); setInvestorId(""); setReference(generateReference()); setPaymentMethod("cash"); setNotes(""); setLines([]);
     setSharedExpense("");
     setInvoiceImageUrl(null);
   };
@@ -350,6 +389,7 @@ export default function Purchases() {
 
     const input = {
       supplier_id: supplierId || null,
+      investor_id: investorsEnabled ? investorId || null : null,
       reference_number: reference || null,
       payment_method: paymentMethod,
       notes: notes || null,
@@ -364,6 +404,9 @@ export default function Purchases() {
       })),
     };
     try {
+      // Push any locally-created products first so the server can move their
+      // stock — the picker feeds from the offline store, which may be ahead.
+      try { await syncAll(); } catch { /* offline: server sync will catch up */ }
       const res = editingId
         ? await rpc<{ ok: boolean; error?: string }>("updatePurchaseAction", editingId, input)
         : await rpc<{ ok: boolean; id?: string; error?: string }>("createPurchaseAction", input);
@@ -377,6 +420,26 @@ export default function Purchases() {
     setOpen(false);
     reset();
     load();
+  };
+
+  const saveNewInvestor = async () => {
+    if (!newInvestor.name.trim()) return toast.error(t("purchases.nameRequired"));
+    try {
+      const res = await rpc<{ ok: boolean; id?: string; error?: string }>("saveInvestorAction", {
+        name: newInvestor.name.trim(),
+        phone: newInvestor.phone.trim() || null,
+        initial_amount: parseFloat(newInvestor.amount) || 0,
+      });
+      if (!res.ok || !res.id) return toast.error(res.error ?? t("purchases.failed"));
+      toast.success(t("investors.added", { defaultValue: "Investor added" }));
+      setInvestorOpen(false);
+      setNewInvestor({ name: "", phone: "", amount: "" });
+      const list = await rpc<Investor[]>("listInvestorsAction");
+      setInvestors(list ?? []);
+      setInvestorId(res.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("purchases.failed"));
+    }
   };
 
   const saveSupplier = async () => {
@@ -449,6 +512,26 @@ export default function Purchases() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          <Dialog open={investorOpen} onOpenChange={setInvestorOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader><DialogTitle>{t("investors.add", { defaultValue: "Add investor" })}</DialogTitle></DialogHeader>
+              <div className="space-y-3 py-2">
+                <div className="space-y-1.5"><Label>{t("common.name")} *</Label>
+                  <Input value={newInvestor.name} onChange={(e) => setNewInvestor({ ...newInvestor, name: e.target.value })} /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5"><Label>{t("common.phone")}</Label>
+                    <Input value={newInvestor.phone} onChange={(e) => setNewInvestor({ ...newInvestor, phone: e.target.value })} /></div>
+                  <div className="space-y-1.5"><Label>{t("investors.openingInvestment", { defaultValue: "Opening investment" })}</Label>
+                    <Input type="number" min="0" step="0.01" placeholder="0.00" value={newInvestor.amount}
+                      onChange={(e) => setNewInvestor({ ...newInvestor, amount: e.target.value })} /></div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setInvestorOpen(false)}>{t("common.cancel")}</Button>
+                <Button onClick={saveNewInvestor}>{t("common.save")}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={open} onOpenChange={(o) => {
             setOpen(o);
             if (!o) reset();
@@ -457,7 +540,7 @@ export default function Purchases() {
             <DialogTrigger asChild>
               <Button><Plus className="size-4 mr-2" /> {t("purchases.newPurchase")}</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-3xl max-h-[calc(100dvh-1rem)] flex flex-col">
+            <DialogContent className="max-w-5xl max-h-[calc(100dvh-1rem)] flex flex-col">
               <DialogHeader><DialogTitle>{editingId ? t("purchases.editPurchase") : t("purchases.recordPurchase")}</DialogTitle></DialogHeader>
               <div className="space-y-4 py-2 overflow-y-auto flex-1 -mx-4 sm:-mx-6 px-4 sm:px-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -481,6 +564,35 @@ export default function Purchases() {
                     <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("purchases.referencePlaceholder")} />
                   </div>
                 </div>
+
+                {investorsEnabled && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>{t("investors.fundedBy", { defaultValue: "Funded by investor" })}</Label>
+                      <div className="flex gap-2">
+                        <Select value={investorId || "__none__"} onValueChange={(v) => setInvestorId(v === "__none__" ? "" : v)}>
+                          <SelectTrigger className="flex-1"><SelectValue placeholder={t("investors.shopMoney", { defaultValue: "Shop money (no investor)" })} /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">{t("investors.shopMoney", { defaultValue: "Shop money (no investor)" })}</SelectItem>
+                            {investors.map((inv) => (
+                              <SelectItem key={inv.id} value={inv.id}>
+                                {inv.name} · {formatMoney(inv.balance, cur)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" variant="outline" size="icon" onClick={() => setInvestorOpen(true)} title={t("investors.add", { defaultValue: "Add investor" })}>
+                          <Plus className="size-4" />
+                        </Button>
+                      </div>
+                      {investorId && (
+                        <p className="text-[11px] text-muted-foreground">
+                          {t("investors.purchaseHint", { defaultValue: "The purchase total is deducted from this investor's balance; sales of this stock pay them back." })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">

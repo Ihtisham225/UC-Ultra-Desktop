@@ -36,6 +36,7 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
   const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
+  const [deduction, setDeduction] = useState("");
   const [refundMethod, setRefundMethod] = useState<"cash" | "card" | "mobile" | "other">("cash");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -47,7 +48,7 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
     if (!open || !saleId) return;
     (async () => {
       setLoading(true);
-      setQtyMap({}); setReason(""); setNotes(""); setRefundMethod("cash");
+      setQtyMap({}); setReason(""); setNotes(""); setDeduction(""); setRefundMethod("cash");
       try {
         const ctx = await rpc<{ receipt_number: string | null; items: SaleItem[]; alreadyReturned: Record<string, number> } | null>(
           "getReturnContextAction",
@@ -64,10 +65,12 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
     })();
   }, [open, saleId]);
 
-  const totalRefund = useMemo(
+  const itemsTotal = useMemo(
     () => items.reduce((sum, i) => sum + Number(i.unit_price) * (qtyMap[i.id] ?? 0), 0),
     [items, qtyMap]
   );
+  const deductionNum = Math.min(Math.max(parseFloat(deduction) || 0, 0), itemsTotal);
+  const totalRefund = itemsTotal - deductionNum;
 
   const setQty = (itemId: string, val: number, max: number) => {
     const clamped = Math.max(0, Math.min(max, isNaN(val) ? 0 : val));
@@ -88,6 +91,7 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
         refundMethod,
         reason: reason || null,
         notes: notes || null,
+        deduction: deductionNum > 0 ? deductionNum : null,
         lines: lines.map((l) => ({
           sale_item_id: l.item.id,
           product_id: l.item.product_id,
@@ -110,7 +114,7 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Undo2 className="size-5 text-primary" /> Process return
@@ -183,10 +187,33 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Total refund</Label>
-                <div className="h-10 px-3 flex items-center text-xl font-bold text-primary tabular-nums">
-                  {formatMoney(totalRefund, cur)}
+                <Label>Deduction</Label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={deduction}
+                  onChange={(e) => setDeduction(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-1 text-sm">
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Items total</span>
+                <span className="tabular-nums">{formatMoney(itemsTotal, cur)}</span>
+              </div>
+              {deductionNum > 0 && (
+                <div className="flex justify-between gap-4 text-destructive">
+                  <span>Deduction</span>
+                  <span className="tabular-nums">−{formatMoney(deductionNum, cur)}</span>
                 </div>
+              )}
+              <div className="flex justify-between gap-4 text-lg font-bold text-primary pt-1 border-t">
+                <span>Refund to customer</span>
+                <span className="tabular-nums">{formatMoney(totalRefund, cur)}</span>
               </div>
             </div>
 
@@ -206,7 +233,7 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={busy || totalRefund <= 0}>
+          <Button onClick={submit} disabled={busy || itemsTotal <= 0}>
             {busy ? "Processing…" : `Refund ${formatMoney(totalRefund, cur)}`}
           </Button>
         </DialogFooter>

@@ -125,7 +125,7 @@ export const SupplierReturnDialog = ({ open, onClose, purchaseId, onDone }: Prop
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Truck className="size-5 text-primary" /> Return to supplier

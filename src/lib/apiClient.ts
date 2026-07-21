@@ -62,6 +62,7 @@ export interface DeviceShop {
   notify_daily_summary: boolean;
   is_pro: boolean;
   pro_until: string | null;
+  investors_enabled?: boolean;
   created_by: string;
   role: ShopRole;
 }
