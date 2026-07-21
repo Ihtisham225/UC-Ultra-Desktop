@@ -36,6 +36,7 @@ const DEFAULT_PAGE_SIZE = 20;
 
 interface Supplier { id: string; name: string; phone: string | null; }
 interface Investor { id: string; name: string; balance: number; }
+interface PoolLite { id: string; cash: number; }
 interface Variant {
   id: string; product_id: string; name: string;
   sku: string | null; barcode: string | null;
@@ -142,6 +143,7 @@ export default function Purchases() {
   // Investors module (Settings toggle): who funds this purchase.
   const investorsEnabled = !!currentShop?.investors_enabled;
   const [investors, setInvestors] = useState<Investor[]>([]);
+  const [pool, setPool] = useState<PoolLite | null>(null);
   const [investorId, setInvestorId] = useState<string>("");
   const [investorOpen, setInvestorOpen] = useState(false);
   const [newInvestor, setNewInvestor] = useState({ name: "", phone: "", amount: "" });
@@ -268,10 +270,11 @@ export default function Purchases() {
     if (!currentShop) return;
     setLoading(true);
     try {
-      const [list, formData, investorList] = await Promise.all([
+      const [list, formData, investorList, poolState] = await Promise.all([
         rpc<{ rows: Purchase[]; count: number; grandTotal: number; grandPaid: number }>("listPurchasesAction", page, pageSize),
         rpc<{ suppliers: Supplier[]; products: Product[] }>("loadPurchaseFormDataAction"),
         investorsEnabled ? rpc<Investor[]>("listInvestorsAction") : Promise.resolve([] as Investor[]),
+        investorsEnabled ? rpc<PoolLite | null>("getPoolAction") : Promise.resolve(null),
       ]);
       setPurchases(list.rows ?? []);
       setTotalCount(list.count ?? 0);
@@ -279,6 +282,7 @@ export default function Purchases() {
       setGrandPaid(list.grandPaid ?? 0);
       setSuppliers(formData.suppliers ?? []);
       setInvestors(investorList ?? []);
+      setPool(poolState ?? null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("purchases.failed"));
     } finally {
@@ -535,7 +539,11 @@ export default function Purchases() {
           <Dialog open={open} onOpenChange={(o) => {
             setOpen(o);
             if (!o) reset();
-            else if (!editingId && !reference) setReference(generateReference());
+            else if (!editingId) {
+              if (!reference) setReference(generateReference());
+              // Pool mode: new purchases draw from the shared pool by default.
+              if (investorsEnabled && pool && pool.cash > 0) setInvestorId(pool.id);
+            }
           }}>
             <DialogTrigger asChild>
               <Button><Plus className="size-4 mr-2" /> {t("purchases.newPurchase")}</Button>
@@ -574,6 +582,11 @@ export default function Purchases() {
                           <SelectTrigger className="flex-1"><SelectValue placeholder={t("investors.shopMoney", { defaultValue: "Shop money (no investor)" })} /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="__none__">{t("investors.shopMoney", { defaultValue: "Shop money (no investor)" })}</SelectItem>
+                            {pool && (
+                              <SelectItem value={pool.id}>
+                                {t("investors.sharedPool", { defaultValue: "Shared pool" })} · {formatMoney(pool.cash, cur)}
+                              </SelectItem>
+                            )}
                             {investors.map((inv) => (
                               <SelectItem key={inv.id} value={inv.id}>
                                 {inv.name} · {formatMoney(inv.balance, cur)}

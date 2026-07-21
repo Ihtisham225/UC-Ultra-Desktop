@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield } from "lucide-react";
+import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, PiggyBank } from "lucide-react";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR", "JOD", "EGP", "INR", "PKR", "NGN", "KES", "ZAR", "BRL", "MXN"];
@@ -44,6 +44,9 @@ export default function Settings() {
   const [notifyLow, setNotifyLow] = useState(true);
   const [notifyDaily, setNotifyDaily] = useState(false);
   const [investorsOn, setInvestorsOn] = useState(false);
+  const [investorMode, setInvestorMode] = useState<"individual" | "shared" | "both">("individual");
+  const [investorCommission, setInvestorCommission] = useState("0");
+  const [investorDeductExpenses, setInvestorDeductExpenses] = useState(true);
 
   const [busy, setBusy] = useState(false);
 
@@ -64,6 +67,9 @@ export default function Settings() {
       setNotifyLow(currentShop.notify_low_stock ?? true);
       setNotifyDaily(currentShop.notify_daily_summary ?? false);
       setInvestorsOn(currentShop.investors_enabled ?? false);
+      setInvestorMode(currentShop.investor_mode ?? "individual");
+      setInvestorCommission(String(currentShop.investor_default_commission ?? 0));
+      setInvestorDeductExpenses(currentShop.investor_deduct_expenses ?? true);
     }
   }, [currentShop]);
 
@@ -156,20 +162,23 @@ export default function Settings() {
     refresh();
   };
 
-  const toggleInvestors = async (on: boolean) => {
-    setInvestorsOn(on);
+  const saveInvestorSettings = async () => {
+    setBusy(true);
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("setInvestorsEnabledAction", on);
-      if (!res.ok) {
-        setInvestorsOn(!on);
-        return toast.error(res.error ?? "Failed");
-      }
+      const res = await rpc<{ ok: boolean; error?: string }>("saveInvestorSettingsAction", {
+        enabled: investorsOn,
+        mode: investorMode,
+        default_commission: Math.min(Math.max(parseFloat(investorCommission) || 0, 0), 100),
+        deduct_expenses: investorDeductExpenses,
+      });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
     } catch (e) {
-      setInvestorsOn(!on);
       return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
     }
-    toast.success(on
-      ? t("investors.enabledToast", { defaultValue: "Investors enabled — find it under Debts in the menu" })
+    toast.success(investorsOn
+      ? t("investors.enabledToast", { defaultValue: "Investor settings saved — find Investors under Debts in the menu" })
       : t("investors.disabledToast", { defaultValue: "Investors disabled" }));
     refresh();
   };
@@ -243,6 +252,7 @@ export default function Settings() {
           <TabsTrigger value="shop"><Store className="size-3.5 mr-1.5" />{t("settings.tabs.shop")}</TabsTrigger>
           <TabsTrigger value="receipt"><Receipt className="size-3.5 mr-1.5" />{t("settings.tabs.receipt")}</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="size-3.5 mr-1.5" />{t("settings.tabs.notifications")}</TabsTrigger>
+          {canEdit && <TabsTrigger value="investors"><PiggyBank className="size-3.5 mr-1.5" />Investors</TabsTrigger>}
           <TabsTrigger value="data"><Download className="size-3.5 mr-1.5" />{t("settings.tabs.data")}</TabsTrigger>
           {canEdit && <TabsTrigger value="danger"><Shield className="size-3.5 mr-1.5" />{t("settings.tabs.danger")}</TabsTrigger>}
         </TabsList>
@@ -304,15 +314,6 @@ export default function Settings() {
               <div className="space-y-1.5"><Label>{t("common.phone")}</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.phonePlaceholder")} /></div>
               <div className="space-y-1.5"><Label>{t("common.email")}</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.emailPlaceholder")} /></div>
             </div>
-            <div className="flex items-center justify-between gap-4 py-2 border-t pt-4">
-              <div>
-                <Label>{t("investors.title", { defaultValue: "Investors" })}</Label>
-                <p className="text-xs text-muted-foreground">
-                  {t("investors.settingHelp", { defaultValue: "Fund purchases with investor capital and pay them back automatically as that stock sells." })}
-                </p>
-              </div>
-              <Switch checked={investorsOn} onCheckedChange={toggleInvestors} disabled={role !== "owner"} />
-            </div>
             {canEditShop && <Button disabled={busy} onClick={saveShop} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.shop.saveShop")}</Button>}
           </Card>
         </TabsContent>
@@ -340,6 +341,75 @@ export default function Settings() {
               <Switch checked={notifyDaily} onCheckedChange={setNotifyDaily} disabled={!canEditShop} />
             </div>
             {canEditShop && <Button disabled={busy} onClick={saveNotifications} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.notifications.saveNotifications")}</Button>}
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="investors">
+          <Card className="shadow-card p-6 space-y-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label className="text-base">Enable investors</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Fund purchases with investor capital and pay them back automatically as that stock sells. Adds an <b>Investors</b> page under Debts.
+                </p>
+              </div>
+              <Switch checked={investorsOn} onCheckedChange={setInvestorsOn} disabled={role !== "owner"} />
+            </div>
+
+            {investorsOn && (
+              <>
+                <div className="space-y-2 border-t pt-5">
+                  <Label>How investors work in your shop</Label>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {([
+                      { v: "individual", title: "Individual", desc: "Each investor funds their own stock and is paid back on its sales." },
+                      { v: "shared", title: "Shared pool", desc: "Everyone's money in one pot; profit split by each person's stake." },
+                      { v: "both", title: "Both", desc: "Use individual investors and a shared pool side by side." },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.v}
+                        type="button"
+                        onClick={() => setInvestorMode(opt.v)}
+                        className={`text-left rounded-lg border p-3 transition ${investorMode === opt.v ? "border-primary ring-1 ring-primary bg-primary/5" : "hover:border-muted-foreground/40"}`}
+                      >
+                        <div className="font-medium text-sm">{opt.title}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">{opt.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {(investorMode === "individual" || investorMode === "both") && (
+                  <div className="space-y-1.5 border-t pt-5">
+                    <Label>Default shop commission %</Label>
+                    <Input
+                      type="number" min="0" max="100" step="0.5" className="max-w-[160px]"
+                      value={investorCommission}
+                      onChange={(e) => setInvestorCommission(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Prefilled when you add a new individual investor — the share your shop keeps from their stock's sales. You can still change it per investor.
+                    </p>
+                  </div>
+                )}
+
+                {(investorMode === "shared" || investorMode === "both") && (
+                  <div className="flex items-center justify-between gap-4 border-t pt-5">
+                    <div>
+                      <Label>Deduct shop expenses from pool profit</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        When distributing pool profit, subtract the pool's share of your shop expenses first (by its share of sales). Off = split gross profit.
+                      </p>
+                    </div>
+                    <Switch checked={investorDeductExpenses} onCheckedChange={setInvestorDeductExpenses} />
+                  </div>
+                )}
+              </>
+            )}
+
+            <Button disabled={busy || role !== "owner"} onClick={saveInvestorSettings} className="bg-gradient-primary text-primary-foreground hover:opacity-90">
+              {busy ? "Saving…" : "Save investor settings"}
+            </Button>
           </Card>
         </TabsContent>
 

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
-import { getSession, subscribe, switchToShop } from "@/lib/deviceSession";
+import { getSession, subscribe, switchToShop, refreshShops } from "@/lib/deviceSession";
 import type { DeviceShop, ShopRole } from "@/lib/apiClient";
 
 export type { ShopRole };
@@ -35,6 +35,20 @@ export const ShopProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     setState(derive());
     return subscribe(() => setState(derive()));
+  }, []);
+
+  // Keep shop settings (investors config, currency, receipt…) in step with the
+  // web app: re-pull on mount, when the window regains focus, and every 60s.
+  useEffect(() => {
+    if (!getSession()) return;
+    refreshShops();
+    const onFocus = () => refreshShops();
+    window.addEventListener("focus", onFocus);
+    const id = setInterval(() => { if (document.hasFocus()) refreshShops(); }, 60_000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearInterval(id);
+    };
   }, []);
 
   const setCurrentShopId = useCallback(async (id: string) => {

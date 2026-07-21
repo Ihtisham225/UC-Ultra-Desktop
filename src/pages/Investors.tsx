@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { PiggyBank, Plus, Pencil, Trash2, ArrowDownToLine, ArrowUpFromLine, History } from "lucide-react";
+import { PiggyBank, Plus, Pencil, Trash2, ArrowDownToLine, ArrowUpFromLine, History, Users, HandCoins } from "lucide-react";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { format } from "date-fns";
@@ -41,6 +41,49 @@ interface InvestorTxRow {
   created_at: string;
 }
 
+interface PoolMemberDto {
+  id: string;
+  name: string;
+  phone: string | null;
+  notes: string | null;
+  capital: number;
+  share_percent: number;
+  total_deposited: number;
+  total_withdrawn: number;
+  total_profit: number;
+  created_at: string;
+}
+
+interface PoolDistributionDto {
+  id: string;
+  period_start: string;
+  gross_profit: number;
+  expenses_deducted: number;
+  net_profit: number;
+  notes: string | null;
+  created_at: string;
+}
+
+interface PoolStateDto {
+  id: string;
+  cash: number;
+  stock_value: number;
+  total_capital: number;
+  accrued_profit: number;
+  suggested_expenses: number;
+  members: PoolMemberDto[];
+  distributions: PoolDistributionDto[];
+}
+
+interface PoolMemberTxRow {
+  id: string;
+  type: string;
+  amount: number;
+  capital_after: number;
+  notes: string | null;
+  created_at: string;
+}
+
 const TX_LABELS: Record<string, string> = {
   deposit: "Money added",
   withdrawal: "Money taken out",
@@ -48,6 +91,14 @@ const TX_LABELS: Record<string, string> = {
   purchase_reversal: "Purchase reversed",
   sale_credit: "Stock sold",
   sale_credit_reversal: "Sale reversed",
+  adjustment: "Adjustment",
+};
+
+const POOL_TX_LABELS: Record<string, string> = {
+  deposit: "Money added",
+  withdrawal: "Money taken out",
+  profit_share: "Profit share",
+  loss_share: "Loss share",
   adjustment: "Adjustment",
 };
 
@@ -68,6 +119,10 @@ export default function Investors() {
   const formatMoney = useFormatMoney();
   const cur = currentShop?.currency ?? "USD";
   const canDelete = role === "owner";
+  const mode = currentShop?.investor_mode ?? "individual";
+  const showPool = mode === "shared" || mode === "both";
+  const showIndividual = mode === "individual" || mode === "both";
+  const defaultCommission = currentShop?.investor_default_commission ?? 0;
 
   const [rows, setRows] = useState<InvestorDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,11 +136,25 @@ export default function Investors() {
   const [busy, setBusy] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
 
+  // Shared pool
+  const [pool, setPool] = useState<PoolStateDto | null>(null);
+  const [memberEditing, setMemberEditing] = useState<{ id?: string; name: string; phone: string; notes: string; initial_amount: string } | null>(null);
+  const [memberMoney, setMemberMoney] = useState<{ member: PoolMemberDto; kind: "deposit" | "withdrawal" } | null>(null);
+  const [memberLedger, setMemberLedger] = useState<PoolMemberDto | null>(null);
+  const [memberTxRows, setMemberTxRows] = useState<PoolMemberTxRow[]>([]);
+  const [memberTxLoading, setMemberTxLoading] = useState(false);
+  const [distribute, setDistribute] = useState<{ expenses: string; notes: string } | null>(null);
+
   const load = useCallback(async () => {
     if (!currentShop) return;
     setLoading(true);
     try {
-      setRows(await rpc<InvestorDto[]>("listInvestorsAction"));
+      const [list, poolState] = await Promise.all([
+        rpc<InvestorDto[]>("listInvestorsAction"),
+        rpc<PoolStateDto | null>("getPoolAction"),
+      ]);
+      setRows(list);
+      setPool(poolState);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load investors");
     } finally {
@@ -180,6 +249,113 @@ export default function Investors() {
     load();
   };
 
+  // ── Shared pool handlers ──────────────────────────────────────────────────
+  const saveMember = async () => {
+    if (!memberEditing) return;
+    if (!memberEditing.name.trim()) return toast.error("Name is required");
+    setBusy(true);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("savePoolMemberAction", {
+        id: memberEditing.id,
+        name: memberEditing.name.trim(),
+        phone: memberEditing.phone.trim() || null,
+        notes: memberEditing.notes.trim() || null,
+        initial_amount: memberEditing.id ? null : parseFloat(memberEditing.initial_amount) || 0,
+      });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+    toast.success(memberEditing.id ? "Member updated" : "Member added");
+    setMemberEditing(null);
+    load();
+  };
+
+  const submitMemberMoney = async () => {
+    if (!memberMoney) return;
+    const amt = parseFloat(amount) || 0;
+    if (amt <= 0) return toast.error("Enter an amount");
+    setBusy(true);
+    try {
+      const res = await rpc<{ ok: boolean; capital?: number; settled?: boolean; error?: string }>("poolMemberTxAction", {
+        member_id: memberMoney.member.id,
+        type: memberMoney.kind,
+        amount: amt,
+        notes: moneyNotes.trim() || null,
+      });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+      toast.success(
+        (res.settled ? "Profits distributed first. " : "") +
+          (memberMoney.kind === "deposit"
+            ? `Added ${formatMoney(amt, cur)} — capital ${formatMoney(res.capital ?? 0, cur)}`
+            : `Withdrew ${formatMoney(amt, cur)} — capital ${formatMoney(res.capital ?? 0, cur)}`)
+      );
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+    setMemberMoney(null);
+    setAmount("");
+    setMoneyNotes("");
+    load();
+  };
+
+  const openMemberLedger = async (m: PoolMemberDto) => {
+    setMemberLedger(m);
+    setMemberTxLoading(true);
+    try {
+      setMemberTxRows(await rpc<PoolMemberTxRow[]>("listPoolMemberTransactionsAction", m.id));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load transactions");
+    } finally {
+      setMemberTxLoading(false);
+    }
+  };
+
+  const removeMember = async (m: PoolMemberDto) => {
+    const ok = await confirm({
+      title: "Remove member",
+      description: `Remove ${m.name} from the pool? Their capital must already be 0.`,
+      variant: "destructive",
+    });
+    if (!ok) return;
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deletePoolMemberAction", m.id);
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    }
+    toast.success("Removed");
+    load();
+  };
+
+  const submitDistribute = async () => {
+    if (!distribute || !pool) return;
+    setBusy(true);
+    try {
+      const res = await rpc<{ ok: boolean; gross_profit?: number; expenses_deducted?: number; net_profit?: number; error?: string }>(
+        "distributePoolAction",
+        {
+          expenses_deduction: distribute.expenses === "" ? null : Math.max(parseFloat(distribute.expenses) || 0, 0),
+          notes: distribute.notes.trim() || null,
+        },
+      );
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+      toast.success(
+        `Distributed ${formatMoney(res.net_profit ?? 0, cur)} (profit ${formatMoney(res.gross_profit ?? 0, cur)} − expenses ${formatMoney(res.expenses_deducted ?? 0, cur)})`
+      );
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+    setDistribute(null);
+    load();
+  };
+
   const totals = useMemo(() => ({
     balance: rows.reduce((a, r) => a + r.balance, 0),
     stock: rows.reduce((a, r) => a + r.stock_value, 0),
@@ -197,11 +373,163 @@ export default function Investors() {
             Capital that funds purchases — sales of that stock pay the investor back.
           </p>
         </div>
-        <Button onClick={() => setEditing({ ...blank })}>
-          <Plus className="size-4 me-1" /> Add investor
-        </Button>
+        {showIndividual && (
+          <Button onClick={() => setEditing({ ...blank, commission_percent: defaultCommission ? String(defaultCommission) : "" })}>
+            <Plus className="size-4 me-1" /> Add investor
+          </Button>
+        )}
       </header>
 
+      {/* ── Shared pool ─────────────────────────────────────────────── */}
+      {showPool && (
+      <Card className="p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold flex items-center gap-2">
+              <Users className="size-4 text-primary" /> Shared pool
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Everyone's money in one pot — purchases draw from it, and profit is split by each member's share.
+            </p>
+          </div>
+          {pool && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setMemberEditing({ name: "", phone: "", notes: "", initial_amount: "" })}>
+                <Plus className="size-4 me-1" /> Add member
+              </Button>
+              <Button size="sm" onClick={() => setDistribute({ expenses: String(pool.suggested_expenses || ""), notes: "" })} disabled={role !== "owner"}>
+                <HandCoins className="size-4 me-1" /> Distribute profits
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {!pool ? (
+          <div className="text-center py-8 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Pool not ready yet. Turn on "Shared pool" (or "Both") in Settings → Investors.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-lg border px-4 py-2.5">
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Total capital</div>
+                <div className="text-lg font-bold tabular-nums">{formatMoney(pool.total_capital, cur)}</div>
+              </div>
+              <div className="rounded-lg border px-4 py-2.5">
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Cash available</div>
+                <div className="text-lg font-bold tabular-nums">{formatMoney(pool.cash, cur)}</div>
+              </div>
+              <div className="rounded-lg border px-4 py-2.5">
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">In stock (at cost)</div>
+                <div className="text-lg font-bold tabular-nums">{formatMoney(pool.stock_value, cur)}</div>
+              </div>
+              <div className="rounded-lg border px-4 py-2.5">
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Profit to distribute</div>
+                <div className={`text-lg font-bold tabular-nums ${pool.accrued_profit < 0 ? "text-destructive" : "text-primary"}`}>
+                  {formatMoney(pool.accrued_profit, cur)}
+                </div>
+              </div>
+            </div>
+
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Member</TableHead>
+                    <TableHead className="text-end">Share</TableHead>
+                    <TableHead className="text-end">Put in</TableHead>
+                    <TableHead className="text-end">Taken out</TableHead>
+                    <TableHead className="text-end">Profit earned</TableHead>
+                    <TableHead className="text-end">Capital</TableHead>
+                    <TableHead className="w-40"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pool.members.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        No members yet — add each person and how much they put in.
+                      </TableCell>
+                    </TableRow>
+                  ) : pool.members.map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell className="font-medium">{m.name}</TableCell>
+                      <TableCell className="text-end tabular-nums">{m.share_percent}%</TableCell>
+                      <TableCell className="text-end tabular-nums">{formatMoney(m.total_deposited, cur)}</TableCell>
+                      <TableCell className="text-end tabular-nums">{formatMoney(m.total_withdrawn, cur)}</TableCell>
+                      <TableCell className={`text-end tabular-nums ${m.total_profit < 0 ? "text-destructive" : ""}`}>{formatMoney(m.total_profit, cur)}</TableCell>
+                      <TableCell className="text-end tabular-nums font-semibold">{formatMoney(m.capital, cur)}</TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          <Button variant="ghost" size="icon" title="Add money" onClick={() => { setMemberMoney({ member: m, kind: "deposit" }); setAmount(""); setMoneyNotes(""); }}>
+                            <ArrowDownToLine className="size-4 text-primary" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="Take money out" onClick={() => { setMemberMoney({ member: m, kind: "withdrawal" }); setAmount(""); setMoneyNotes(""); }}>
+                            <ArrowUpFromLine className="size-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="History" onClick={() => openMemberLedger(m)}>
+                            <History className="size-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="Edit" onClick={() => setMemberEditing({ id: m.id, name: m.name, phone: m.phone ?? "", notes: m.notes ?? "", initial_amount: "" })}>
+                            <Pencil className="size-4" />
+                          </Button>
+                          {canDelete && (
+                            <Button variant="ghost" size="icon" title="Remove" onClick={() => removeMember(m)}>
+                              <Trash2 className="size-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {pool.distributions.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium mb-2">Past distributions</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="text-end">Profit</TableHead>
+                        <TableHead className="text-end">Expenses</TableHead>
+                        <TableHead className="text-end">Distributed</TableHead>
+                        <TableHead>Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pool.distributions.map((d) => (
+                        <TableRow key={d.id}>
+                          <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(d.created_at), "MMM d, yyyy HH:mm")}</TableCell>
+                          <TableCell className="text-end tabular-nums">{formatMoney(d.gross_profit, cur)}</TableCell>
+                          <TableCell className="text-end tabular-nums">{d.expenses_deducted ? `−${formatMoney(d.expenses_deducted, cur)}` : "—"}</TableCell>
+                          <TableCell className={`text-end tabular-nums font-medium ${d.net_profit < 0 ? "text-destructive" : "text-primary"}`}>{formatMoney(d.net_profit, cur)}</TableCell>
+                          <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">{d.notes ?? "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+      )}
+
+      {showIndividual && showPool && (
+        <h2 className="font-semibold flex items-center gap-2 pt-2">
+          <PiggyBank className="size-4 text-primary" /> Individual investors
+        </h2>
+      )}
+
+      {showIndividual && (
+      <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="px-5 py-3">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">Investors</div>
@@ -289,6 +617,8 @@ export default function Investors() {
           </TableBody>
         </Table>
       </Card>
+      </>
+      )}
 
       {/* Add / edit investor */}
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
@@ -340,7 +670,7 @@ export default function Investors() {
         </DialogContent>
       </Dialog>
 
-      {/* Deposit / withdraw */}
+      {/* Deposit / withdraw (individual) */}
       <Dialog open={!!money} onOpenChange={(o) => !o && setMoney(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -370,7 +700,7 @@ export default function Investors() {
         </DialogContent>
       </Dialog>
 
-      {/* Ledger */}
+      {/* Ledger (individual) */}
       <Dialog open={!!ledger} onOpenChange={(o) => !o && setLedger(null)}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{ledger?.name} — history</DialogTitle></DialogHeader>
@@ -404,6 +734,181 @@ export default function Investors() {
               </TableBody>
             </Table>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pool: add / edit member */}
+      <Dialog open={!!memberEditing} onOpenChange={(o) => !o && setMemberEditing(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>{memberEditing?.id ? "Edit member" : "Add pool member"}</DialogTitle></DialogHeader>
+          {memberEditing && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Name *</Label>
+                  <Input value={memberEditing.name} onChange={(e) => setMemberEditing({ ...memberEditing, name: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Phone</Label>
+                  <Input value={memberEditing.phone} onChange={(e) => setMemberEditing({ ...memberEditing, phone: e.target.value })} />
+                </div>
+              </div>
+              {!memberEditing.id && (
+                <div className="space-y-1.5">
+                  <Label>Opening contribution</Label>
+                  <Input
+                    type="number" min="0" step="0.01" placeholder="0.00"
+                    value={memberEditing.initial_amount}
+                    onChange={(e) => setMemberEditing({ ...memberEditing, initial_amount: e.target.value })}
+                  />
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label>Notes</Label>
+                <Textarea rows={2} value={memberEditing.notes} onChange={(e) => setMemberEditing({ ...memberEditing, notes: e.target.value })} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMemberEditing(null)}>Cancel</Button>
+            <Button onClick={saveMember} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pool: member deposit / withdraw */}
+      <Dialog open={!!memberMoney} onOpenChange={(o) => !o && setMemberMoney(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {memberMoney?.kind === "deposit" ? "Add money" : "Take money out"} — {memberMoney?.member.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground">
+              Capital: <span className="font-semibold text-foreground tabular-nums">{formatMoney(memberMoney?.member.capital ?? 0, cur)}</span>
+              {memberMoney?.kind === "withdrawal" && pool && (
+                <> · Pool cash: <span className="font-semibold text-foreground tabular-nums">{formatMoney(pool.cash, cur)}</span></>
+              )}
+            </div>
+            {pool && pool.accrued_profit !== 0 && (
+              <p className="text-xs text-muted-foreground">
+                Undistributed profit of {formatMoney(pool.accrued_profit, cur)} will be shared out first, so everyone's capital is up to date before this change.
+              </p>
+            )}
+            <div className="space-y-1.5">
+              <Label>Amount *</Label>
+              <Input type="number" min="0" step="0.01" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notes</Label>
+              <Input value={moneyNotes} onChange={(e) => setMoneyNotes(e.target.value)} placeholder="Optional" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMemberMoney(null)}>Cancel</Button>
+            <Button onClick={submitMemberMoney} disabled={busy}>
+              {busy ? "Saving…" : memberMoney?.kind === "deposit" ? "Add money" : "Withdraw"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pool: member history */}
+      <Dialog open={!!memberLedger} onOpenChange={(o) => !o && setMemberLedger(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{memberLedger?.name} — history</DialogTitle></DialogHeader>
+          <div className="border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>What happened</TableHead>
+                  <TableHead>Details</TableHead>
+                  <TableHead className="text-end">Amount</TableHead>
+                  <TableHead className="text-end">Capital</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {memberTxLoading ? (
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Loading…</TableCell></TableRow>
+                ) : memberTxRows.length === 0 ? (
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No transactions yet.</TableCell></TableRow>
+                ) : memberTxRows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
+                    <TableCell>{POOL_TX_LABELS[r.type] ?? r.type}</TableCell>
+                    <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{r.notes ?? "—"}</TableCell>
+                    <TableCell className={`text-end tabular-nums font-medium ${r.amount < 0 ? "text-destructive" : "text-primary"}`}>
+                      {r.amount < 0 ? "−" : "+"}{formatMoney(Math.abs(r.amount), cur)}
+                    </TableCell>
+                    <TableCell className="text-end tabular-nums">{formatMoney(r.capital_after, cur)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pool: distribute profits */}
+      <Dialog open={!!distribute} onOpenChange={(o) => !o && setDistribute(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Distribute profits</DialogTitle></DialogHeader>
+          {distribute && pool && (
+            <div className="space-y-4">
+              <div className="rounded-lg border divide-y">
+                <div className="flex justify-between px-4 py-2 text-sm">
+                  <span className="text-muted-foreground">Profit since last distribution</span>
+                  <span className="font-semibold tabular-nums">{formatMoney(pool.accrued_profit, cur)}</span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-2 text-sm gap-3">
+                  <span className="text-muted-foreground shrink-0">Shop expenses to deduct</span>
+                  <Input
+                    type="number" min="0" step="0.01" className="w-32 text-end"
+                    value={distribute.expenses}
+                    onChange={(e) => setDistribute({ ...distribute, expenses: e.target.value })}
+                  />
+                </div>
+                <div className="flex justify-between px-4 py-2 text-sm">
+                  <span className="text-muted-foreground">To distribute</span>
+                  {(() => {
+                    const net = pool.accrued_profit - (parseFloat(distribute.expenses) || 0);
+                    return (
+                      <span className={`font-bold tabular-nums ${net < 0 ? "text-destructive" : "text-primary"}`}>
+                        {formatMoney(net, cur)}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The expense amount is prefilled with the pool's share of shop expenses for this period (based on its share of sales) — adjust it if needed. Each member's share is added to their capital.
+              </p>
+              {pool.members.length > 0 && pool.total_capital > 0 && (
+                <div className="text-xs space-y-1">
+                  {pool.members.filter((m) => m.capital > 0).map((m) => {
+                    const net = pool.accrued_profit - (parseFloat(distribute.expenses) || 0);
+                    const share = (m.capital / pool.total_capital) * net;
+                    return (
+                      <div key={m.id} className="flex justify-between">
+                        <span className="text-muted-foreground">{m.name} ({m.share_percent}%)</span>
+                        <span className={`tabular-nums font-medium ${share < 0 ? "text-destructive" : ""}`}>{formatMoney(Math.round(share * 100) / 100, cur)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label>Notes</Label>
+                <Input value={distribute.notes} onChange={(e) => setDistribute({ ...distribute, notes: e.target.value })} placeholder="e.g. Weekly settlement" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDistribute(null)}>Cancel</Button>
+            <Button onClick={submitDistribute} disabled={busy}>{busy ? "Distributing…" : "Distribute"}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

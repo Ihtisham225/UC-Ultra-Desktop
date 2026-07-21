@@ -123,6 +123,33 @@ export async function switchToShop(shopId: string): Promise<void> {
   persist({ ...current, token: r.token, currentShopId: r.currentShopId, shops: r.shops, permissionsByShop: r.permissionsByShop });
 }
 
+/**
+ * Re-pull fresh shop records (settings like investors_enabled, mode, currency…)
+ * and permissions for the current token, without re-scoping. Lets web-side
+ * shop-setting changes reach the desktop between logins. Online-only, silent
+ * on failure (offline-first). Only persists when something actually changed,
+ * so it won't churn the session on every poll.
+ */
+export async function refreshShops(): Promise<void> {
+  const current = getSession();
+  if (!current || !navigator.onLine) return;
+  try {
+    const fresh = await getDeviceSession(current.token);
+    const next: StoredSession = {
+      token: current.token,
+      user: fresh.user,
+      currentShopId: fresh.currentShopId,
+      shops: fresh.shops,
+      permissionsByShop: fresh.permissionsByShop,
+    };
+    if (JSON.stringify({ ...current, token: "" }) !== JSON.stringify({ ...next, token: "" })) {
+      persist(next);
+    }
+  } catch {
+    /* offline / transient — keep the cached session */
+  }
+}
+
 export function signOut() {
   apiLogout();
   persist(null);
