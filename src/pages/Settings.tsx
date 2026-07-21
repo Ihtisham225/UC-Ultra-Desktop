@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, PiggyBank } from "lucide-react";
+import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, TrendingUp } from "lucide-react";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR", "JOD", "EGP", "INR", "PKR", "NGN", "KES", "ZAR", "BRL", "MXN"];
@@ -252,7 +252,7 @@ export default function Settings() {
           <TabsTrigger value="shop"><Store className="size-3.5 mr-1.5" />{t("settings.tabs.shop")}</TabsTrigger>
           <TabsTrigger value="receipt"><Receipt className="size-3.5 mr-1.5" />{t("settings.tabs.receipt")}</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="size-3.5 mr-1.5" />{t("settings.tabs.notifications")}</TabsTrigger>
-          {canEdit && <TabsTrigger value="investors"><PiggyBank className="size-3.5 mr-1.5" />Investors</TabsTrigger>}
+          {canEdit && <TabsTrigger value="investors"><TrendingUp className="size-3.5 mr-1.5" />Investors</TabsTrigger>}
           <TabsTrigger value="data"><Download className="size-3.5 mr-1.5" />{t("settings.tabs.data")}</TabsTrigger>
           {canEdit && <TabsTrigger value="danger"><Shield className="size-3.5 mr-1.5" />{t("settings.tabs.danger")}</TabsTrigger>}
         </TabsList>

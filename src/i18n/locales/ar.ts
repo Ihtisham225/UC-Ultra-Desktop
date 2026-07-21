@@ -140,6 +140,7 @@ const ar: Translations = {
     suppliers: "الموردين",
     expenses: "المصاريف",
     debts: "الديون",
+    investors: "المستثمرون",
     staff: "الموظفين",
     settings: "الإعدادات",
     support: "الدعم",

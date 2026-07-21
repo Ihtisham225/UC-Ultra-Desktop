@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { PiggyBank, Plus, Pencil, Trash2, ArrowDownToLine, ArrowUpFromLine, History, Users, HandCoins } from "lucide-react";
+import { TrendingUp, Plus, Pencil, Trash2, ArrowDownToLine, ArrowUpFromLine, History, Users, HandCoins } from "lucide-react";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { format } from "date-fns";
@@ -84,6 +84,12 @@ interface PoolMemberTxRow {
   created_at: string;
 }
 
+interface ShopInvestorEarnings {
+  commission_earned: number;
+  pool_expenses_recovered: number;
+  total: number;
+}
+
 const TX_LABELS: Record<string, string> = {
   deposit: "Money added",
   withdrawal: "Money taken out",
@@ -136,6 +142,9 @@ export default function Investors() {
   const [busy, setBusy] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
 
+  // Shop's own earnings from the investor arrangement
+  const [earnings, setEarnings] = useState<ShopInvestorEarnings | null>(null);
+
   // Shared pool
   const [pool, setPool] = useState<PoolStateDto | null>(null);
   const [memberEditing, setMemberEditing] = useState<{ id?: string; name: string; phone: string; notes: string; initial_amount: string } | null>(null);
@@ -149,12 +158,14 @@ export default function Investors() {
     if (!currentShop) return;
     setLoading(true);
     try {
-      const [list, poolState] = await Promise.all([
+      const [list, poolState, shopEarnings] = await Promise.all([
         rpc<InvestorDto[]>("listInvestorsAction"),
         rpc<PoolStateDto | null>("getPoolAction"),
+        rpc<ShopInvestorEarnings>("getShopInvestorEarningsAction"),
       ]);
       setRows(list);
       setPool(poolState);
+      setEarnings(shopEarnings);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load investors");
     } finally {
@@ -367,7 +378,7 @@ export default function Investors() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <PiggyBank className="size-6 text-primary" /> Investors
+            <TrendingUp className="size-6 text-primary" /> Investors
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Capital that funds purchases — sales of that stock pay the investor back.
@@ -379,6 +390,37 @@ export default function Investors() {
           </Button>
         )}
       </header>
+
+      {/* What the shop itself keeps from the investor arrangement */}
+      {earnings && earnings.total > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <HandCoins className="size-4 text-primary" />
+            <h2 className="font-semibold">Your shop's earnings from investors</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {showIndividual && (
+              <div className="rounded-lg border px-4 py-2.5">
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Commission earned</div>
+                <div className="text-lg font-bold tabular-nums">{formatMoney(earnings.commission_earned, cur)}</div>
+                <div className="text-[11px] text-muted-foreground">Your cut of investors' stock sales</div>
+              </div>
+            )}
+            {showPool && (
+              <div className="rounded-lg border px-4 py-2.5">
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Expenses recovered from pool</div>
+                <div className="text-lg font-bold tabular-nums">{formatMoney(earnings.pool_expenses_recovered, cur)}</div>
+                <div className="text-[11px] text-muted-foreground">Pool's share of your shop expenses</div>
+              </div>
+            )}
+            <div className="rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Total the shop keeps</div>
+              <div className="text-lg font-bold tabular-nums text-primary">{formatMoney(earnings.total, cur)}</div>
+              <div className="text-[11px] text-muted-foreground">On top of your own sales profit (see Analytics)</div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* ── Shared pool ─────────────────────────────────────────────── */}
       {showPool && (
@@ -524,7 +566,7 @@ export default function Investors() {
 
       {showIndividual && showPool && (
         <h2 className="font-semibold flex items-center gap-2 pt-2">
-          <PiggyBank className="size-4 text-primary" /> Individual investors
+          <TrendingUp className="size-4 text-primary" /> Individual investors
         </h2>
       )}
 

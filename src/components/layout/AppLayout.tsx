@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, HelpCircle, FolderTree, Tag , PiggyBank } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, HelpCircle, FolderTree, Tag , TrendingUp } from "lucide-react";
 import { WelcomeTour } from "@/components/WelcomeTour";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
@@ -64,7 +64,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/suppliers", label: t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
     { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },
     { to: "/debts", label: t("nav.debts"), icon: HandCoins, show: perms.canManageExpenses },
-    { to: "/investors", label: t("nav.investors"), icon: PiggyBank, show: perms.canManageExpenses && !!currentShop?.investors_enabled },
+    { to: "/investors", label: t("nav.investors"), icon: TrendingUp, show: perms.canManageExpenses && !!currentShop?.investors_enabled },
     { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, show: perms.canManageStaff },
     { to: "/settings", label: t("nav.settings"), icon: Settings, show: true },
     { to: "/support", label: t("nav.support"), icon: LifeBuoy, show: true },
