@@ -71,6 +71,12 @@ const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; custom
           background: #ffffff;
           color: #000000;
           font-family: "Courier New", Courier, monospace;
+          /* Thermal heads print thin strokes faintly — bold every glyph and
+             double-strike it with a tiny multi-direction shadow so the whole
+             receipt comes out dark and legible. */
+          font-weight: 700;
+          text-shadow: 0.35px 0 0 #000, -0.35px 0 0 #000, 0 0.35px 0 #000, 0 -0.35px 0 #000;
+          -webkit-font-smoothing: none;
         }
         body {
           width: 80mm;
@@ -82,8 +88,8 @@ const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; custom
           width: 72mm;
           margin: 0 auto;
           padding: 4mm 0 6mm;
-          font-size: 12px;
-          line-height: 1.35;
+          font-size: 13px;
+          line-height: 1.4;
         }
         .center { text-align: center; }
         .title {

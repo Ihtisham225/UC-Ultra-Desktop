@@ -83,9 +83,9 @@ const buildPrintHtml = ({ purchase, shop, currency }: { purchase: Purchase; shop
       <style>
         @page { margin: 0; }
         * { box-sizing: border-box; }
-        html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: "Courier New", Courier, monospace; }
+        html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: "Courier New", Courier, monospace; font-weight: 700; text-shadow: 0.35px 0 0 #000, -0.35px 0 0 #000, 0 0.35px 0 #000, 0 -0.35px 0 #000; -webkit-font-smoothing: none; }
         body { width: 80mm; margin: 0 auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .receipt { width: 72mm; margin: 0 auto; padding: 4mm 0 6mm; font-size: 12px; line-height: 1.35; }
+        .receipt { width: 72mm; margin: 0 auto; padding: 4mm 0 6mm; font-size: 13px; line-height: 1.4; }
         .center { text-align: center; }
         .title { font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
         .small { font-size: 11px; }
