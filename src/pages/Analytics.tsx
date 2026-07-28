@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getAll } from "@/lib/localDb";
+import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card } from "@/components/ui/card";
@@ -28,6 +29,7 @@ export default function Analytics() {
   const [items, setItems] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [payroll, setPayroll] = useState<any[]>([]);
   /** Weighted average cost per product_id or variant_id, derived from all purchase_items. */
   const [avgCost, setAvgCost] = useState<Map<string, number>>(new Map());
   const [customerCount, setCustomerCount] = useState(0);
@@ -65,6 +67,14 @@ export default function Analytics() {
       setExpenses(allExpenses.filter((e) => String(e.expense_date) >= since.slice(0, 10)));
       setCustomerCount(allCustomers.length);
 
+      // Payroll isn't synced locally — fetch it online (0 when offline).
+      if (perms.canManageExpenses && navigator.onLine) {
+        try { setPayroll(await rpc<any[]>("listPayrollForAnalyticsAction", range)); }
+        catch { setPayroll([]); }
+      } else {
+        setPayroll([]);
+      }
+
       // Build weighted average cost: key = variant_id || product_id.
       const totals = new Map<string, { qty: number; cost: number }>();
       (allPurchaseItems as any[]).forEach((row) => {
@@ -101,19 +111,22 @@ export default function Analytics() {
     const txnCount = sales.length;
     const avgTicket = txnCount > 0 ? revenue / txnCount : 0;
     const totalExpenses = expenses.reduce((a, e) => a + Number(e.amount), 0);
-    const netProfit = revenue - totalExpenses;
-    return { revenue, subtotal, profit, margin, txnCount, avgTicket, totalExpenses, netProfit, cogs };
-  }, [sales, items, expenses, avgCost]);
+    const totalPayroll = payroll.reduce((a, p) => a + Number(p.amount), 0);
+    const netProfit = revenue - totalExpenses - totalPayroll;
+    return { revenue, subtotal, profit, margin, txnCount, avgTicket, totalExpenses, totalPayroll, netProfit, cogs };
+  }, [sales, items, expenses, payroll, avgCost]);
 
   const dailySeries = useMemo(() => {
     const days = eachDayOfInterval({ start: subDays(new Date(), range - 1), end: new Date() });
     return days.map((d) => {
       const key = format(d, "yyyy-MM-dd");
       const dayRevenue = sales.filter((s) => s.created_at.slice(0, 10) === key).reduce((a, s) => a + Number(s.total), 0);
-      const dayExpense = expenses.filter((e) => e.expense_date === key).reduce((a, e) => a + Number(e.amount), 0);
+      const dayExpense =
+        expenses.filter((e) => e.expense_date === key).reduce((a, e) => a + Number(e.amount), 0) +
+        payroll.filter((p) => p.date === key).reduce((a, p) => a + Number(p.amount), 0);
       return { date: format(d, "MMM d"), revenue: Math.round(dayRevenue * 100) / 100, expense: Math.round(dayExpense * 100) / 100 };
     });
-  }, [sales, expenses, range]);
+  }, [sales, expenses, payroll, range]);
 
   const topProducts = useMemo(() => {
     const map = new Map<string, { name: string; qty: number; revenue: number }>();
@@ -199,7 +212,7 @@ export default function Analytics() {
         <KPI icon={DollarSign} label={t("analytics.revenue")} value={formatMoney(stats.revenue, cur)} tone="primary" />
         <KPI icon={TrendingUp} label={t("analytics.grossProfit")} value={formatMoney(stats.profit, cur)} sub={t("analytics.margin", { value: stats.margin.toFixed(1) })} tone="accent" />
         <KPI icon={ShoppingCart} label={t("analytics.transactions")} value={String(stats.txnCount)} sub={t("analytics.avg", { value: formatMoney(stats.avgTicket, cur) })} tone="default" />
-        <KPI icon={Users} label={t("analytics.netProfit")} value={formatMoney(stats.netProfit, cur)} sub={t("analytics.expBrief", { value: formatMoney(stats.totalExpenses, cur) })} tone={stats.netProfit >= 0 ? "primary" : "warning"} />
+        <KPI icon={Users} label={t("analytics.netProfit")} value={formatMoney(stats.netProfit, cur)} sub={t("analytics.expBrief", { value: formatMoney(stats.totalExpenses + stats.totalPayroll, cur) })} tone={stats.netProfit >= 0 ? "primary" : "warning"} />
       </div>
 
       <Tabs defaultValue="trends" className="space-y-4">

@@ -66,6 +66,9 @@ export interface DeviceShop {
   investor_mode?: "individual" | "shared" | "both";
   investor_default_commission?: number;
   investor_deduct_expenses?: boolean;
+  store_type?: string;
+  show_customer_on_receipt?: boolean;
+  show_imei_on_receipt?: boolean;
   created_by: string;
   role: ShopRole;
 }

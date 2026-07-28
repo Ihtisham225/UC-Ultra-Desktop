@@ -20,23 +20,30 @@ const escapeHtml = (value: string) =>
 const withLineBreaks = (value?: string | null) => escapeHtml(value ?? "").replace(/\n/g, "<br />");
 
 const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; customer: { name: string; phone: string | null } | null; currency: string }) => {
+  const showCustomer = sale.shop?.show_customer_on_receipt === true;
+  const showImei = sale.shop?.show_imei_on_receipt === true;
   const metaRows = [
     { label: "Receipt", value: sale.receipt_number ?? "" },
     { label: "Date", value: format(new Date(sale.created_at), "Pp") },
-    ...(customer ? [{ label: "Customer", value: customer.name }] : []),
+    ...(showCustomer && customer ? [{ label: "Customer", value: customer.name }] : []),
+    ...(showCustomer && customer?.phone ? [{ label: "Phone", value: customer.phone }] : []),
   ];
 
   const itemsHtml = sale.items
-    .map(
-      (item: any) => `
+    .map((item: any) => {
+      const imeis = showImei
+        ? [item.imei1, item.imei2].filter(Boolean).map((v: string) => `<div class="row small"><span>IMEI</span><span class="value">${escapeHtml(v)}</span></div>`).join("")
+        : "";
+      return `
         <div class="item">
           <div class="item-name">${escapeHtml(item.product_name ?? "")}</div>
           <div class="row small">
             <span>${escapeHtml(String(item.quantity))} x ${escapeHtml(formatMoney(item.unit_price, currency))}</span>
             <span class="value">${escapeHtml(formatMoney(item.line_total, currency))}</span>
           </div>
-        </div>`
-    )
+          ${imeis}
+        </div>`;
+    })
     .join("");
 
   const summaryRows = [
@@ -286,8 +293,11 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
             <div className="text-[11px] space-y-0.5">
               <div className="flex items-start justify-between gap-2"><span className="shrink-0">Receipt</span><span className="min-w-0 max-w-[58%] text-right break-words">{sale.receipt_number}</span></div>
               <div className="flex items-start justify-between gap-2"><span className="shrink-0">Date</span><span className="min-w-0 max-w-[58%] text-right break-words">{format(new Date(sale.created_at), "Pp")}</span></div>
-              {customer && (
+              {sale.shop?.show_customer_on_receipt && customer && (
                 <div className="flex items-start justify-between gap-2"><span className="shrink-0">Customer</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.name}</span></div>
+              )}
+              {sale.shop?.show_customer_on_receipt && customer?.phone && (
+                <div className="flex items-start justify-between gap-2"><span className="shrink-0">Phone</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.phone}</span></div>
               )}
             </div>
 
@@ -301,6 +311,9 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
                     <span className="shrink-0">{it.quantity} x {formatMoney(it.unit_price, cur)}</span>
                     <span className="tabular-nums text-right break-words">{formatMoney(it.line_total, cur)}</span>
                   </div>
+                  {sale.shop?.show_imei_on_receipt && [it.imei1, it.imei2].filter(Boolean).map((v: string, k: number) => (
+                    <div key={k} className="flex items-start justify-between text-[11px] gap-2"><span className="shrink-0">IMEI</span><span className="tabular-nums text-right break-words">{v}</span></div>
+                  ))}
                 </div>
               ))}
             </div>

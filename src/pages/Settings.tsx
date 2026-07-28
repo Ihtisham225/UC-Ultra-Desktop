@@ -40,6 +40,9 @@ export default function Settings() {
   const [header, setHeader] = useState("");
   const [footer, setFooter] = useState("");
   const [showTax, setShowTax] = useState(true);
+  const [storeType, setStoreType] = useState("other");
+  const [showCustomer, setShowCustomer] = useState(false);
+  const [showImei, setShowImei] = useState(false);
 
   const [notifyLow, setNotifyLow] = useState(true);
   const [notifyDaily, setNotifyDaily] = useState(false);
@@ -64,6 +67,9 @@ export default function Settings() {
       setEmail(currentShop.email ?? "");
       setLogoUrl(currentShop.logo_url ?? null);
       setShowTax(currentShop.show_tax_line ?? true);
+      setStoreType(currentShop.store_type ?? "other");
+      setShowCustomer(currentShop.show_customer_on_receipt ?? false);
+      setShowImei(currentShop.show_imei_on_receipt ?? false);
       setNotifyLow(currentShop.notify_low_stock ?? true);
       setNotifyDaily(currentShop.notify_daily_summary ?? false);
       setInvestorsOn(currentShop.investors_enabled ?? false);
@@ -117,6 +123,7 @@ export default function Settings() {
       const res = await rpc<{ ok: boolean; error?: string }>("updateShopAction", {
         name, currency, tax_rate: parseFloat(tax) || 0,
         address: address || null, phone: phone || null, email: email || null,
+        store_type: storeType,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
     } catch (e) {
@@ -134,6 +141,7 @@ export default function Settings() {
     try {
       const res = await rpc<{ ok: boolean; error?: string }>("updateReceiptAction", {
         header: header || null, footer: footer || null, show_tax_line: showTax,
+        show_customer_on_receipt: showCustomer, show_imei_on_receipt: showImei,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
     } catch (e) {
@@ -314,6 +322,22 @@ export default function Settings() {
               <div className="space-y-1.5"><Label>{t("common.phone")}</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.phonePlaceholder")} /></div>
               <div className="space-y-1.5"><Label>{t("common.email")}</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.emailPlaceholder")} /></div>
             </div>
+            <div className="space-y-1.5">
+              <Label>Store type</Label>
+              <Select value={storeType} onValueChange={setStoreType} disabled={!canEditShop}>
+                <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="phone">Phone Shop</SelectItem>
+                  <SelectItem value="computer">Computer Shop</SelectItem>
+                  <SelectItem value="pharmacy">Pharmacy</SelectItem>
+                  <SelectItem value="industry">Industry</SelectItem>
+                  <SelectItem value="wholesale">Whole Sale</SelectItem>
+                  <SelectItem value="accessories">Accessories</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Tailors the app to your business — e.g. a Phone Shop gets IMEI fields on products.</p>
+            </div>
             {canEditShop && <Button disabled={busy} onClick={saveShop} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.shop.saveShop")}</Button>}
           </Card>
         </TabsContent>
@@ -326,6 +350,16 @@ export default function Settings() {
               <div><Label>{t("settings.receipt.showTax")}</Label><p className="text-xs text-muted-foreground">{t("settings.receipt.showTaxHelp")}</p></div>
               <Switch checked={showTax} onCheckedChange={setShowTax} disabled={!canEditShop} />
             </div>
+            <div className="flex items-center justify-between gap-4 py-2 border-t pt-4">
+              <div><Label>Print customer name &amp; phone</Label><p className="text-xs text-muted-foreground">Show the sale's customer on the receipt.</p></div>
+              <Switch checked={showCustomer} onCheckedChange={setShowCustomer} disabled={!canEditShop} />
+            </div>
+            {storeType === "phone" && (
+              <div className="flex items-center justify-between gap-4 py-2">
+                <div><Label>Print IMEI</Label><p className="text-xs text-muted-foreground">Show each product's IMEI number(s) on the receipt.</p></div>
+                <Switch checked={showImei} onCheckedChange={setShowImei} disabled={!canEditShop} />
+              </div>
+            )}
             {canEditShop && <Button disabled={busy} onClick={saveReceipt} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.receipt.saveReceipt")}</Button>}
           </Card>
         </TabsContent>

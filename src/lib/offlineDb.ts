@@ -7,6 +7,8 @@ export interface CachedProduct {
   price: number
   stock: number
   shop_id: string
+  imei1?: string | null
+  imei2?: string | null
   variants: CachedVariant[]
   _syncedAt: number
 }

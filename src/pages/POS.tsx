@@ -196,6 +196,7 @@ export default function POS() {
 
     await upsertLocal("sales", saleRecord, true);
 
+    const imeiByProduct = new Map(products.map((p) => [p.id, { imei1: p.imei1 ?? null, imei2: p.imei2 ?? null }]));
     const itemRows = cart.map((c) => ({
       id: uuid(),
       sale_id: saleId,
@@ -206,6 +207,9 @@ export default function POS() {
       unit_price: c.unit_price,
       quantity: c.quantity,
       line_total: c.unit_price * c.quantity,
+      // Snapshot the product's IMEI so the receipt keeps it (phone shops).
+      imei1: imeiByProduct.get(c.product_id)?.imei1 ?? null,
+      imei2: imeiByProduct.get(c.product_id)?.imei2 ?? null,
       created_at: now,
     }));
 

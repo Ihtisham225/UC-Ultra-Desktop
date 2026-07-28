@@ -58,6 +58,8 @@ export function useOfflineProducts(shopId: string | undefined) {
         price: Number(p.price),
         stock: Number(p.stock),
         shop_id: shopId,
+        imei1: (p as { imei1?: string | null }).imei1 ?? null,
+        imei2: (p as { imei2?: string | null }).imei2 ?? null,
         variants: variantsByProduct.get(p.id) ?? [],
         _syncedAt: Date.now(),
       }))
