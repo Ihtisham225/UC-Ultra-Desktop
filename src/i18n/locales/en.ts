@@ -138,6 +138,7 @@ const en = {
     expenses: "Expenses",
     debts: "Debts",
     investors: "Investors",
+    payroll: "Payroll",
     staff: "Staff",
     settings: "Settings",
     support: "Support",

@@ -65,6 +65,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },
     { to: "/debts", label: t("nav.debts"), icon: HandCoins, show: perms.canManageExpenses },
     { to: "/investors", label: t("nav.investors"), icon: TrendingUp, show: perms.canManageExpenses && !!currentShop?.investors_enabled },
+    { to: "/payroll", label: t("nav.payroll"), icon: Wallet, show: perms.canManageExpenses },
     { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, show: perms.canManageStaff },
     { to: "/settings", label: t("nav.settings"), icon: Settings, show: true },
     { to: "/support", label: t("nav.support"), icon: LifeBuoy, show: true },
