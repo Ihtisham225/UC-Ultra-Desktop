@@ -192,8 +192,6 @@ export default function Products() {
         : 0,
       low_stock_threshold,
       unit: editing.unit || "pcs",
-      imei1: (editing as any).imei1?.trim() || null,
-      imei2: (editing as any).imei2?.trim() || null,
       is_active: editing.is_active !== false,
       updated_at: now,
       created_at: editing.id
@@ -629,19 +627,6 @@ export default function Products() {
                   />
                 </div>
               </div>
-
-              {currentShop?.store_type === "phone" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>IMEI 1</Label>
-                    <Input value={(editing as any).imei1 ?? ""} onChange={(e) => setEditing({ ...editing, imei1: e.target.value } as any)} placeholder="Primary IMEI" inputMode="numeric" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>IMEI 2 <span className="text-muted-foreground font-normal">(dual SIM)</span></Label>
-                    <Input value={(editing as any).imei2 ?? ""} onChange={(e) => setEditing({ ...editing, imei2: e.target.value } as any)} placeholder="Optional" inputMode="numeric" />
-                  </div>
-                </div>
-              )}
 
               <div className="rounded-lg border bg-card p-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">

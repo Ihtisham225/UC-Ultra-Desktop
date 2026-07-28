@@ -46,6 +46,9 @@ interface CartItem {
   quantity: number;
   /** available stock at the time of add (used for client-side checks) */
   stock: number;
+  /** Serial(s) of the unit sold — captured at checkout for phone shops. */
+  imei1?: string;
+  imei2?: string;
 }
 
 export default function POS() {
@@ -145,13 +148,14 @@ export default function POS() {
   };
 
   const filtered = useMemo(() => {
-    if (!search) return products.slice(0, 30);
+    // Show the whole catalog — the grid scrolls. Search narrows it.
+    if (!search) return products;
     const q = search.toLowerCase();
     return products.filter((p) =>
       p.name.toLowerCase().includes(q) ||
       p.barcode?.includes(q) ||
       p.variants?.some((v) => v.name.toLowerCase().includes(q) || v.sku?.toLowerCase().includes(q) || v.barcode?.includes(q))
-    ).slice(0, 30);
+    );
   }, [products, search]);
 
   const subtotal = cart.reduce((a, c) => a + c.unit_price * c.quantity, 0);
@@ -196,7 +200,6 @@ export default function POS() {
 
     await upsertLocal("sales", saleRecord, true);
 
-    const imeiByProduct = new Map(products.map((p) => [p.id, { imei1: p.imei1 ?? null, imei2: p.imei2 ?? null }]));
     const itemRows = cart.map((c) => ({
       id: uuid(),
       sale_id: saleId,
@@ -207,9 +210,9 @@ export default function POS() {
       unit_price: c.unit_price,
       quantity: c.quantity,
       line_total: c.unit_price * c.quantity,
-      // Snapshot the product's IMEI so the receipt keeps it (phone shops).
-      imei1: imeiByProduct.get(c.product_id)?.imei1 ?? null,
-      imei2: imeiByProduct.get(c.product_id)?.imei2 ?? null,
+      // IMEI(s) of the specific unit sold, entered at checkout (phone shops).
+      imei1: c.imei1?.trim() || null,
+      imei2: c.imei2?.trim() || null,
       created_at: now,
     }));
 
@@ -255,9 +258,9 @@ export default function POS() {
   }, [variantPicker]);
 
   return (
-    <div className="max-w-7xl mx-auto grid lg:grid-cols-[1fr_420px] gap-6 lg:h-[calc(100vh-9rem)]">
+    <div className="max-w-7xl mx-auto grid md:grid-cols-[1fr_380px] lg:grid-cols-[1fr_420px] gap-4 md:gap-6 md:h-[calc(100vh-9rem)]">
       <h1 className="sr-only">Point of Sale</h1>
-      <div className="flex flex-col min-h-0 order-2 lg:order-1">
+      <div className="flex flex-col min-h-0 order-2 md:order-1">
         <div className="flex gap-2 mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -303,11 +306,11 @@ export default function POS() {
           </div>
         )}
 
-        <div className="lg:flex-1 lg:overflow-y-auto pr-1">
+        <div className="md:flex-1 md:overflow-y-auto pr-1">
           {filtered.length === 0 ? (
             <Card className="p-12 text-center text-muted-foreground">{t("common.noResults")}</Card>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {filtered.map((p) => {
                 const hasVariants = (p.variants?.length ?? 0) > 0;
                 const totalStock = hasVariants
@@ -336,7 +339,7 @@ export default function POS() {
         </div>
       </div>
 
-      <Card className="flex flex-col shadow-elevated overflow-hidden order-1 lg:order-2 lg:max-h-full">
+      <Card className="flex flex-col shadow-elevated overflow-hidden order-1 md:order-2 md:max-h-full">
         <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
           <div className="font-semibold flex items-center gap-2"><Receipt className="size-4" /> {t("pos.cart")}</div>
           {cart.length > 0 && (
@@ -380,6 +383,20 @@ export default function POS() {
                     </div>
                     <Button size="icon" variant="ghost" className="size-7" onClick={() => removeItem(c.key)}><X className="size-3" /></Button>
                   </div>
+                  {currentShop?.store_type === "phone" && (
+                    <div className="grid grid-cols-2 gap-1 mt-2">
+                      <Input
+                        value={c.imei1 ?? ""}
+                        onChange={(e) => setCart((prev) => prev.map((x) => x.key === c.key ? { ...x, imei1: e.target.value } : x))}
+                        placeholder="IMEI 1" inputMode="numeric" className="h-7 text-xs px-2"
+                      />
+                      <Input
+                        value={c.imei2 ?? ""}
+                        onChange={(e) => setCart((prev) => prev.map((x) => x.key === c.key ? { ...x, imei2: e.target.value } : x))}
+                        placeholder="IMEI 2 (dual SIM)" inputMode="numeric" className="h-7 text-xs px-2"
+                      />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
