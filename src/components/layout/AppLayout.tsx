@@ -1,7 +1,6 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, HelpCircle, FolderTree, Tag , TrendingUp, BadgeDollarSign } from "lucide-react";
-import { WelcomeTour } from "@/components/WelcomeTour";
+import { LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign } from "lucide-react";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
@@ -35,18 +34,6 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   const loc = useLocation();
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcState, setCalcState] = useState<CalculatorState>({ expr: "", display: "0" });
-  const [tourOpen, setTourOpen] = useState(false);
-
-  // Auto-open the welcome tour the first time a user signs in
-  useEffect(() => {
-    if (!user) return;
-    try {
-      if (!localStorage.getItem(`ucu.tour.seen.${user.id}`)) {
-        const t = setTimeout(() => setTourOpen(true), 600);
-        return () => clearTimeout(t);
-      }
-    } catch {}
-  }, [user]);
 
   const nav: NavItem[] = [
     { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
@@ -165,9 +152,6 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
             <Button variant="ghost" size="icon" onClick={() => setCalcOpen(true)} aria-label="Calculator">
               <Calculator className="size-4.5" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => setTourOpen(true)} aria-label="Guide">
-              <HelpCircle className="size-4.5" />
-            </Button>
             <LanguageToggle />
             <ThemeToggle />
             <InstallPwaButton />
@@ -234,8 +218,6 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
         state={calcState}
         setState={setCalcState}
       />
-
-      <WelcomeTour open={tourOpen} onOpenChange={setTourOpen} />
     </div>
   );
 };

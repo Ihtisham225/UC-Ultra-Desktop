@@ -41,6 +41,7 @@ export default function Settings() {
   const [footer, setFooter] = useState("");
   const [showTax, setShowTax] = useState(true);
   const [storeType, setStoreType] = useState("other");
+  const [imeiMode, setImeiMode] = useState<"sale" | "product">("sale");
   const [showCustomer, setShowCustomer] = useState(false);
   const [showImei, setShowImei] = useState(false);
 
@@ -68,6 +69,7 @@ export default function Settings() {
       setLogoUrl(currentShop.logo_url ?? null);
       setShowTax(currentShop.show_tax_line ?? true);
       setStoreType(currentShop.store_type ?? "other");
+      setImeiMode((currentShop.imei_capture_mode as "sale" | "product") ?? "sale");
       setShowCustomer(currentShop.show_customer_on_receipt ?? false);
       setShowImei(currentShop.show_imei_on_receipt ?? false);
       setNotifyLow(currentShop.notify_low_stock ?? true);
@@ -124,6 +126,7 @@ export default function Settings() {
         name, currency, tax_rate: parseFloat(tax) || 0,
         address: address || null, phone: phone || null, email: email || null,
         store_type: storeType,
+        imei_capture_mode: imeiMode,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
     } catch (e) {
@@ -336,8 +339,23 @@ export default function Settings() {
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-muted-foreground">Tailors the app to your business — e.g. a Phone Shop gets IMEI fields on products.</p>
+              <p className="text-[11px] text-muted-foreground">Tailors the app to your business — e.g. a Phone Shop can capture IMEI numbers.</p>
             </div>
+            {storeType === "phone" && (
+              <div className="space-y-1.5">
+                <Label>Capture IMEI</Label>
+                <Select value={imeiMode} onValueChange={(v) => setImeiMode(v as "sale" | "product")} disabled={!canEditShop}>
+                  <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sale">During sale — type it at checkout</SelectItem>
+                    <SelectItem value="product">On the product — each item/variant has its IMEI</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  "On the product" suits shops that add each handset (or variant) with its own IMEI — POS shows the last digits so you pick the right one.
+                </p>
+              </div>
+            )}
             {canEditShop && <Button disabled={busy} onClick={saveShop} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.shop.saveShop")}</Button>}
           </Card>
         </TabsContent>

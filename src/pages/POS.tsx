@@ -36,6 +36,9 @@ interface Product {
   stock: number;
   variants?: Variant[];
 }
+/** Last-5-digit tail of an IMEI so staff know which handset a line refers to. */
+const imeiTail = (s?: string | null) => (s && s.length > 5 ? `…${s.slice(-5)}` : (s || ""));
+
 interface CartItem {
   /** Unique cart key: variant_id if present else product_id */
   key: string;
@@ -74,6 +77,10 @@ export default function POS() {
   const [discountType, setDiscountType] = useState<"amount" | "percent">("amount");
   const [discountValue, setDiscountValue] = useState<string>("");
 
+  const isPhone = currentShop?.store_type === "phone";
+  const imeiOnProduct = isPhone && currentShop?.imei_capture_mode === "product";
+  const imeiOnSale = isPhone && currentShop?.imei_capture_mode !== "product";
+
   useEffect(() => { document.title = `${t("nav.pos")} — UCU`; }, [t]);
 
   /** Add a (product, optional variant) to the cart. */
@@ -91,6 +98,7 @@ export default function POS() {
         return prev;
       }
       if (existing) return prev.map((c) => c.key === key ? { ...c, quantity: c.quantity + 1 } : c);
+      const src = (v ?? p) as { imei1?: string | null; imei2?: string | null };
       return [...prev, {
         key,
         product_id: p.id,
@@ -99,6 +107,8 @@ export default function POS() {
         unit_price,
         quantity: 1,
         stock,
+        imei1: imeiOnProduct ? (src.imei1 ?? undefined) : undefined,
+        imei2: imeiOnProduct ? (src.imei2 ?? undefined) : undefined,
       }];
     });
   };
@@ -254,6 +264,7 @@ export default function POS() {
     return (variantPicker.variants ?? []).map((v) => ({
       id: v.id, name: v.name, sku: v.sku, barcode: v.barcode,
       price_override: v.price_override, stock: Number(v.stock),
+      imei1: v.imei1, imei2: v.imei2,
     }));
   }, [variantPicker]);
 
@@ -331,6 +342,9 @@ export default function POS() {
                     <div className="font-semibold text-sm leading-snug group-hover:text-primary mb-2 pr-6 line-clamp-3">{p.name}</div>
                     <div className={cn("font-bold break-all", formatMoney(p.price, cur).length > 12 ? "text-sm" : "text-base")}>{formatMoney(p.price, cur)}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">{t("common.stock")}: {totalStock}</div>
+                    {imeiOnProduct && !hasVariants && (p.imei1 || p.imei2) && (
+                      <div className="text-[10px] font-mono text-muted-foreground mt-0.5 truncate">IMEI {imeiTail(p.imei1 || p.imei2)}</div>
+                    )}
                   </button>
                 );
               })}
@@ -383,7 +397,7 @@ export default function POS() {
                     </div>
                     <Button size="icon" variant="ghost" className="size-7" onClick={() => removeItem(c.key)}><X className="size-3" /></Button>
                   </div>
-                  {currentShop?.store_type === "phone" && (
+                  {imeiOnSale && (
                     <div className="grid grid-cols-2 gap-1 mt-2">
                       <Input
                         value={c.imei1 ?? ""}
@@ -395,6 +409,12 @@ export default function POS() {
                         onChange={(e) => setCart((prev) => prev.map((x) => x.key === c.key ? { ...x, imei2: e.target.value } : x))}
                         placeholder="IMEI 2 (dual SIM)" inputMode="numeric" className="h-7 text-xs px-2"
                       />
+                    </div>
+                  )}
+                  {imeiOnProduct && (c.imei1 || c.imei2) && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {c.imei1 && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">IMEI {imeiTail(c.imei1)}</span>}
+                      {c.imei2 && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">IMEI2 {imeiTail(c.imei2)}</span>}
                     </div>
                   )}
                 </li>

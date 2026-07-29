@@ -41,6 +41,8 @@ interface Variant {
   barcode: string | null;
   price_override: number | null;
   stock: number;
+  imei1?: string | null;
+  imei2?: string | null;
   // local-only flag for new rows that aren't persisted yet
   _new?: boolean;
 }
@@ -59,6 +61,8 @@ interface Product {
   low_stock_threshold: number;
   unit: string | null;
   is_active: boolean;
+  imei1?: string | null;
+  imei2?: string | null;
   product_variants?: Variant[];
 }
 
@@ -192,6 +196,8 @@ export default function Products() {
         : 0,
       low_stock_threshold,
       unit: editing.unit || "pcs",
+      imei1: !wantsVariants ? ((editing as any).imei1?.trim() || null) : null,
+      imei2: !wantsVariants ? ((editing as any).imei2?.trim() || null) : null,
       is_active: editing.is_active !== false,
       updated_at: now,
       created_at: editing.id
@@ -236,6 +242,8 @@ export default function Products() {
               : Number(v.price_override),
           low_stock_threshold,
           sort_order: i,
+          imei1: (v as { imei1?: string | null }).imei1?.toString().trim() || null,
+          imei2: (v as { imei2?: string | null }).imei2?.toString().trim() || null,
           updated_at: now,
         }, true);
       }
@@ -304,6 +312,7 @@ export default function Products() {
   );
 
   const cur = currentShop?.currency ?? "USD";
+  const imeiOnProduct = currentShop?.store_type === "phone" && currentShop?.imei_capture_mode === "product";
 
   const visibleIds = visible.map((p) => p.id);
 
@@ -654,6 +663,29 @@ export default function Products() {
                     value={(editing.variants ?? []) as BuilderVariant[]}
                     onChange={setVariants}
                   />
+                )}
+
+                {imeiOnProduct && !editing.hasVariants && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">IMEI 1</Label>
+                      <Input
+                        value={(editing as any).imei1 ?? ""}
+                        onChange={(e) => setEditing({ ...editing, imei1: e.target.value } as any)}
+                        placeholder="IMEI 1"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">IMEI 2 (dual SIM)</Label>
+                      <Input
+                        value={(editing as any).imei2 ?? ""}
+                        onChange={(e) => setEditing({ ...editing, imei2: e.target.value } as any)}
+                        placeholder="IMEI 2 (dual SIM)"
+                        inputMode="numeric"
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

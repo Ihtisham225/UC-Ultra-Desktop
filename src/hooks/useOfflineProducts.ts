@@ -5,7 +5,7 @@ import type { CachedProduct, CachedVariant } from '@/lib/offlineDb'
 
 // Raw synced rows (snake_case, from /api/sync/pull) as they land in the local store.
 interface ProductRow { id: string; name: string; barcode: string | null; price: number | string; stock: number | string; shop_id: string; is_active?: boolean }
-interface VariantRow { id: string; product_id: string; name: string; sku: string | null; barcode: string | null; price_override: number | string | null; stock: number | string; is_active?: boolean; sort_order?: number }
+interface VariantRow { id: string; product_id: string; name: string; sku: string | null; barcode: string | null; price_override: number | string | null; stock: number | string; is_active?: boolean; sort_order?: number; imei1?: string | null; imei2?: string | null }
 
 /**
  * POS product feed, backed by the two-way sync store (localDb `records`).
@@ -46,6 +46,8 @@ export function useOfflineProducts(shopId: string | undefined) {
         barcode: v.barcode,
         price_override: v.price_override === null || v.price_override === undefined ? null : Number(v.price_override),
         stock: Number(v.stock),
+        imei1: (v as { imei1?: string | null }).imei1 ?? null,
+        imei2: (v as { imei2?: string | null }).imei2 ?? null,
       })
       variantsByProduct.set(v.product_id, arr)
     }

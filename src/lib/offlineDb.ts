@@ -21,6 +21,8 @@ export interface CachedVariant {
   barcode: string | null
   price_override: number | null
   stock: number
+  imei1?: string | null
+  imei2?: string | null
 }
 
 export interface PendingSale {

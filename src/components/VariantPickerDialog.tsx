@@ -11,7 +11,12 @@ export interface VariantOption {
   barcode: string | null;
   price_override: number | null;
   stock: number;
+  imei1?: string | null;
+  imei2?: string | null;
 }
+
+/** Last-5-digit tail of an IMEI so staff know which handset a row refers to. */
+const imeiTail = (s?: string | null) => (s && s.length > 5 ? `…${s.slice(-5)}` : (s || ""));
 
 interface Props {
   open: boolean;
@@ -81,6 +86,9 @@ export const VariantPickerDialog = ({
                       {v.sku || "—"}
                       {v.barcode && <span className="ms-2">· {v.barcode}</span>}
                     </div>
+                    {(v.imei1 || v.imei2) && (
+                      <div className="text-[11px] text-primary font-mono truncate mt-0.5">IMEI {imeiTail(v.imei1 || v.imei2)}</div>
+                    )}
                   </div>
                   <div className="text-end shrink-0">
                     <div className="font-semibold tabular-nums">{formatMoney(price, cur)}</div>

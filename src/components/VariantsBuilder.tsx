@@ -19,6 +19,8 @@ export interface BuilderVariant {
   barcode: string | null;
   price_override: number | null;
   stock: number;
+  imei1?: string | null;
+  imei2?: string | null;
   _new?: boolean;
 }
 
@@ -79,6 +81,7 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange }: Pro
   const formatMoney = useFormatMoney();
   const { currentShop } = useShop();
   const cur = currentShop?.currency ?? "USD";
+  const imeiOnProduct = currentShop?.store_type === "phone" && currentShop?.imei_capture_mode === "product";
 
   const [groups, setGroups] = useState<AttributeGroup[]>(() => {
     const parsed = parseGroupsFromVariants(value);
@@ -148,6 +151,12 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange }: Pro
       ...next[idx],
       price_override: raw === "" ? null : parseFloat(raw),
     };
+    onChange(next);
+  };
+
+  const updateVariantImei = (idx: number, field: "imei1" | "imei2", raw: string) => {
+    const next = [...value];
+    next[idx] = { ...next[idx], [field]: raw };
     onChange(next);
   };
 
@@ -310,33 +319,41 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange }: Pro
                 </div>
                 <div className="divide-y max-h-[280px] overflow-y-auto">
                   {value.map((v, idx) => (
-                    <div key={(v.id ?? "new") + idx} className="grid grid-cols-[1fr_140px_36px] gap-2 px-3 py-2 items-center hover:bg-muted/30">
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{v.name}</div>
-                        {productName && (
-                          <div className="text-[11px] text-muted-foreground truncate">{productName}</div>
-                        )}
+                    <div key={(v.id ?? "new") + idx} className="px-3 py-2 hover:bg-muted/30">
+                      <div className="grid grid-cols-[1fr_140px_36px] gap-2 items-center">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">{v.name}</div>
+                          {productName && (
+                            <div className="text-[11px] text-muted-foreground truncate">{productName}</div>
+                          )}
+                        </div>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          inputMode="decimal"
+                          value={v.price_override ?? ""}
+                          placeholder={formatMoney(basePrice || 0, cur)}
+                          onChange={(e) => updateVariantPrice(idx, e.target.value)}
+                          className="h-8 text-sm tabular-nums"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-7"
+                          onClick={() => removeVariant(idx)}
+                          title={t("common.delete")}
+                        >
+                          <X className="size-3.5 text-destructive" />
+                        </Button>
                       </div>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        inputMode="decimal"
-                        value={v.price_override ?? ""}
-                        placeholder={formatMoney(basePrice || 0, cur)}
-                        onChange={(e) => updateVariantPrice(idx, e.target.value)}
-                        className="h-8 text-sm tabular-nums"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        onClick={() => removeVariant(idx)}
-                        title={t("common.delete")}
-                      >
-                        <X className="size-3.5 text-destructive" />
-                      </Button>
+                      {imeiOnProduct && (
+                        <div className="grid grid-cols-2 gap-2 mt-1.5">
+                          <Input value={v.imei1 ?? ""} onChange={(e) => updateVariantImei(idx, "imei1", e.target.value)} placeholder="IMEI 1" inputMode="numeric" className="h-8 text-xs" />
+                          <Input value={v.imei2 ?? ""} onChange={(e) => updateVariantImei(idx, "imei2", e.target.value)} placeholder="IMEI 2 (dual SIM)" inputMode="numeric" className="h-8 text-xs" />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
