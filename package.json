@@ -1,7 +1,7 @@
 {
   "name": "uc-ultra-desktop",
   "private": true,
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "UC-Ultra — Multi-Vendor Point of Sale",
   "author": "UCU Team <support@ucultra.com>",
   "homepage": "https://ucultra.com",
@@ -88,7 +88,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "UC-Ultra POS"
+      "shortcutName": "UC-Ultra POS",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
     },
     "publish": {
       "provider": "github",
