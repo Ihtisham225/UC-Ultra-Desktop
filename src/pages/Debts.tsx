@@ -14,7 +14,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowDownLeft, ArrowUpRight, Pencil, Plus, Trash2, Wallet, Eye, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Pencil, Plus, Trash2, Wallet, Eye, TrendingUp, TrendingDown, MessageCircle, Upload } from "lucide-react";
+import { ImportDebtsDialog } from "@/components/ImportDebtsDialog";
+import { buildDebtReminderMessage, buildWaReminderUrl } from "@/lib/debt-reminder";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { Pagination } from "@/components/Pagination";
@@ -107,8 +109,26 @@ export default function Debts() {
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [confirmPaymentDeleteId, setConfirmPaymentDeleteId] = useState<string | null>(null);
   const [details, setDetails] = useState<Debt | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const cur = currentShop?.currency ?? "USD";
+
+  /** Open WhatsApp (owner's own) with a pre-filled debt reminder. */
+  const sendReminder = (d: Debt) => {
+    if (!d.phone) return toast.error("This debt has no phone number.");
+    const balance = getRemainingAmount(d);
+    const message = buildDebtReminderMessage({
+      personName: d.person_name,
+      shopName: currentShop?.name ?? "our shop",
+      balance,
+      currency: d.currency ?? cur,
+      dueDate: d.due_date,
+      formatMoney,
+    });
+    const url = buildWaReminderUrl(d.phone, message);
+    if (!url) return toast.error("This phone number looks invalid for WhatsApp.");
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   const load = async () => {
     if (!currentShop) return [] as Debt[];
@@ -311,13 +331,18 @@ export default function Debts() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Debts</h1>
+          <h1 className="text-2xl font-semibold">Debts (Khata)</h1>
           <p className="text-sm text-muted-foreground">Track money you will receive and money you need to pay.</p>
         </div>
         {canManage && (
-          <Button onClick={startCreate}>
-            <Plus className="size-4 mr-2" /> Add debt
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="size-4 mr-2" /> Import from DigiKhata
+            </Button>
+            <Button onClick={startCreate}>
+              <Plus className="size-4 mr-2" /> Add debt
+            </Button>
+          </div>
         )}
       </div>
 
@@ -444,6 +469,11 @@ export default function Debts() {
                     <TableCell className="text-right">
                       {canManage && (
                         <div className="flex justify-end gap-2">
+                          {d.direction === "owed_to_me" && d.phone && remaining > 0 && (
+                            <Button variant="ghost" size="icon" className="size-8 text-success" onClick={() => sendReminder(d)} title="Send WhatsApp reminder">
+                              <MessageCircle className="size-4" />
+                            </Button>
+                          )}
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => setDetails(d)} title="Details">
                             <Eye className="size-4" />
                           </Button>
@@ -745,6 +775,12 @@ export default function Debts() {
         description="The debt balance will be recalculated automatically."
         variant="destructive"
         onConfirm={() => { if (confirmPaymentDeleteId) void removePayment(confirmPaymentDeleteId); }}
+      />
+
+      <ImportDebtsDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => void load()}
       />
     </div>
   );

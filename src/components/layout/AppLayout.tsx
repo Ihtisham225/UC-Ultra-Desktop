@@ -50,7 +50,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, show: perms.canManagePurchases },
     { to: "/suppliers", label: t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
     { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },
-    { to: "/debts", label: t("nav.debts"), icon: HandCoins, show: perms.canManageExpenses },
+    { to: "/debts", label: `${t("nav.debts")} (Khata)`, icon: HandCoins, show: perms.canManageExpenses },
     { to: "/investors", label: t("nav.investors"), icon: TrendingUp, show: perms.canManageExpenses && !!currentShop?.investors_enabled },
     { to: "/payroll", label: t("nav.payroll"), icon: BadgeDollarSign, show: perms.canManageExpenses },
     { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, show: perms.canManageStaff },
