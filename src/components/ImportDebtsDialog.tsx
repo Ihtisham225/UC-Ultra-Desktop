@@ -161,14 +161,14 @@ export function ImportDebtsDialog({ open, onClose, onImported }: Props) {
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Import from DigiKhata</DialogTitle>
+          <DialogTitle>Import debts</DialogTitle>
         </DialogHeader>
 
         {!kind && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Export your khata from DigiKhata as an <b>Excel/CSV</b> or <b>PDF report</b>, then upload it
-              here. You&apos;ll review every entry before it&apos;s imported.
+              Upload a <b>DigiKhata PDF report</b>, or your own <b>Excel/CSV</b> file if you keep your
+              khata in a spreadsheet. You&apos;ll review every entry before it&apos;s imported.
             </p>
             <label className="border-2 border-dashed rounded-lg p-8 flex flex-col items-center gap-2 cursor-pointer hover:bg-muted/40">
               <Upload className="size-8 text-muted-foreground" />

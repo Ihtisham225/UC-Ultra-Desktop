@@ -337,7 +337,7 @@ export default function Debts() {
         {canManage && (
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <Upload className="size-4 mr-2" /> Import from DigiKhata
+              <Upload className="size-4 mr-2" /> Import
             </Button>
             <Button onClick={startCreate}>
               <Plus className="size-4 mr-2" /> Add debt
