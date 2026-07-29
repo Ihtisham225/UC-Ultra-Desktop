@@ -27,6 +27,8 @@ interface Variant {
   barcode: string | null;
   price_override: number | null;
   stock: number;
+  imei1?: string | null;
+  imei2?: string | null;
 }
 interface Product {
   id: string;
@@ -34,6 +36,8 @@ interface Product {
   barcode: string | null;
   price: number;
   stock: number;
+  imei1?: string | null;
+  imei2?: string | null;
   variants?: Variant[];
 }
 /** Last-5-digit tail of an IMEI so staff know which handset a line refers to. */

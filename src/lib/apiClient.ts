@@ -67,6 +67,7 @@ export interface DeviceShop {
   investor_default_commission?: number;
   investor_deduct_expenses?: boolean;
   store_type?: string;
+  imei_capture_mode?: "sale" | "product";
   show_customer_on_receipt?: boolean;
   show_imei_on_receipt?: boolean;
   created_by: string;
