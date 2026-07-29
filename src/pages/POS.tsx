@@ -273,7 +273,7 @@ export default function POS() {
   }, [variantPicker]);
 
   return (
-    <div className="max-w-7xl mx-auto grid md:grid-cols-[1fr_380px] lg:grid-cols-[1fr_420px] gap-4 md:gap-6 md:h-[calc(100vh-9rem)]">
+    <div className="max-w-7xl mx-auto grid md:grid-cols-[1fr_380px] lg:grid-cols-[1fr_420px] gap-4 md:gap-6 md:h-[calc(100vh-9rem)] md:min-h-[620px]">
       <h1 className="sr-only">Point of Sale</h1>
       <div className="flex flex-col min-h-0 order-2 md:order-1">
         <div className="flex gap-2 mb-4">
@@ -365,7 +365,7 @@ export default function POS() {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto p-2 min-h-[160px]">
           {cart.length === 0 ? (
             <div className="h-full flex items-center justify-center text-sm text-muted-foreground p-8 text-center">
               {t("pos.cartEmpty")}
