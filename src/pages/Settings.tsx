@@ -333,6 +333,7 @@ export default function Settings() {
                   <SelectItem value="phone">Phone Shop</SelectItem>
                   <SelectItem value="computer">Computer Shop</SelectItem>
                   <SelectItem value="pharmacy">Pharmacy</SelectItem>
+                  <SelectItem value="supermarket">Supermarket / Mart</SelectItem>
                   <SelectItem value="industry">Industry</SelectItem>
                   <SelectItem value="wholesale">Whole Sale</SelectItem>
                   <SelectItem value="accessories">Accessories</SelectItem>

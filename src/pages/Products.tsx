@@ -86,6 +86,9 @@ export default function Products() {
   const [brands, setBrands] = useState<BrandDto[]>([]);
   const [editing, setEditing] = useState<EditingProduct | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  // Where a scan / barcode-Enter should land: find-or-add a product, or fill
+  // the barcode field of the product currently being edited.
+  const [scanTarget, setScanTarget] = useState<"lookup" | "field">("lookup");
   const [stickerProduct, setStickerProduct] = useState<Product | null>(null);
   const [details, setDetails] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -306,6 +309,26 @@ export default function Products() {
     );
   });
 
+  /**
+   * A barcode came in (scanner or Enter in search). If it matches a product,
+   * show it; otherwise open the Add form with the barcode pre-filled so the
+   * shop can register the item on the spot — the mart stock-in flow.
+   */
+  const handleBarcode = (raw: string) => {
+    const code = raw.trim();
+    if (!code) return;
+    const match = items.find(
+      (p) => p.barcode === code || (p.product_variants ?? []).some((v) => v.barcode === code),
+    );
+    if (match) {
+      setSearch(code);
+      toast.success(`Found: ${match.name}`);
+    } else {
+      setEditing({ ...blank, variants: [], barcode: code });
+      toast.info("New barcode — fill in the details to add this product");
+    }
+  };
+
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(
     filtered,
     { key: "products", defaultSize: 20, resetDeps: [search, categoryFilter, brandFilter, items.length] },
@@ -390,7 +413,7 @@ export default function Products() {
 
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input placeholder={t("products.searchPlaceholder")} aria-label={t("products.searchPlaceholder")} value={search} onChange={(e) => { setSearch(e.target.value); updateParams(e.target.value, categoryFilter, brandFilter); }} className="ps-9" />
+          <Input placeholder={t("products.searchPlaceholder")} aria-label={t("products.searchPlaceholder")} value={search} onChange={(e) => { setSearch(e.target.value); updateParams(e.target.value, categoryFilter, brandFilter); }} onKeyDown={(e) => { if (e.key === "Enter" && search.trim() && filtered.length === 0) { handleBarcode(search); } }} className="ps-9" />
         </div>
         <Select
           value={categoryFilter ?? "__all__"}
@@ -430,7 +453,7 @@ export default function Products() {
             ))}
           </SelectContent>
         </Select>
-        <Button variant="outline" onClick={() => setScannerOpen(true)} aria-label="Scan barcode"><ScanBarcode className="size-4" /></Button>
+        <Button variant="outline" onClick={() => { setScanTarget("lookup"); setScannerOpen(true); }} aria-label="Scan barcode"><ScanBarcode className="size-4" /></Button>
       </div>
 
       <BulkActionBar
@@ -606,6 +629,30 @@ export default function Products() {
                   </div>
                 </div>
               </div>
+              <div className="space-y-1.5">
+                <Label>{t("products.barcode")}</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={editing.barcode ?? ""}
+                    placeholder="Scan or type the product's barcode (optional)"
+                    inputMode="numeric"
+                    onChange={(e) => setEditing({ ...editing, barcode: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    title="Scan barcode"
+                    onClick={() => { setScanTarget("field"); setScannerOpen(true); }}
+                  >
+                    <ScanBarcode className="size-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to auto-generate. For mart items, scan the barcode printed on the package so it can be scanned at checkout.
+                </p>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <Label>{t("products.sellingPrice")} *</Label>
@@ -703,8 +750,13 @@ export default function Products() {
         open={scannerOpen}
         onClose={() => setScannerOpen(false)}
         onDetected={(code) => {
-          setSearch(code);
-          toast.success(t("products.scanned", { code }));
+          setScannerOpen(false);
+          if (scanTarget === "field" && editing) {
+            setEditing({ ...editing, barcode: code });
+            toast.success(t("products.scanned", { code }));
+          } else {
+            handleBarcode(code);
+          }
         }}
       />
 
