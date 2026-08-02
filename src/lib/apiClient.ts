@@ -251,3 +251,17 @@ export async function uploadInvoiceImage(file: File): Promise<string> {
   if (!res.ok || !(body as { url?: string }).url) throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
   return (body as { url: string }).url;
 }
+
+/** Upload a walk-in seller's CNIC photo (front/back), returning its public URL. */
+export async function uploadCnicImage(file: File): Promise<string> {
+  if (!navigator.onLine) throw new Error("offline");
+  const form = new FormData();
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/desktop/upload-cnic`, { method: "POST", headers, body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !(body as { url?: string }).url) throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+  return (body as { url: string }).url;
+}

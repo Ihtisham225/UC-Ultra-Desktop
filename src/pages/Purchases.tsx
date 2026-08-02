@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { rpc, uploadInvoiceImage } from "@/lib/apiClient";
+import { rpc, uploadInvoiceImage, uploadCnicImage } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
@@ -47,6 +48,7 @@ interface Purchase {
   id: string;
   reference_number: string | null;
   supplier_id: string | null;
+  seller_name?: string | null;
   total: number;
   payment_method: string;
   created_at: string;
@@ -137,6 +139,16 @@ export default function Purchases() {
   const [lines, setLines] = useState<Line[]>([]);
   const [invoiceImageUrl, setInvoiceImageUrl] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Purchase source: regular supplier, or a walk-in person selling to the shop
+  // (used phones etc.). Walk-in captures name/phone/CNIC + optional ID photos.
+  const [sourceType, setSourceType] = useState<"supplier" | "walkin">("supplier");
+  const [sellerName, setSellerName] = useState("");
+  const [sellerPhone, setSellerPhone] = useState("");
+  const [sellerCnic, setSellerCnic] = useState("");
+  const [cnicFrontUrl, setCnicFrontUrl] = useState<string | null>(null);
+  const [cnicBackUrl, setCnicBackUrl] = useState<string | null>(null);
+  const [uploadingCnic, setUploadingCnic] = useState<"front" | "back" | null>(null);
 
   const [newSupplier, setNewSupplier] = useState({ name: "", phone: "", email: "", notes: "" });
 
@@ -232,6 +244,12 @@ export default function Purchases() {
     setNotes((data as any).notes ?? "");
     setInvestorId((data as any).investor_id ?? "");
     setInvoiceImageUrl((data as any).invoice_image_url ?? null);
+    setSourceType((data as any).seller_name ? "walkin" : "supplier");
+    setSellerName((data as any).seller_name ?? "");
+    setSellerPhone((data as any).seller_phone ?? "");
+    setSellerCnic((data as any).seller_cnic ?? "");
+    setCnicFrontUrl((data as any).seller_cnic_front_url ?? null);
+    setCnicBackUrl((data as any).seller_cnic_back_url ?? null);
     setLines((((data as any).purchase_items ?? []) as any[]).map((it) => ({
       key: it.variant_id ?? it.product_id ?? it.id,
       product_id: it.product_id ?? "",
@@ -368,6 +386,9 @@ export default function Purchases() {
     setSupplierId(""); setInvestorId(""); setReference(generateReference()); setPaymentMethod("cash"); setNotes(""); setLines([]);
     setSharedExpense("");
     setInvoiceImageUrl(null);
+    setSourceType("supplier");
+    setSellerName(""); setSellerPhone(""); setSellerCnic("");
+    setCnicFrontUrl(null); setCnicBackUrl(null);
   };
 
   const handleInvoiceUpload = async (file: File) => {
@@ -385,19 +406,42 @@ export default function Purchases() {
     }
   };
 
+  /** Upload a CNIC photo (front or back) for a walk-in seller. */
+  const handleCnicUpload = async (file: File, side: "front" | "back") => {
+    if (!currentShop) return;
+    if (file.size > 5 * 1024 * 1024) return toast.error(t("purchases.imageTooLarge"));
+    setUploadingCnic(side);
+    try {
+      const url = await uploadCnicImage(file);
+      if (side === "front") setCnicFrontUrl(url); else setCnicBackUrl(url);
+      toast.success(t("purchases.imageUploaded"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("purchases.failed"));
+    } finally {
+      setUploadingCnic(null);
+    }
+  };
+
   const save = async () => {
     if (!user || !currentShop) return;
+    if (sourceType === "walkin" && !sellerName.trim()) return toast.error("Seller name is required for walk-in purchases");
     if (lines.length === 0) return toast.error(t("purchases.addAtLeastOne"));
     if (lines.some((l) => l.quantity <= 0 || l.unit_cost == null || l.unit_cost < 0)) return toast.error(t("purchases.invalidLine"));
     setBusy(true);
 
+    const walkin = sourceType === "walkin";
     const input = {
-      supplier_id: supplierId || null,
+      supplier_id: walkin ? null : supplierId || null,
       investor_id: investorsEnabled ? investorId || null : null,
       reference_number: reference || null,
       payment_method: paymentMethod,
       notes: notes || null,
       invoice_image_url: invoiceImageUrl,
+      seller_name: walkin ? sellerName.trim() : null,
+      seller_phone: walkin ? sellerPhone.trim() || null : null,
+      seller_cnic: walkin ? sellerCnic.trim() || null : null,
+      seller_cnic_front_url: walkin ? cnicFrontUrl : null,
+      seller_cnic_back_url: walkin ? cnicBackUrl : null,
       items: lines.map((l) => ({
         product_id: l.product_id || null,
         variant_id: l.variant_id || null,
@@ -553,6 +597,23 @@ export default function Purchases() {
               <div className="space-y-4 py-2 overflow-y-auto flex-1 -mx-4 sm:-mx-6 px-4 sm:px-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
+                    <Label>Purchase from</Label>
+                    <Select value={sourceType} onValueChange={(v) => setSourceType(v as "supplier" | "walkin")}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="supplier">Supplier</SelectItem>
+                        <SelectItem value="walkin">Walk-in seller (person)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{t("purchases.reference")}</Label>
+                    <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("purchases.referencePlaceholder")} />
+                  </div>
+                </div>
+
+                {sourceType === "supplier" ? (
+                  <div className="space-y-1.5">
                     <Label>{t("purchases.supplier")}</Label>
                     <div className="flex gap-2">
                       <Select value={supplierId || "__none__"} onValueChange={(v) => setSupplierId(v === "__none__" ? "" : v)}>
@@ -567,11 +628,56 @@ export default function Purchases() {
                       </Button>
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>{t("purchases.reference")}</Label>
-                    <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("purchases.referencePlaceholder")} />
+                ) : (
+                  <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Seller name *</Label>
+                        <Input value={sellerName} onChange={(e) => setSellerName(e.target.value)} placeholder="Full name" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Phone</Label>
+                        <Input value={sellerPhone} onChange={(e) => setSellerPhone(e.target.value)} placeholder="03XX-XXXXXXX" inputMode="tel" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>CNIC (optional)</Label>
+                        <Input value={sellerCnic} onChange={(e) => setSellerCnic(e.target.value)} placeholder="XXXXX-XXXXXXX-X" inputMode="numeric" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>CNIC front photo (optional)</Label>
+                        {cnicFrontUrl ? (
+                          <div className="flex items-center gap-3">
+                            <img src={cnicFrontUrl} alt="CNIC front" className="h-16 rounded border object-contain" />
+                            <Button type="button" variant="outline" size="sm" onClick={() => setCnicFrontUrl(null)}>
+                              <X className="size-4 mr-1" /> {t("common.remove")}
+                            </Button>
+                          </div>
+                        ) : (
+                          <Input type="file" accept="image/*" capture="environment" disabled={uploadingCnic === "front"}
+                            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCnicUpload(f, "front"); e.target.value = ""; }} />
+                        )}
+                        {uploadingCnic === "front" && <p className="text-xs text-muted-foreground">{t("common.uploading")}…</p>}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>CNIC back photo (optional)</Label>
+                        {cnicBackUrl ? (
+                          <div className="flex items-center gap-3">
+                            <img src={cnicBackUrl} alt="CNIC back" className="h-16 rounded border object-contain" />
+                            <Button type="button" variant="outline" size="sm" onClick={() => setCnicBackUrl(null)}>
+                              <X className="size-4 mr-1" /> {t("common.remove")}
+                            </Button>
+                          </div>
+                        ) : (
+                          <Input type="file" accept="image/*" capture="environment" disabled={uploadingCnic === "back"}
+                            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCnicUpload(f, "back"); e.target.value = ""; }} />
+                        )}
+                        {uploadingCnic === "back" && <p className="text-xs text-muted-foreground">{t("common.uploading")}…</p>}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {investorsEnabled && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -972,7 +1078,11 @@ export default function Purchases() {
               <TableRow key={p.id}>
                 <TableCell className="tabular-nums">{format(new Date(p.created_at), "MMM d, yyyy HH:mm")}</TableCell>
                 <TableCell>{p.reference_number ?? "—"}</TableCell>
-                <TableCell>{suppliers.find((s) => s.id === p.supplier_id)?.name ?? "—"}</TableCell>
+                <TableCell>
+                  {p.seller_name
+                    ? <span>{p.seller_name} <Badge variant="outline" className="ms-1 text-[10px]">Walk-in</Badge></span>
+                    : (suppliers.find((s) => s.id === p.supplier_id)?.name ?? "—")}
+                </TableCell>
                 <TableCell className="capitalize">{p.payment_method}</TableCell>
                 <TableCell className="text-end tabular-nums font-medium">{formatMoney(Number(p.total), cur)}</TableCell>
                 <TableCell className="text-end whitespace-nowrap">
@@ -1005,8 +1115,36 @@ export default function Purchases() {
           title={details.reference_number || t("purchases.purchaseTitle")}
           subtitle={format(new Date(details.created_at), "PPp")}
           rows={[
-            { label: t("purchases.supplier"), value: details.suppliers?.name ?? "—" },
-            { label: t("purchases.supplierPhone"), value: details.suppliers?.phone ?? "—" },
+            ...(details.seller_name
+              ? [
+                  { label: "Purchased from", value: <span>{details.seller_name} <Badge variant="outline" className="ms-1 text-[10px]">Walk-in</Badge></span> },
+                  { label: "Seller phone", value: details.seller_phone ?? "—" },
+                  { label: "Seller CNIC", value: details.seller_cnic ?? "—" },
+                  ...(details.seller_cnic_front_url || details.seller_cnic_back_url
+                    ? [{
+                        label: "CNIC photos",
+                        full: true,
+                        value: (
+                          <div className="flex flex-wrap gap-3 mt-1">
+                            {details.seller_cnic_front_url && (
+                              <a href={details.seller_cnic_front_url} target="_blank" rel="noopener noreferrer">
+                                <img src={details.seller_cnic_front_url} alt="CNIC front" className="h-24 rounded border object-contain" />
+                              </a>
+                            )}
+                            {details.seller_cnic_back_url && (
+                              <a href={details.seller_cnic_back_url} target="_blank" rel="noopener noreferrer">
+                                <img src={details.seller_cnic_back_url} alt="CNIC back" className="h-24 rounded border object-contain" />
+                              </a>
+                            )}
+                          </div>
+                        ),
+                      }]
+                    : []),
+                ]
+              : [
+                  { label: t("purchases.supplier"), value: details.suppliers?.name ?? "—" },
+                  { label: t("purchases.supplierPhone"), value: details.suppliers?.phone ?? "—" },
+                ]),
             { label: t("purchases.paymentMethod"), value: <span className="capitalize">{details.payment_method}</span> },
             { label: t("common.items"), value: details.purchase_items?.length ?? 0 },
             { label: t("common.subtotal"), value: formatMoney(Number(details.subtotal), cur) },
