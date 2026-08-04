@@ -34,6 +34,7 @@ import { syncAll } from "@/lib/syncEngine";
 import { upsertLocal, notifyChange } from "@/lib/localDb";
 import { generateSku, generateBarcode } from "@/lib/sku";
 import { v4 as uuid } from "uuid";
+import { ProductFormFields, type ProductFormValue } from "@/components/ProductFormFields";
 
 const PAGE_SIZE_KEY = "pos.pageSize.purchases";
 const DEFAULT_PAGE_SIZE = 20;
@@ -158,7 +159,8 @@ export default function Purchases() {
   // Quick "new product" from inside the purchase form, so the user never has
   // to leave the page to stock an item they haven't catalogued yet.
   const [productOpen, setProductOpen] = useState(false);
-  const [newProduct, setNewProduct] = useState({ name: "", price: "", unit: "pcs", barcode: "" });
+  const blankProduct: ProductFormValue = { name: "", sku: "", barcode: "", unit: "pcs", hasVariants: false, variants: [] };
+  const [newProduct, setNewProduct] = useState<ProductFormValue>({ ...blankProduct });
   const [savingProduct, setSavingProduct] = useState(false);
 
   // Investors module (Settings toggle): who funds this purchase.
@@ -381,36 +383,78 @@ export default function Purchases() {
    */
   const saveNewProduct = async () => {
     if (!currentShop) return;
-    const name = newProduct.name.trim();
+    const name = (newProduct.name ?? "").trim();
     if (!name) return toast.error(t("products.nameRequired", { defaultValue: "Product name is required" }));
+    const wantsVariants = !!newProduct.hasVariants;
+    const draftVariants = (newProduct.variants ?? []).map((v) => ({ ...v, name: (v.name ?? "").trim() }));
+    if (wantsVariants) {
+      if (draftVariants.length === 0) return toast.error(t("products.variantsRequired", { defaultValue: "Add at least one variant" }));
+      if (draftVariants.some((v) => !v.name)) return toast.error(t("products.variantNameRequired", { defaultValue: "Every variant needs a name" }));
+    }
     const price = Number(newProduct.price) || 0;
+    const lowStock = Number(newProduct.low_stock_threshold) || 5;
     setSavingProduct(true);
     try {
       const now = new Date().toISOString();
       const id = uuid();
+      const sku = (newProduct.sku ?? "").trim() || generateSku(name);
       await upsertLocal("products", {
         id,
         shop_id: currentShop.id,
         name,
-        sku: generateSku(name),
-        barcode: newProduct.barcode.trim() || generateBarcode(),
+        sku,
+        barcode: (newProduct.barcode ?? "").trim() || generateBarcode(),
         category: null,
-        category_id: null,
+        category_id: newProduct.category_id ?? null,
         brand: null,
-        brand_id: null,
+        brand_id: newProduct.brand_id ?? null,
         price,
         stock: 0,
-        low_stock_threshold: 5,
-        unit: newProduct.unit.trim() || "pcs",
+        low_stock_threshold: lowStock,
+        unit: (newProduct.unit ?? "").trim() || "pcs",
+        imei1: wantsVariants ? null : ((newProduct.imei1 ?? "") || null),
+        imei2: wantsVariants ? null : ((newProduct.imei2 ?? "") || null),
         is_active: true,
         updated_at: now,
         created_at: now,
       }, true);
+
+      const createdVariants: Variant[] = [];
+      for (let i = 0; i < draftVariants.length; i++) {
+        const v = draftVariants[i];
+        const vid = uuid();
+        const row = {
+          id: vid,
+          product_id: id,
+          shop_id: currentShop.id,
+          name: v.name,
+          sku: (v.sku ?? "").trim() || generateSku(`${name} ${v.name}`),
+          barcode: (v.barcode ?? "").trim() || generateBarcode(),
+          price_override: v.price_override == null || (v.price_override as unknown as string) === "" ? null : Number(v.price_override),
+          low_stock_threshold: lowStock,
+          sort_order: i,
+          imei1: v.imei1?.toString().trim() || null,
+          imei2: v.imei2?.toString().trim() || null,
+          stock: 0,
+          is_active: true,
+          updated_at: now,
+        };
+        await upsertLocal("product_variants", row, true);
+        createdVariants.push({
+          id: vid, product_id: id, name: row.name, sku: row.sku,
+          barcode: row.barcode, price_override: row.price_override, stock: 0,
+        } as Variant);
+      }
       notifyChange("products");
-      pushLine({ id, name, price, variants: [] } as Product, null);
-      setNewProduct({ name: "", price: "", unit: "pcs", barcode: "" });
+
+      const created = { id, name, price, variants: createdVariants } as Product;
+      setNewProduct({ ...blankProduct });
       setProductOpen(false);
       toast.success(t("products.saved", { defaultValue: "Product added" }));
+      // With variants, let the user pick which one they actually bought —
+      // same flow as adding an existing variant product to a purchase.
+      if (createdVariants.length > 0) setVariantPicker(created);
+      else pushLine(created, null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add product");
     } finally {
@@ -613,49 +657,14 @@ export default function Purchases() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          {/* Quick product creation from inside the purchase form. */}
+          {/* Full product form, same fields as the Products page. */}
           <Dialog open={productOpen} onOpenChange={setProductOpen}>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader><DialogTitle>New product</DialogTitle></DialogHeader>
-              <div className="space-y-3 py-2">
-                <div className="space-y-1.5">
-                  <Label>{t("common.name")} *</Label>
-                  <Input
-                    autoFocus
-                    value={newProduct.name}
-                    onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveNewProduct(); } }}
-                    placeholder="e.g. Coca Cola 500ml"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>{t("products.sellingPrice")}</Label>
-                    <Input
-                      type="number" step="0.01" min="0" inputMode="decimal"
-                      value={newProduct.price}
-                      onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>{t("products.unit")}</Label>
-                    <Input value={newProduct.unit} onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })} />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("products.barcode")}</Label>
-                  <Input
-                    value={newProduct.barcode}
-                    onChange={(e) => setNewProduct({ ...newProduct, barcode: e.target.value })}
-                    placeholder="Scan or type — leave blank to auto-generate"
-                    inputMode="numeric"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Stock comes from this purchase. You can add category, brand and variants later on the Products page.
-                </p>
-              </div>
+            <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>{t("products.newProduct")}</DialogTitle></DialogHeader>
+              <ProductFormFields value={newProduct} onChange={setNewProduct} />
+              <p className="text-xs text-muted-foreground">
+                Stock comes from this purchase. The product is added to your catalog and dropped onto this purchase.
+              </p>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setProductOpen(false)} disabled={savingProduct}>{t("common.cancel")}</Button>
                 <Button onClick={saveNewProduct} disabled={savingProduct}>

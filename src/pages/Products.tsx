@@ -12,6 +12,7 @@ import { Plus, Search, Edit2, Trash2, ScanBarcode, Package as PackageIcon, Print
 import { ImportProductsDialog } from "@/components/ImportProductsDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
+import { ProductFormFields } from "@/components/ProductFormFields";
 import { PageTip } from "@/components/PageTip";
 import { BarcodeStickerDialog } from "@/components/BarcodeStickerDialog";
 import { DetailsDialog } from "@/components/DetailsDialog";
@@ -595,147 +596,11 @@ export default function Products() {
         <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing?.id ? t("products.edit") : t("products.newProduct")}</DialogTitle></DialogHeader>
           {editing && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>{t("common.name")} *</Label>
-                  <Input
-                    value={editing.name ?? ""}
-                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                    onBlur={() => {
-                      if (editing && !editing.sku && editing.name) {
-                        setEditing({ ...editing, sku: generateSku(editing.name) });
-                      }
-                    }}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("products.skuAuto")}</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={editing.sku ?? ""}
-                      placeholder={t("products.skuPlaceholder")}
-                      onChange={(e) => setEditing({ ...editing, sku: e.target.value })}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      title={t("products.regenerateSku")}
-                      onClick={() => setEditing({ ...editing, sku: generateSku(editing.name || "") })}
-                    >
-                      <RefreshCw className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label>{t("products.barcode")}</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={editing.barcode ?? ""}
-                    placeholder="Scan or type the product's barcode (optional)"
-                    inputMode="numeric"
-                    onChange={(e) => setEditing({ ...editing, barcode: e.target.value })}
-                    onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    title="Scan barcode"
-                    onClick={() => { setScanTarget("field"); setScannerOpen(true); }}
-                  >
-                    <ScanBarcode className="size-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Leave blank to auto-generate. For mart items, scan the barcode printed on the package so it can be scanned at checkout.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label>{t("products.sellingPrice")} *</Label>
-                  <Input type="number" step="0.01" min="0" value={editing.price ?? ""} onChange={(e) => setEditing({ ...editing, price: e.target.value === "" ? undefined : parseFloat(e.target.value) })} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("products.lowAt")}</Label>
-                  <Input type="number" step="0.01" value={editing.low_stock_threshold ?? ""} onChange={(e) => setEditing({ ...editing, low_stock_threshold: e.target.value === "" ? undefined : parseFloat(e.target.value) })} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("products.unit")}</Label>
-                  <Input value={editing.unit ?? "pcs"} onChange={(e) => setEditing({ ...editing, unit: e.target.value })} />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Category</Label>
-                  <CategorySelect
-                    value={editing.category_id ?? null}
-                    onChange={(id, catName) => setEditing({ ...editing, category_id: id, category: catName })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Brand</Label>
-                  <BrandSelect
-                    value={editing.brand_id ?? null}
-                    onChange={(id, brandName) => setEditing({ ...editing, brand_id: id, brand: brandName })}
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-lg border bg-card p-3 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <Label htmlFor="hasVariants" className="cursor-pointer flex items-center gap-2">
-                    <Layers className="size-4 text-primary" />
-                    {t("products.hasVariants")}
-                  </Label>
-                  <Switch
-                    id="hasVariants"
-                    checked={!!editing.hasVariants}
-                    onCheckedChange={(checked) => {
-                      setEditing({
-                        ...editing,
-                        hasVariants: checked,
-                        variants: checked ? (editing.variants ?? []) : [],
-                      });
-                    }}
-                  />
-                </div>
-
-                {editing.hasVariants && (
-                  <VariantsBuilder
-                    productName={editing.name ?? ""}
-                    basePrice={Number(editing.price) || 0}
-                    value={(editing.variants ?? []) as BuilderVariant[]}
-                    onChange={setVariants}
-                  />
-                )}
-
-                {imeiOnProduct && !editing.hasVariants && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">IMEI 1</Label>
-                      <Input
-                        value={(editing as any).imei1 ?? ""}
-                        onChange={(e) => setEditing({ ...editing, imei1: e.target.value } as any)}
-                        placeholder="IMEI 1"
-                        inputMode="numeric"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">IMEI 2 (dual SIM)</Label>
-                      <Input
-                        value={(editing as any).imei2 ?? ""}
-                        onChange={(e) => setEditing({ ...editing, imei2: e.target.value } as any)}
-                        placeholder="IMEI 2 (dual SIM)"
-                        inputMode="numeric"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <ProductFormFields
+              value={editing}
+              onChange={setEditing}
+              onScanBarcode={() => { setScanTarget("field"); setScannerOpen(true); }}
+            />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>{t("common.cancel")}</Button>
