@@ -170,7 +170,7 @@ export const PurchaseReceiptDialog = ({ purchase, onClose }: { purchase: Purchas
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md p-0 overflow-hidden bg-white text-black">
+      <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-white text-black">
         <div className="px-4 pt-5 pb-2 flex justify-center">
           <div dir="ltr" className="w-full max-w-[72mm] mx-auto bg-white text-black font-mono text-[12px] leading-[1.35]">
             <div className="text-center">

@@ -18,7 +18,7 @@ export function UpgradeDialog({
 }: { open: boolean; onOpenChange: (o: boolean) => void; feature?: string }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden">
         <div className="bg-gradient-primary text-primary-foreground p-6">
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="size-5" />

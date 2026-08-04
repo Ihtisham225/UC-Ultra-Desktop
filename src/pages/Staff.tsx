@@ -358,7 +358,7 @@ export default function Staff() {
 
       {/* Role editor */}
       <Dialog open={openRole} onOpenChange={setOpenRole}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>{editingRole ? "Edit role" : "New role"}</DialogTitle>
             <DialogDescription>Pick which modules this role can view and modify.</DialogDescription>

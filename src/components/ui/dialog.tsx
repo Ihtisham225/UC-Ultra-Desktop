@@ -43,7 +43,10 @@ const DialogContent = React.forwardRef<
         "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
         // Desktop (sm+): centered modal — reset mobile insets, then center via left/top + transform
         "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
-        "sm:w-[calc(100%-2rem)] sm:max-w-xl md:max-w-2xl sm:rounded-lg sm:p-6 md:p-8 sm:max-h-[calc(100dvh-2rem)]",
+        // Default desktop width. Callers override with `sm:max-w-*` (same
+        // variant, so tailwind-merge lets theirs win — an unprefixed
+        // `max-w-*` would lose to this responsive class in the cascade).
+        "sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-lg sm:p-6 md:p-8 sm:max-h-[calc(100dvh-2rem)]",
         "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%] sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%]",
         "sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
         className,

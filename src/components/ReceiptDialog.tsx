@@ -273,7 +273,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md p-0 overflow-hidden bg-white text-black">
+      <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-white text-black">
         <div className="px-4 pt-5 pb-2 flex justify-center">
           <div
             id="receipt-print"

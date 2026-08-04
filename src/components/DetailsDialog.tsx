@@ -20,7 +20,7 @@ interface Props {
 export const DetailsDialog = ({ open, onClose, title, subtitle, rows, footer }: Props) => {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}

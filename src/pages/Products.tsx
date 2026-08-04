@@ -592,7 +592,7 @@ export default function Products() {
       </Card>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing?.id ? t("products.edit") : t("products.newProduct")}</DialogTitle></DialogHeader>
           {editing && (
             <div className="space-y-4">

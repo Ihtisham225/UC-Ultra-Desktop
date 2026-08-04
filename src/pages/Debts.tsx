@@ -570,7 +570,7 @@ export default function Debts() {
           }
         }}
       >
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Payments{selectedDebt ? ` · ${selectedDebt.person_name}` : ""}</DialogTitle>
           </DialogHeader>

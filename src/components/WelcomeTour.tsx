@@ -169,7 +169,7 @@ export function WelcomeTour({
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : dismiss())}>
-      <DialogContent className="max-w-lg p-0 overflow-hidden gap-0">
+      <DialogContent className="sm:max-w-lg p-0 overflow-hidden gap-0">
         <div className="p-6 pb-4">
           <div className="flex items-start gap-4">
             <div className={`size-12 rounded-xl flex items-center justify-center shrink-0 ${tone}`}>

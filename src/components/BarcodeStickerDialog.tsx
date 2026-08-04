@@ -86,7 +86,7 @@ export const BarcodeStickerDialog = ({ open, onClose, product }: Props) => {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Print barcode sticker</DialogTitle>
         </DialogHeader>

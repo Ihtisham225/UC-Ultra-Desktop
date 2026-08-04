@@ -100,7 +100,7 @@ export const BarcodeScanner = ({ open, onClose, onDetected }: Props) => {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Camera className="size-4" /> Scan barcode</DialogTitle>
         </DialogHeader>

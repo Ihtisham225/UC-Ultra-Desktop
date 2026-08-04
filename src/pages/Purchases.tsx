@@ -31,6 +31,9 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { syncAll } from "@/lib/syncEngine";
+import { upsertLocal, notifyChange } from "@/lib/localDb";
+import { generateSku, generateBarcode } from "@/lib/sku";
+import { v4 as uuid } from "uuid";
 
 const PAGE_SIZE_KEY = "pos.pageSize.purchases";
 const DEFAULT_PAGE_SIZE = 20;
@@ -151,6 +154,12 @@ export default function Purchases() {
   const [uploadingCnic, setUploadingCnic] = useState<"front" | "back" | null>(null);
 
   const [newSupplier, setNewSupplier] = useState({ name: "", phone: "", email: "", notes: "" });
+
+  // Quick "new product" from inside the purchase form, so the user never has
+  // to leave the page to stock an item they haven't catalogued yet.
+  const [productOpen, setProductOpen] = useState(false);
+  const [newProduct, setNewProduct] = useState({ name: "", price: "", unit: "pcs", barcode: "" });
+  const [savingProduct, setSavingProduct] = useState(false);
 
   // Investors module (Settings toggle): who funds this purchase.
   const investorsEnabled = !!currentShop?.investors_enabled;
@@ -365,6 +374,50 @@ export default function Purchases() {
     }]);
   };
 
+  /**
+   * Create a product without leaving the purchase form, then drop it straight
+   * onto the purchase as a line item. Written to the local store (and queued
+   * for sync) so it works offline and shows in the picker immediately.
+   */
+  const saveNewProduct = async () => {
+    if (!currentShop) return;
+    const name = newProduct.name.trim();
+    if (!name) return toast.error(t("products.nameRequired", { defaultValue: "Product name is required" }));
+    const price = Number(newProduct.price) || 0;
+    setSavingProduct(true);
+    try {
+      const now = new Date().toISOString();
+      const id = uuid();
+      await upsertLocal("products", {
+        id,
+        shop_id: currentShop.id,
+        name,
+        sku: generateSku(name),
+        barcode: newProduct.barcode.trim() || generateBarcode(),
+        category: null,
+        category_id: null,
+        brand: null,
+        brand_id: null,
+        price,
+        stock: 0,
+        low_stock_threshold: 5,
+        unit: newProduct.unit.trim() || "pcs",
+        is_active: true,
+        updated_at: now,
+        created_at: now,
+      }, true);
+      notifyChange("products");
+      pushLine({ id, name, price, variants: [] } as Product, null);
+      setNewProduct({ name: "", price: "", unit: "pcs", barcode: "" });
+      setProductOpen(false);
+      toast.success(t("products.saved", { defaultValue: "Product added" }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to add product");
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
   const addLine = (productId: string) => {
     const p = products.find((x) => x.id === productId);
     if (!p) return;
@@ -560,8 +613,59 @@ export default function Purchases() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          {/* Quick product creation from inside the purchase form. */}
+          <Dialog open={productOpen} onOpenChange={setProductOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader><DialogTitle>New product</DialogTitle></DialogHeader>
+              <div className="space-y-3 py-2">
+                <div className="space-y-1.5">
+                  <Label>{t("common.name")} *</Label>
+                  <Input
+                    autoFocus
+                    value={newProduct.name}
+                    onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveNewProduct(); } }}
+                    placeholder="e.g. Coca Cola 500ml"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>{t("products.sellingPrice")}</Label>
+                    <Input
+                      type="number" step="0.01" min="0" inputMode="decimal"
+                      value={newProduct.price}
+                      onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{t("products.unit")}</Label>
+                    <Input value={newProduct.unit} onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("products.barcode")}</Label>
+                  <Input
+                    value={newProduct.barcode}
+                    onChange={(e) => setNewProduct({ ...newProduct, barcode: e.target.value })}
+                    placeholder="Scan or type — leave blank to auto-generate"
+                    inputMode="numeric"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Stock comes from this purchase. You can add category, brand and variants later on the Products page.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setProductOpen(false)} disabled={savingProduct}>{t("common.cancel")}</Button>
+                <Button onClick={saveNewProduct} disabled={savingProduct}>
+                  {savingProduct ? t("common.saving") : "Add to purchase"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={investorOpen} onOpenChange={setInvestorOpen}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="sm:max-w-lg">
               <DialogHeader><DialogTitle>{t("investors.add", { defaultValue: "Add investor" })}</DialogTitle></DialogHeader>
               <div className="space-y-3 py-2">
                 <div className="space-y-1.5"><Label>{t("common.name")} *</Label>
@@ -592,7 +696,7 @@ export default function Purchases() {
             <DialogTrigger asChild>
               <Button><Plus className="size-4 mr-2" /> {t("purchases.newPurchase")}</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-5xl max-h-[calc(100dvh-1rem)] flex flex-col">
+            <DialogContent className="sm:max-w-6xl max-h-[calc(100dvh-1rem)] flex flex-col">
               <DialogHeader><DialogTitle>{editingId ? t("purchases.editPurchase") : t("purchases.recordPurchase")}</DialogTitle></DialogHeader>
               <div className="space-y-4 py-2 overflow-y-auto flex-1 -mx-4 sm:-mx-6 px-4 sm:px-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -716,9 +820,10 @@ export default function Purchases() {
                 <div className="space-y-2">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <Label>{t("purchases.items")}</Label>
+                    <div className="flex gap-2 w-full sm:w-auto">
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button type="button" variant="outline" size="sm" className="w-full sm:w-60 justify-start">
+                        <Button type="button" variant="outline" size="sm" className="flex-1 sm:w-60 justify-start">
                           <Plus className="size-4 mr-2" /> {t("purchases.addProductPlaceholder")}
                         </Button>
                       </PopoverTrigger>
@@ -757,6 +862,18 @@ export default function Purchases() {
                         </Command>
                       </PopoverContent>
                     </Popover>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      title="Create a new product"
+                      onClick={() => setProductOpen(true)}
+                    >
+                      <PackageOpen className="size-4 sm:mr-1.5" />
+                      <span className="hidden sm:inline">New product</span>
+                    </Button>
+                    </div>
                   </div>
                   {/* Desktop table */}
                   <div className="hidden sm:block border rounded-lg overflow-auto max-h-80">

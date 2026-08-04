@@ -251,7 +251,7 @@ export default function Payroll() {
 
       {/* Edit salary */}
       <Dialog open={!!salaryEdit} onOpenChange={(o) => !o && setSalaryEdit(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Monthly salary — {salaryEdit?.staff.name}</DialogTitle></DialogHeader>
           <div className="space-y-1.5">
             <Label>Monthly salary ({cur})</Label>
@@ -267,7 +267,7 @@ export default function Payroll() {
 
       {/* Record payment */}
       <Dialog open={!!pay} onOpenChange={(o) => !o && setPay(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Record payment</DialogTitle></DialogHeader>
           {pay && (
             <div className="space-y-3">
@@ -305,7 +305,7 @@ export default function Payroll() {
 
       {/* Payslip */}
       <Dialog open={!!slip} onOpenChange={(o) => !o && setSlip(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Payslip</DialogTitle></DialogHeader>
           {slip && (
             <div id="payslip-print" className="space-y-4">

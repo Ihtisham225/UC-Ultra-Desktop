@@ -664,7 +664,7 @@ export default function Investors() {
 
       {/* Add / edit investor */}
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{editing?.id ? "Edit investor" : "Add investor"}</DialogTitle></DialogHeader>
           {editing && (
             <div className="space-y-3">
@@ -714,7 +714,7 @@ export default function Investors() {
 
       {/* Deposit / withdraw (individual) */}
       <Dialog open={!!money} onOpenChange={(o) => !o && setMoney(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {money?.kind === "deposit" ? "Add money" : "Take money out"} — {money?.investor.name}
@@ -744,7 +744,7 @@ export default function Investors() {
 
       {/* Ledger (individual) */}
       <Dialog open={!!ledger} onOpenChange={(o) => !o && setLedger(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{ledger?.name} — history</DialogTitle></DialogHeader>
           <div className="border rounded-lg overflow-hidden">
             <Table>
@@ -781,7 +781,7 @@ export default function Investors() {
 
       {/* Pool: add / edit member */}
       <Dialog open={!!memberEditing} onOpenChange={(o) => !o && setMemberEditing(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{memberEditing?.id ? "Edit member" : "Add pool member"}</DialogTitle></DialogHeader>
           {memberEditing && (
             <div className="space-y-3">
@@ -820,7 +820,7 @@ export default function Investors() {
 
       {/* Pool: member deposit / withdraw */}
       <Dialog open={!!memberMoney} onOpenChange={(o) => !o && setMemberMoney(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {memberMoney?.kind === "deposit" ? "Add money" : "Take money out"} — {memberMoney?.member.name}
@@ -858,7 +858,7 @@ export default function Investors() {
 
       {/* Pool: member history */}
       <Dialog open={!!memberLedger} onOpenChange={(o) => !o && setMemberLedger(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{memberLedger?.name} — history</DialogTitle></DialogHeader>
           <div className="border rounded-lg overflow-hidden">
             <Table>
@@ -895,7 +895,7 @@ export default function Investors() {
 
       {/* Pool: distribute profits */}
       <Dialog open={!!distribute} onOpenChange={(o) => !o && setDistribute(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Distribute profits</DialogTitle></DialogHeader>
           {distribute && pool && (
             <div className="space-y-4">
