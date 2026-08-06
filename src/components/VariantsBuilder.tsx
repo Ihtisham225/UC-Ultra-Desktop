@@ -21,6 +21,8 @@ export interface BuilderVariant {
   stock: number;
   imei1?: string | null;
   imei2?: string | null;
+  expiry_date?: string | null;
+  batch_no?: string | null;
   _new?: boolean;
 }
 
@@ -82,6 +84,8 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange }: Pro
   const { currentShop } = useShop();
   const cur = currentShop?.currency ?? "USD";
   const imeiOnProduct = currentShop?.store_type === "phone" && currentShop?.imei_capture_mode === "product";
+  // Pharmacies can use one variant per batch, each with its own expiry.
+  const isPharmacy = currentShop?.store_type === "pharmacy";
 
   const [groups, setGroups] = useState<AttributeGroup[]>(() => {
     const parsed = parseGroupsFromVariants(value);
@@ -155,6 +159,12 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange }: Pro
   };
 
   const updateVariantImei = (idx: number, field: "imei1" | "imei2", raw: string) => {
+    const next = [...value];
+    next[idx] = { ...next[idx], [field]: raw };
+    onChange(next);
+  };
+
+  const updateVariantField = (idx: number, field: "expiry_date" | "batch_no", raw: string) => {
     const next = [...value];
     next[idx] = { ...next[idx], [field]: raw };
     onChange(next);
@@ -348,6 +358,12 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange }: Pro
                           <X className="size-3.5 text-destructive" />
                         </Button>
                       </div>
+                      {isPharmacy && (
+                        <div className="grid grid-cols-2 gap-2 mt-1.5">
+                          <Input type="date" value={v.expiry_date ?? ""} onChange={(e) => updateVariantField(idx, "expiry_date", e.target.value)} title="Expiry date" className="h-8 text-xs" />
+                          <Input value={v.batch_no ?? ""} onChange={(e) => updateVariantField(idx, "batch_no", e.target.value)} placeholder="Batch no." className="h-8 text-xs" />
+                        </div>
+                      )}
                       {imeiOnProduct && (
                         <div className="grid grid-cols-2 gap-2 mt-1.5">
                           <Input value={v.imei1 ?? ""} onChange={(e) => updateVariantImei(idx, "imei1", e.target.value)} placeholder="IMEI 1" inputMode="numeric" className="h-8 text-xs" />

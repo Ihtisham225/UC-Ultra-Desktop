@@ -202,6 +202,11 @@ export default function Products() {
       unit: editing.unit || "pcs",
       imei1: !wantsVariants ? ((editing as any).imei1?.trim() || null) : null,
       imei2: !wantsVariants ? ((editing as any).imei2?.trim() || null) : null,
+      expiry_date: !wantsVariants ? ((editing as any).expiry_date || null) : null,
+      batch_no: !wantsVariants ? ((editing as any).batch_no?.trim() || null) : null,
+      generic_name: (editing as any).generic_name?.trim() || null,
+      shelf_location: (editing as any).shelf_location?.trim() || null,
+      is_service: (editing as any).is_service ?? false,
       is_active: editing.is_active !== false,
       updated_at: now,
       created_at: editing.id
@@ -248,6 +253,8 @@ export default function Products() {
           sort_order: i,
           imei1: (v as { imei1?: string | null }).imei1?.toString().trim() || null,
           imei2: (v as { imei2?: string | null }).imei2?.toString().trim() || null,
+          expiry_date: (v as { expiry_date?: string | null }).expiry_date || null,
+          batch_no: (v as { batch_no?: string | null }).batch_no?.toString().trim() || null,
           updated_at: now,
         }, true);
       }

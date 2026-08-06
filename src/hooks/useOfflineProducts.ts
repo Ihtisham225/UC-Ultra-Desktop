@@ -48,6 +48,8 @@ export function useOfflineProducts(shopId: string | undefined) {
         stock: Number(v.stock),
         imei1: (v as { imei1?: string | null }).imei1 ?? null,
         imei2: (v as { imei2?: string | null }).imei2 ?? null,
+        expiry_date: (v as { expiry_date?: string | null }).expiry_date ?? null,
+        batch_no: (v as { batch_no?: string | null }).batch_no ?? null,
       })
       variantsByProduct.set(v.product_id, arr)
     }
@@ -62,6 +64,11 @@ export function useOfflineProducts(shopId: string | undefined) {
         shop_id: shopId,
         imei1: (p as { imei1?: string | null }).imei1 ?? null,
         imei2: (p as { imei2?: string | null }).imei2 ?? null,
+        expiry_date: (p as { expiry_date?: string | null }).expiry_date ?? null,
+        batch_no: (p as { batch_no?: string | null }).batch_no ?? null,
+        generic_name: (p as { generic_name?: string | null }).generic_name ?? null,
+        shelf_location: (p as { shelf_location?: string | null }).shelf_location ?? null,
+        is_service: (p as { is_service?: boolean }).is_service ?? false,
         variants: variantsByProduct.get(p.id) ?? [],
         _syncedAt: Date.now(),
       }))

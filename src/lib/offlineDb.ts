@@ -9,6 +9,11 @@ export interface CachedProduct {
   shop_id: string
   imei1?: string | null
   imei2?: string | null
+  expiry_date?: string | null
+  batch_no?: string | null
+  generic_name?: string | null
+  shelf_location?: string | null
+  is_service?: boolean
   variants: CachedVariant[]
   _syncedAt: number
 }
@@ -23,6 +28,8 @@ export interface CachedVariant {
   stock: number
   imei1?: string | null
   imei2?: string | null
+  expiry_date?: string | null
+  batch_no?: string | null
 }
 
 export interface PendingSale {

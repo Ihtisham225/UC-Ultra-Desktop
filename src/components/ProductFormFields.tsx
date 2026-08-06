@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { RefreshCw, ScanBarcode, Layers } from "lucide-react";
+import { RefreshCw, ScanBarcode, Layers, Pill, Stethoscope } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
 import { CategorySelect } from "@/components/CategorySelect";
@@ -25,6 +25,11 @@ export interface ProductFormValue {
   brand_id?: string | null;
   imei1?: string | null;
   imei2?: string | null;
+  expiry_date?: string | null;
+  batch_no?: string | null;
+  generic_name?: string | null;
+  shelf_location?: string | null;
+  is_service?: boolean;
   hasVariants?: boolean;
   variants?: BuilderVariant[];
 }
@@ -53,6 +58,10 @@ export function ProductFormFields<T extends ProductFormValue>({
   // Phone shops that record the handset serial on the product (not at sale).
   const imeiOnProduct =
     currentShop?.store_type === "phone" && currentShop?.imei_capture_mode === "product";
+  const isPharmacy = currentShop?.store_type === "pharmacy";
+  // Services (lab tests, repair labour) hold no stock, so stock-shaped fields
+  // and the variants section don't apply to them.
+  const isService = !!value.is_service;
 
   const set = (patch: Partial<ProductFormValue>) => onChange({ ...value, ...patch } as T);
 
@@ -127,6 +136,7 @@ export function ProductFormFields<T extends ProductFormValue>({
             type="number" step="0.01"
             value={value.low_stock_threshold ?? ""}
             onChange={(e) => set({ low_stock_threshold: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
+            disabled={isService}
           />
         </div>
         <div className="space-y-1.5">
@@ -169,7 +179,81 @@ export function ProductFormFields<T extends ProductFormValue>({
         </div>
       )}
 
-      {!hideVariants && (
+      {isPharmacy && !isService && (
+        <div className="rounded-lg border bg-card p-3 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Pill className="size-4 text-primary" /> Pharmacy details
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Generic / salt name</Label>
+              <Input
+                value={value.generic_name ?? ""}
+                onChange={(e) => set({ generic_name: e.target.value })}
+                placeholder="e.g. Paracetamol"
+              />
+              <p className="text-xs text-muted-foreground">Also searched at POS, so staff can find it by salt.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Shelf / rack</Label>
+              <Input
+                value={value.shelf_location ?? ""}
+                onChange={(e) => set({ shelf_location: e.target.value })}
+                placeholder="e.g. Rack B-4"
+              />
+              <p className="text-xs text-muted-foreground">Shown at POS so staff can find the box fast.</p>
+            </div>
+          </div>
+          {!value.hasVariants && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Expiry date</Label>
+                <Input
+                  type="date"
+                  value={value.expiry_date ?? ""}
+                  onChange={(e) => set({ expiry_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Batch no.</Label>
+                <Input
+                  value={value.batch_no ?? ""}
+                  onChange={(e) => set({ batch_no: e.target.value })}
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+          )}
+          {value.hasVariants && (
+            <p className="text-xs text-muted-foreground">
+              Expiry and batch are set per variant below — use one variant per batch.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="rounded-lg border bg-card p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label htmlFor="isService" className="cursor-pointer flex items-center gap-2">
+              <Stethoscope className="size-4 text-primary" />
+              Service (no stock)
+            </Label>
+            <p className="text-xs text-muted-foreground mt-1">
+              For lab tests, repair labour and other charges — sells at POS but never tracks stock.
+            </p>
+          </div>
+          <Switch
+            id="isService"
+            checked={isService}
+            onCheckedChange={(checked) =>
+              set(checked ? { is_service: true, hasVariants: false, variants: [] } : { is_service: false })
+            }
+          />
+        </div>
+      </div>
+
+      {!hideVariants && !isService && (
         <div className="rounded-lg border bg-card p-3 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <Label htmlFor="hasVariants" className="cursor-pointer flex items-center gap-2">

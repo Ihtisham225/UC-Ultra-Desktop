@@ -6,6 +6,7 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useShop } from "@/contexts/ShopContext";
 import { MovementHistoryTable } from "@/components/MovementHistoryTable";
+import { ExpiryReportTable } from "@/components/ExpiryReportTable";
 import { StockAdjustmentDialog } from "@/components/StockAdjustmentDialog";
 import { PageTip } from "@/components/PageTip";
 
@@ -15,6 +16,8 @@ export default function Inventory() {
   const { currentShop } = useShop();
   const [adjOpen, setAdjOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Expiry tracking only matters for pharmacies.
+  const isPharmacy = currentShop?.store_type === "pharmacy";
 
   if (!perms.canManageProducts) {
     return <div className="p-12 text-center text-muted-foreground">You don't have access to Inventory.</div>;
@@ -42,10 +45,16 @@ export default function Inventory() {
 
         <TabsList>
           <TabsTrigger value="history">Movement History</TabsTrigger>
+          {isPharmacy && <TabsTrigger value="expiry">Expiry</TabsTrigger>}
         </TabsList>
         <TabsContent value="history">
           <MovementHistoryTable key={refreshKey} />
         </TabsContent>
+        {isPharmacy && (
+          <TabsContent value="expiry">
+            <ExpiryReportTable />
+          </TabsContent>
+        )}
       </Tabs>
 
       <StockAdjustmentDialog

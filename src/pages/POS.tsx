@@ -29,6 +29,8 @@ interface Variant {
   stock: number;
   imei1?: string | null;
   imei2?: string | null;
+  expiry_date?: string | null;
+  batch_no?: string | null;
 }
 interface Product {
   id: string;
@@ -38,8 +40,22 @@ interface Product {
   stock: number;
   imei1?: string | null;
   imei2?: string | null;
+  expiry_date?: string | null;
+  batch_no?: string | null;
+  generic_name?: string | null;
+  shelf_location?: string | null;
+  is_service?: boolean;
   variants?: Variant[];
 }
+/** Expiry status for pharmacy stock: null when no date or comfortably fresh. */
+const expiryStatus = (d?: string | null): "expired" | "soon" | null => {
+  if (!d) return null;
+  const days = Math.floor((new Date(d + "T00:00:00").getTime() - new Date().setHours(0, 0, 0, 0)) / 86400000);
+  if (days < 0) return "expired";
+  if (days <= 30) return "soon";
+  return null;
+};
+
 /** Last-5-digit tail of an IMEI so staff know which handset a line refers to. */
 const imeiTail = (s?: string | null) => (s && s.length > 5 ? `…${s.slice(-5)}` : (s || ""));
 
@@ -56,6 +72,8 @@ interface CartItem {
   /** Serial(s) of the unit sold — captured at checkout for phone shops. */
   imei1?: string;
   imei2?: string;
+  /** Services have no stock, so quantity is never capped. */
+  is_service?: boolean;
 }
 
 export default function POS() {
@@ -90,14 +108,18 @@ export default function POS() {
   /** Add a (product, optional variant) to the cart. */
   const pushToCart = (p: Product, v: Variant | null) => {
     const stock = Number(v ? v.stock : p.stock);
-    if (stock <= 0) { toast.error(t("pos.outOfStock")); return; }
+    // Services have no stock to run out of.
+    if (!p.is_service && stock <= 0) { toast.error(t("pos.outOfStock")); return; }
+    const exp = expiryStatus(v ? v.expiry_date : p.expiry_date);
+    if (exp === "expired") toast.error(`${p.name} has EXPIRED — check before selling`);
+    else if (exp === "soon") toast.warning(`${p.name} expires within 30 days`);
     const key = v ? v.id : p.id;
     const unit_price = v ? Number(v.price_override ?? p.price) : Number(p.price);
     const display_name = v ? `${p.name} — ${v.name}` : p.name;
     setCart((prev) => {
       const existing = prev.find((c) => c.key === key);
       const currentQty = existing?.quantity ?? 0;
-      if (currentQty + 1 > stock) {
+      if (!p.is_service && currentQty + 1 > stock) {
         toast.error(t("pos.insufficientStock", { name: display_name }));
         return prev;
       }
@@ -113,6 +135,7 @@ export default function POS() {
         stock,
         imei1: imeiOnProduct ? (src.imei1 ?? undefined) : undefined,
         imei2: imeiOnProduct ? (src.imei2 ?? undefined) : undefined,
+        is_service: p.is_service,
       }];
     });
   };
@@ -130,7 +153,7 @@ export default function POS() {
       .map((c) => {
         if (c.key !== key) return c;
         const newQty = c.quantity + delta;
-        if (delta > 0 && newQty > c.stock) {
+        if (delta > 0 && !c.is_service && newQty > c.stock) {
           toast.error(t("pos.insufficientStock", { name: c.product_name }));
           return c;
         }
@@ -167,6 +190,7 @@ export default function POS() {
     const q = search.toLowerCase();
     return products.filter((p) =>
       p.name.toLowerCase().includes(q) ||
+      p.generic_name?.toLowerCase().includes(q) ||
       p.barcode?.includes(q) ||
       p.variants?.some((v) => v.name.toLowerCase().includes(q) || v.sku?.toLowerCase().includes(q) || v.barcode?.includes(q))
     );
@@ -335,7 +359,7 @@ export default function POS() {
                   <button
                     key={p.id}
                     onClick={() => handleProductClick(p)}
-                    disabled={totalStock <= 0}
+                    disabled={!p.is_service && totalStock <= 0}
                     className="text-start p-3 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all disabled:opacity-40 disabled:cursor-not-allowed group relative overflow-hidden w-full min-w-0"
                   >
                     {hasVariants && (
