@@ -186,6 +186,7 @@ export default function Returns() {
                   <TableHead>{t("common.date")}</TableHead>
                   <TableHead>{t("returns.returnNumber")}</TableHead>
                   <TableHead>{t("returns.receiptCol")}</TableHead>
+                  <TableHead>Products</TableHead>
                   <TableHead>{t("common.items")}</TableHead>
                   <TableHead>{t("returns.method")}</TableHead>
                   <TableHead>{t("returns.reason")}</TableHead>
@@ -196,14 +197,17 @@ export default function Returns() {
               </TableHeader>
               <TableBody>
                 {custLoading ? (
-                  <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
                 ) : custRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-12">{t("returns.empty")}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-12">{t("returns.empty")}</TableCell></TableRow>
                 ) : custRows.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
                     <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
                     <TableCell className="font-mono text-xs">{r.sales?.receipt_number ?? "—"}</TableCell>
+                    <TableCell className="max-w-[16rem] truncate text-sm">
+                      {r.sale_return_items.map((i) => Number(i.quantity) > 1 ? `${i.product_name} ×${Number(i.quantity)}` : i.product_name).join(", ") || "—"}
+                    </TableCell>
                     <TableCell className="tabular-nums">{r.sale_return_items.reduce((a, i) => a + Number(i.quantity), 0)}</TableCell>
                     <TableCell className="capitalize">{r.refund_method}</TableCell>
                     <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{r.reason ?? "—"}</TableCell>

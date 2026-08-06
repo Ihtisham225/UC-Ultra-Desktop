@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Search, Edit2, Trash2, ScanBarcode, Package as PackageIcon, Printer, RefreshCw, Eye, Layers, Upload } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, ScanBarcode, Package as PackageIcon, Printer, RefreshCw, Eye, Layers, Upload, ArrowUpDown } from "lucide-react";
 import { ImportProductsDialog } from "@/components/ImportProductsDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
@@ -64,6 +64,7 @@ interface Product {
   is_active: boolean;
   imei1?: string | null;
   imei2?: string | null;
+  created_at?: string;
   product_variants?: Variant[];
 }
 
@@ -73,6 +74,41 @@ interface EditingProduct extends Partial<Product> {
 }
 
 const blank: EditingProduct = { name: "", sku: "", barcode: "", unit: "pcs", hasVariants: false, variants: [] };
+
+const SORT_KEY = "pos.sort.products";
+type SortKey = "newest" | "oldest" | "name_asc" | "name_desc" | "price_desc" | "price_asc" | "stock_asc" | "stock_desc";
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "newest", label: "Newest first" },
+  { key: "oldest", label: "Oldest first" },
+  { key: "name_asc", label: "Name A–Z" },
+  { key: "name_desc", label: "Name Z–A" },
+  { key: "price_desc", label: "Price high–low" },
+  { key: "price_asc", label: "Price low–high" },
+  { key: "stock_asc", label: "Stock low–high" },
+  { key: "stock_desc", label: "Stock high–low" },
+];
+
+/** Total stock across a product's variants, or its own stock when simple. */
+const productStock = (p: Product) =>
+  (p.product_variants?.length ?? 0) > 0
+    ? p.product_variants!.reduce((a, v) => a + Number(v.stock), 0)
+    : Number(p.stock);
+
+const sortProducts = (rows: Product[], key: SortKey): Product[] => {
+  const out = [...rows];
+  const at = (p: Product) => p.created_at ?? "";
+  switch (key) {
+    case "oldest": return out.sort((a, b) => at(a).localeCompare(at(b)));
+    case "name_asc": return out.sort((a, b) => a.name.localeCompare(b.name));
+    case "name_desc": return out.sort((a, b) => b.name.localeCompare(a.name));
+    case "price_desc": return out.sort((a, b) => Number(b.price) - Number(a.price));
+    case "price_asc": return out.sort((a, b) => Number(a.price) - Number(b.price));
+    case "stock_asc": return out.sort((a, b) => productStock(a) - productStock(b));
+    case "stock_desc": return out.sort((a, b) => productStock(b) - productStock(a));
+    case "newest":
+    default: return out.sort((a, b) => at(b).localeCompare(at(a)));
+  }
+};
 
 export default function Products() {
   usePageMeta({ title: "Products & Inventory — UCU", description: "Manage your product catalog, track stock levels, set prices and import in bulk.", path: "/products" });
@@ -93,6 +129,16 @@ export default function Products() {
   const [stickerProduct, setStickerProduct] = useState<Product | null>(null);
   const [details, setDetails] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // Table order. Newest-first by default so a just-added product is on top.
+  const [sortBy, setSortBy] = useState<SortKey>("newest");
+  useEffect(() => {
+    const saved = localStorage.getItem(SORT_KEY) as SortKey | null;
+    if (saved && SORT_OPTIONS.some((o) => o.key === saved)) setSortBy(saved);
+  }, []);
+  const changeSort = (k: SortKey) => {
+    setSortBy(k);
+    try { localStorage.setItem(SORT_KEY, k); } catch {}
+  };
   const { confirm, dialog: confirmDialog } = useConfirm();
   const sel = useRowSelection();
 
@@ -337,9 +383,11 @@ export default function Products() {
     }
   };
 
+  const sorted = useMemo(() => sortProducts(filtered, sortBy), [filtered, sortBy]);
+
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(
-    filtered,
-    { key: "products", defaultSize: 20, resetDeps: [search, categoryFilter, brandFilter, items.length] },
+    sorted,
+    { key: "products", defaultSize: 20, resetDeps: [search, categoryFilter, brandFilter, sortBy, items.length] },
   );
 
   const cur = currentShop?.currency ?? "USD";
@@ -459,6 +507,15 @@ export default function Products() {
             {brands.map((b) => (
               <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={(v) => changeSort(v as SortKey)}>
+          <SelectTrigger className="w-full sm:w-44" aria-label="Sort products">
+            <ArrowUpDown className="size-4 me-1 shrink-0 text-muted-foreground" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_OPTIONS.map((o) => <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>)}
           </SelectContent>
         </Select>
         <Button variant="outline" onClick={() => { setScanTarget("lookup"); setScannerOpen(true); }} aria-label="Scan barcode"><ScanBarcode className="size-4" /></Button>

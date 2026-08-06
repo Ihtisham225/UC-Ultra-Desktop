@@ -225,6 +225,11 @@ export default function Sales() {
                           </Badge>
                         )}
                       </div>
+                      {s.sale_items.length > 0 && (
+                        <div className="text-xs text-foreground/80 mt-0.5 truncate">
+                          {s.sale_items.map((it) => Number(it.quantity) > 1 ? `${it.product_name} ×${Number(it.quantity)}` : it.product_name).join(", ")}
+                        </div>
+                      )}
                       <div className="text-xs text-muted-foreground mt-0.5">
                         {format(new Date(s.created_at), "PPp")} · {t("sales.itemsCount", { count: s.sale_items.length })} · {s.payment_method}
                       </div>

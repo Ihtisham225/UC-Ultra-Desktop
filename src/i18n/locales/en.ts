@@ -231,7 +231,7 @@ const en = {
     unit: "Unit",
     image: "Image",
     lowStockThreshold: "Low stock threshold",
-    lowAt: "Low at",
+    lowAt: "Low stock alert",
     sticker: "Sticker",
     restock: "Restock",
     activate: "Activate",

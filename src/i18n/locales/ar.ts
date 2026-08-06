@@ -234,7 +234,7 @@ const ar: Translations = {
     unit: "الوحدة",
     image: "الصورة",
     lowStockThreshold: "حد التنبيه للمخزون",
-    lowAt: "تنبيه عند",
+    lowAt: "تنبيه انخفاض المخزون",
     sticker: "ملصق",
     restock: "إعادة تعبئة",
     activate: "تفعيل",

@@ -121,7 +121,8 @@ export function ProductFormFields<T extends ProductFormValue>({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Services have no stock, so low-stock alert and unit don't apply. */}
+      <div className={`grid grid-cols-1 gap-3 ${isService ? "sm:grid-cols-1" : "sm:grid-cols-3"}`}>
         <div className="space-y-1.5">
           <Label>{t("products.sellingPrice")} *</Label>
           <Input
@@ -130,30 +131,36 @@ export function ProductFormFields<T extends ProductFormValue>({
             onChange={(e) => set({ price: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
           />
         </div>
-        <div className="space-y-1.5">
-          <Label>{t("products.lowAt")}</Label>
-          <Input
-            type="number" step="0.01"
-            value={value.low_stock_threshold ?? ""}
-            onChange={(e) => set({ low_stock_threshold: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
-            disabled={isService}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>{t("products.unit")}</Label>
-          <Input value={value.unit ?? "pcs"} onChange={(e) => set({ unit: e.target.value })} />
-        </div>
+        {!isService && (
+          <>
+            <div className="space-y-1.5">
+              <Label>{t("products.lowAt")}</Label>
+              <Input
+                type="number" step="0.01"
+                value={value.low_stock_threshold ?? ""}
+                onChange={(e) => set({ low_stock_threshold: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("products.unit")}</Label>
+              <Input value={value.unit ?? "pcs"} onChange={(e) => set({ unit: e.target.value })} />
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className={`grid grid-cols-1 gap-3 ${isService ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}>
         <div className="space-y-1.5">
           <Label>Category</Label>
           <CategorySelect value={value.category_id ?? null} onChange={(id) => set({ category_id: id })} />
         </div>
-        <div className="space-y-1.5">
-          <Label>Brand</Label>
-          <BrandSelect value={value.brand_id ?? null} onChange={(id) => set({ brand_id: id })} />
-        </div>
+        {/* A service has no manufacturer. */}
+        {!isService && (
+          <div className="space-y-1.5">
+            <Label>Brand</Label>
+            <BrandSelect value={value.brand_id ?? null} onChange={(id) => set({ brand_id: id })} />
+          </div>
+        )}
       </div>
 
       {imeiOnProduct && !value.hasVariants && (

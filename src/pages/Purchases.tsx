@@ -68,6 +68,8 @@ interface Line {
   quantity: number;
   /** Landed-cost charges for the whole line (transport, loading, …). */
   expense_amount: number | null;
+  /** Services (lab tests, labour) are a flat charge — no quantity. */
+  is_service?: boolean;
 }
 
 function InvoiceImage({ value }: { value: string }) {
@@ -373,6 +375,7 @@ export default function Purchases() {
       unit_cost: null,
       quantity: 1,
       expense_amount: null,
+      is_service: (p as { is_service?: boolean }).is_service,
     }]);
   };
 
@@ -912,9 +915,13 @@ export default function Purchases() {
                                 }} />
                             </TableCell>
                             <TableCell className="p-2">
-                              <Input type="number" inputMode="numeric" step="1" value={l.quantity}
-                                className="h-9 px-2 text-sm tabular-nums"
-                                onChange={(e) => updateLine(l.key, { quantity: parseFloat(e.target.value) || 0 })} />
+                              {l.is_service ? (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              ) : (
+                                <Input type="number" inputMode="numeric" step="1" value={l.quantity}
+                                  className="h-9 px-2 text-sm tabular-nums"
+                                  onChange={(e) => updateLine(l.key, { quantity: parseFloat(e.target.value) || 0 })} />
+                              )}
                             </TableCell>
                             <TableCell className="p-2">
                               <Input type="number" inputMode="decimal" step="0.01" placeholder="0.00" value={l.expense_amount ?? ""}
@@ -959,13 +966,15 @@ export default function Purchases() {
                                 updateLine(l.key, { unit_cost: v === "" ? null : (parseFloat(v) || 0) });
                               }} />
                           </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">{t("purchases.qty")}</Label>
-                            <Input type="number" inputMode="numeric" step="1"
-                              className="h-11 text-base"
-                              value={l.quantity}
-                              onChange={(e) => updateLine(l.key, { quantity: parseFloat(e.target.value) || 0 })} />
-                          </div>
+                          {!l.is_service && (
+                            <div className="space-y-1">
+                              <Label className="text-xs">{t("purchases.qty")}</Label>
+                              <Input type="number" inputMode="numeric" step="1"
+                                className="h-11 text-base"
+                                value={l.quantity}
+                                onChange={(e) => updateLine(l.key, { quantity: parseFloat(e.target.value) || 0 })} />
+                            </div>
+                          )}
                           <div className="space-y-1">
                             <Label className="text-xs">{t("purchases.expenses", { defaultValue: "Expenses" })}</Label>
                             <Input type="number" inputMode="decimal" step="0.01" placeholder="0.00"
