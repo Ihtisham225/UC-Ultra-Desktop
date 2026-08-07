@@ -1,6 +1,6 @@
 // Per-shop module permissions definition (mirrors UHMS structure).
 export const MODULES = [
-  "pos","products","sales","customers","suppliers","purchases","returns","expenses","debts","analytics","staff","settings",
+  "pos","products","sales","customers","suppliers","purchases","returns","expenses","debts","analytics","lab","staff","settings",
 ] as const;
 export const ACTIONS = ["view","create","edit","delete"] as const;
 export type Module = typeof MODULES[number];
@@ -17,6 +17,7 @@ export const MODULE_LABEL: Record<Module, string> = {
   expenses: "Expenses",
   debts: "Debts",
   analytics: "Analytics",
+  lab: "Lab & Results",
   staff: "Staff & Roles",
   settings: "Settings",
 };

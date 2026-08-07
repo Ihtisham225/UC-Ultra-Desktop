@@ -65,6 +65,7 @@ interface Product {
   imei1?: string | null;
   imei2?: string | null;
   created_at?: string;
+  is_service?: boolean;
   product_variants?: Variant[];
 }
 
@@ -588,7 +589,9 @@ export default function Products() {
                 {visible.map((p) => {
                   const variantsCount = (p.product_variants ?? []).length;
                   const stock = totalStock(p);
-                  const low = stock <= Number(p.low_stock_threshold);
+                  // Services (lab tests, labour) hold no stock — a 0 here reads
+                  // as "out of stock", which is wrong and alarming.
+                  const low = !p.is_service && stock <= Number(p.low_stock_threshold);
                   return (
                     <tr key={p.id} className={`border-t hover:bg-muted/30 ${sel.has(p.id) ? "bg-primary/5" : ""}`}>
                       <td className="p-3">
@@ -618,7 +621,7 @@ export default function Products() {
                       </td>
                       <td className="p-3 text-end font-semibold">{formatMoney(p.price, cur)}</td>
                       <td className={`p-3 text-end font-mono font-semibold ${low ? "text-warning" : ""}`}>
-                        {stock} {p.unit}
+                        {p.is_service ? <span className="text-muted-foreground font-normal">—</span> : <>{stock} {p.unit}</>}
                       </td>
                       <td className="p-3 text-end whitespace-nowrap">
                         <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(p)}>

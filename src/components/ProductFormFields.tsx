@@ -218,31 +218,28 @@ export function ProductFormFields<T extends ProductFormValue>({
               <p className="text-xs text-muted-foreground">Shown at POS so staff can find the box fast.</p>
             </div>
           </div>
-          {!value.hasVariants && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Expiry date</Label>
-                <Input
-                  type="date"
-                  value={value.expiry_date ?? ""}
-                  onChange={(e) => set({ expiry_date: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Batch no.</Label>
-                <Input
-                  value={value.batch_no ?? ""}
-                  onChange={(e) => set({ batch_no: e.target.value })}
-                  placeholder="Optional"
-                />
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Expiry date</Label>
+              <Input
+                type="date"
+                value={value.expiry_date ?? ""}
+                onChange={(e) => set({ expiry_date: e.target.value })}
+              />
             </div>
-          )}
-          {value.hasVariants && (
-            <p className="text-xs text-muted-foreground">
-              Expiry and batch are set per variant below — use one variant per batch.
-            </p>
-          )}
+            <div className="space-y-1.5">
+              <Label>Batch no.</Label>
+              <Input
+                value={value.batch_no ?? ""}
+                onChange={(e) => set({ batch_no: e.target.value })}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            When a new batch arrives at a different rate, just update the price, batch no. and
+            expiry here — the new stock sells at the new price.
+          </p>
         </div>
       )}
 
@@ -277,12 +274,12 @@ export function ProductFormFields<T extends ProductFormValue>({
         />
       )}
 
-      {!hideVariants && !isService && (
+      {!hideVariants && !isService && !isPharmacy && (
         <div className="rounded-lg border bg-card p-3 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <Label htmlFor="hasVariants" className="cursor-pointer flex items-center gap-2">
               <Layers className="size-4 text-primary" />
-              {isPharmacy ? "Track batches separately" : t("products.hasVariants")}
+              {t("products.hasVariants")}
             </Label>
             <Switch
               id="hasVariants"

@@ -26,7 +26,7 @@ type NavItem = { to: string; label: string; icon: any; show: boolean };
 
 export const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, signOut } = useAuth();
-  const { shops, currentShop, setCurrentShopId, role } = useShop();
+  const { shops, currentShop, setCurrentShopId, role, hasPerm } = useShop();
   const perms = usePermissions();
   const { isPro, daysLeft } = useProAccess();
   const { isSuperAdmin } = useIsSuperAdmin();
@@ -42,8 +42,8 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/categories", label: "Categories", icon: FolderTree, show: perms.canManageProducts },
     { to: "/brands", label: "Brands", icon: Tag, show: perms.canManageProducts },
     { to: "/inventory", label: "Inventory", icon: Boxes, show: perms.canManageProducts },
-    { to: "/lab", label: "Lab", icon: FlaskConical, show: !!currentShop?.lab_tests_enabled },
-    { to: "/lab-results", label: "Results", icon: ClipboardCheck, show: !!currentShop?.lab_tests_enabled },
+    { to: "/lab", label: "Lab", icon: FlaskConical, show: !!currentShop?.lab_tests_enabled && hasPerm("lab", "view") },
+    { to: "/lab-results", label: "Results", icon: ClipboardCheck, show: !!currentShop?.lab_tests_enabled && hasPerm("lab", "view") },
     { to: "/sales", label: t("nav.sales"), icon: Receipt, show: true },
     { to: "/returns", label: t("nav.returns"), icon: Undo2, show: true },
     { to: "/customers", label: t("nav.customers"), icon: Users, show: true },
@@ -61,7 +61,9 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   ].filter((n) => n.show);
 
   const renderItem = (item: NavItem, mobile = false) => {
-    const active = loc.pathname === item.to || (item.to !== "/" && loc.pathname.startsWith(item.to));
+    // Match the exact route or a real sub-path — plain startsWith would light
+    // up "/lab" when you're on "/lab-results".
+    const active = loc.pathname === item.to || (item.to !== "/" && loc.pathname.startsWith(item.to + "/"));
 
     return (
       <NavLink
