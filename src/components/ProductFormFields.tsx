@@ -9,6 +9,7 @@ import { CategorySelect } from "@/components/CategorySelect";
 import { BrandSelect } from "@/components/BrandSelect";
 import { VariantsBuilder, type BuilderVariant } from "@/components/VariantsBuilder";
 import { LabParametersBuilder, type LabParameterDraft } from "@/components/LabParametersBuilder";
+import { BatchesBuilder } from "@/components/BatchesBuilder";
 import { generateSku } from "@/lib/sku";
 
 /**
@@ -237,8 +238,7 @@ export function ProductFormFields<T extends ProductFormValue>({
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            When a new batch arrives at a different rate, just update the price, batch no. and
-            expiry here — the new stock sells at the new price.
+            These apply when you don&apos;t track batches. Selling two batches at once? Add them below.
           </p>
         </div>
       )}
@@ -271,6 +271,15 @@ export function ProductFormFields<T extends ProductFormValue>({
         <LabParametersBuilder
           value={value.lab_parameters ?? []}
           onChange={(lab_parameters) => set({ lab_parameters })}
+        />
+      )}
+
+      {/* Pharmacies: batches, not attribute-based variants. */}
+      {!hideVariants && !isService && isPharmacy && (
+        <BatchesBuilder
+          value={(value.variants ?? []) as BuilderVariant[]}
+          basePrice={Number(value.price) || 0}
+          onChange={(variants) => set({ variants, hasVariants: variants.length > 0 })}
         />
       )}
 

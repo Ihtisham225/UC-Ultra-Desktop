@@ -302,6 +302,7 @@ export default function POS() {
       id: v.id, name: v.name, sku: v.sku, barcode: v.barcode,
       price_override: v.price_override, stock: Number(v.stock),
       imei1: v.imei1, imei2: v.imei2,
+      expiry_date: v.expiry_date, batch_no: v.batch_no,
     }));
   }, [variantPicker]);
 

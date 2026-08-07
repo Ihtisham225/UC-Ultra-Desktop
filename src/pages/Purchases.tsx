@@ -164,9 +164,15 @@ export default function Purchases() {
   const blankProduct: ProductFormValue = { name: "", sku: "", barcode: "", unit: "pcs", hasVariants: false, variants: [] };
   const [newProduct, setNewProduct] = useState<ProductFormValue>({ ...blankProduct });
   const [savingProduct, setSavingProduct] = useState(false);
+  // Stocking a brand-new batch of an existing medicine, mid-purchase.
+  const [batchFor, setBatchFor] = useState<Product | null>(null);
+  const [newBatch, setNewBatch] = useState({ batch_no: "", expiry_date: "", price: "" });
+  const [savingBatch, setSavingBatch] = useState(false);
 
   // Investors module (Settings toggle): who funds this purchase.
   const investorsEnabled = !!currentShop?.investors_enabled;
+  // Pharmacies stock by batch, so the picker offers "+ New batch".
+  const isPharmacy = currentShop?.store_type === "pharmacy";
   const [investors, setInvestors] = useState<Investor[]>([]);
   const [pool, setPool] = useState<PoolLite | null>(null);
   const [investorId, setInvestorId] = useState<string>("");
@@ -475,6 +481,33 @@ export default function Purchases() {
     }
   };
 
+  /** Create a batch on the fly and drop it straight onto the purchase. */
+  const saveNewBatch = async () => {
+    if (!batchFor) return;
+    const batch_no = newBatch.batch_no.trim();
+    if (!batch_no) return toast.error("Enter a batch number");
+    setSavingBatch(true);
+    try {
+      const res = await rpc<{ ok: boolean; variant?: any; error?: string }>("createBatchAction", batchFor.id, {
+        batch_no,
+        expiry_date: newBatch.expiry_date || null,
+        price: newBatch.price === "" ? null : Number(newBatch.price),
+      });
+      if (!res.ok || !res.variant) return toast.error(res.error ?? "Failed to add batch");
+      const created = { ...res.variant, product_id: batchFor.id } as Variant;
+      pushLine(batchFor, created);
+      setNewBatch({ batch_no: "", expiry_date: "", price: "" });
+      setBatchFor(null);
+      setVariantPicker(null);
+      toast.success(`Batch ${batch_no} added`);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to add batch");
+    } finally {
+      setSavingBatch(false);
+    }
+  };
+
   const updateLine = (key: string, patch: Partial<Line>) => {
     setLines((prev) => prev.map((l) => l.key === key ? { ...l, ...patch } : l));
   };
@@ -660,6 +693,50 @@ export default function Purchases() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          {/* Stock a brand-new batch of an existing medicine without leaving the form. */}
+          <Dialog open={!!batchFor} onOpenChange={(o) => !o && setBatchFor(null)}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader><DialogTitle>New batch — {batchFor?.name}</DialogTitle></DialogHeader>
+              <div className="space-y-3 py-2">
+                <div className="space-y-1.5">
+                  <Label>Batch no. *</Label>
+                  <Input
+                    autoFocus
+                    value={newBatch.batch_no}
+                    onChange={(e) => setNewBatch({ ...newBatch, batch_no: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveNewBatch(); } }}
+                    placeholder="e.g. A-123"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Expiry</Label>
+                    <Input type="date" value={newBatch.expiry_date} onChange={(e) => setNewBatch({ ...newBatch, expiry_date: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Sale price</Label>
+                    <Input
+                      type="number" step="0.01" min="0" inputMode="decimal"
+                      value={newBatch.price}
+                      onChange={(e) => setNewBatch({ ...newBatch, price: e.target.value })}
+                      placeholder={String(batchFor?.price ?? 0)}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Leave the price blank to sell this batch at the product&apos;s normal price. Enter your
+                  cost and quantity on the purchase line after adding it.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setBatchFor(null)} disabled={savingBatch}>{t("common.cancel")}</Button>
+                <Button onClick={saveNewBatch} disabled={savingBatch}>
+                  {savingBatch ? t("common.saving") : "Add to purchase"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           {/* Full product form, same fields as the Products page. */}
           <Dialog open={productOpen} onOpenChange={setProductOpen}>
             <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
@@ -1366,9 +1443,12 @@ export default function Purchases() {
           productName={variantPicker.name}
           basePrice={Number(variantPicker.price)}
           allowOutOfStock
+          onAddBatch={isPharmacy ? () => setBatchFor(variantPicker) : undefined}
           variants={(variantPicker.variants ?? []).map((v) => ({
             id: v.id, name: v.name, sku: v.sku, barcode: v.barcode,
             price_override: v.price_override, stock: Number(v.stock),
+            expiry_date: (v as { expiry_date?: string | null }).expiry_date ?? null,
+            batch_no: (v as { batch_no?: string | null }).batch_no ?? null,
           }))}
           onPick={(v) => {
             const variant = variantPicker.variants?.find((x) => x.id === v.id) ?? null;
