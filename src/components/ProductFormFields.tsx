@@ -8,6 +8,7 @@ import { useShop } from "@/contexts/ShopContext";
 import { CategorySelect } from "@/components/CategorySelect";
 import { BrandSelect } from "@/components/BrandSelect";
 import { VariantsBuilder, type BuilderVariant } from "@/components/VariantsBuilder";
+import { LabParametersBuilder, type LabParameterDraft } from "@/components/LabParametersBuilder";
 import { generateSku } from "@/lib/sku";
 
 /**
@@ -30,6 +31,8 @@ export interface ProductFormValue {
   generic_name?: string | null;
   shelf_location?: string | null;
   is_service?: boolean;
+  /** Factors this lab test measures (only for service items in a lab-enabled pharmacy). */
+  lab_parameters?: LabParameterDraft[];
   hasVariants?: boolean;
   variants?: BuilderVariant[];
 }
@@ -59,6 +62,10 @@ export function ProductFormFields<T extends ProductFormValue>({
   const imeiOnProduct =
     currentShop?.store_type === "phone" && currentShop?.imei_capture_mode === "product";
   const isPharmacy = currentShop?.store_type === "pharmacy";
+  // The Service toggle (and lab test factors) only exist once the shop says it
+  // runs a lab — other store types keep services for repair labour etc.
+  const labEnabled = !!currentShop?.lab_tests_enabled;
+  const canBeService = !isPharmacy || labEnabled;
   // Services (lab tests, repair labour) hold no stock, so stock-shaped fields
   // and the variants section don't apply to them.
   const isService = !!value.is_service;
@@ -239,6 +246,7 @@ export function ProductFormFields<T extends ProductFormValue>({
         </div>
       )}
 
+      {canBeService && (
       <div className="rounded-lg border bg-card p-3">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -259,13 +267,22 @@ export function ProductFormFields<T extends ProductFormValue>({
           />
         </div>
       </div>
+      )}
+
+      {/* A service in a lab-enabled pharmacy is a lab test — define its factors. */}
+      {isService && isPharmacy && labEnabled && (
+        <LabParametersBuilder
+          value={value.lab_parameters ?? []}
+          onChange={(lab_parameters) => set({ lab_parameters })}
+        />
+      )}
 
       {!hideVariants && !isService && (
         <div className="rounded-lg border bg-card p-3 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <Label htmlFor="hasVariants" className="cursor-pointer flex items-center gap-2">
               <Layers className="size-4 text-primary" />
-              {t("products.hasVariants")}
+              {isPharmacy ? "Track batches separately" : t("products.hasVariants")}
             </Label>
             <Switch
               id="hasVariants"
@@ -275,6 +292,12 @@ export function ProductFormFields<T extends ProductFormValue>({
               }
             />
           </div>
+          {isPharmacy && !value.hasVariants && (
+            <p className="text-xs text-muted-foreground">
+              Turn on when the same medicine is bought at different rates — each batch keeps its own
+              price, expiry and stock (e.g. Panadol batch A at 2, batch B at 4).
+            </p>
+          )}
           {value.hasVariants && (
             <VariantsBuilder
               productName={value.name ?? ""}

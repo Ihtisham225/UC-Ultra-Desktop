@@ -63,6 +63,7 @@ export interface DeviceShop {
   is_pro: boolean;
   pro_until: string | null;
   investors_enabled?: boolean;
+  lab_tests_enabled?: boolean;
   investor_mode?: "individual" | "shared" | "both";
   investor_default_commission?: number;
   investor_deduct_expenses?: boolean;

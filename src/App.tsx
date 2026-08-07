@@ -42,6 +42,8 @@ const Expenses = lazy(() => import("./pages/Expenses"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Inventory = lazy(() => import("./pages/Inventory"));
+const Lab = lazy(() => import("./pages/Lab"));
+const LabResults = lazy(() => import("./pages/LabResults"));
 const Billing = lazy(() => import("./pages/Billing"));
 
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
@@ -175,6 +177,8 @@ const App = () => {
               <Route path="/analytics" element={<SubShell><RequireRole roles={["owner", "manager"]}><Analytics /></RequireRole></SubShell>} />
               <Route path="/reports" element={<SubShell><RequireRole roles={["owner", "manager"]}><Reports /></RequireRole></SubShell>} />
               <Route path="/inventory" element={<SubShell><RequireRole roles={["owner", "manager"]}><Inventory /></RequireRole></SubShell>} />
+              <Route path="/lab" element={<SubShell><Lab /></SubShell>} />
+              <Route path="/lab-results" element={<SubShell><LabResults /></SubShell>} />
               <Route path="/billing" element={<Shell><Billing /></Shell>} />
               <Route path="/admin" element={<AdminShell><AdminDashboard /></AdminShell>} />
               

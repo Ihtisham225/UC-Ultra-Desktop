@@ -5,7 +5,7 @@ import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw } from "lucide-react";
+import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw, FlaskConical } from "lucide-react";
 import { useOfflineProducts } from "@/hooks/useOfflineProducts";
 import { upsertLocal, notifyChange } from "@/lib/localDb";
 import { v4 as uuid } from "uuid";
@@ -99,6 +99,9 @@ export default function POS() {
   const [discountType, setDiscountType] = useState<"amount" | "percent">("amount");
   const [discountValue, setDiscountValue] = useState<string>("");
 
+  // Pharmacies with a lab split the catalog: goods vs lab tests.
+  const labEnabled = !!currentShop?.lab_tests_enabled;
+  const [posTab, setPosTab] = useState<"products" | "lab">("products");
   const isPhone = currentShop?.store_type === "phone";
   const imeiOnProduct = isPhone && currentShop?.imei_capture_mode === "product";
   const imeiOnSale = isPhone && currentShop?.imei_capture_mode !== "product";
@@ -185,16 +188,22 @@ export default function POS() {
   };
 
   const filtered = useMemo(() => {
-    // Show the whole catalog — the grid scrolls. Search narrows it.
-    if (!search) return products;
+    // Lab-enabled pharmacies keep tests on their own tab so the goods grid
+    // stays clean; everyone else sees one combined catalog.
+    // In a lab-enabled pharmacy the Service toggle *is* the lab-test marker,
+    // so the offline cache doesn't need a separate flag.
+    const base = labEnabled
+      ? products.filter((p) => (posTab === "lab" ? !!p.is_service : !p.is_service))
+      : products;
+    if (!search) return base;
     const q = search.toLowerCase();
-    return products.filter((p) =>
+    return base.filter((p) =>
       p.name.toLowerCase().includes(q) ||
       p.generic_name?.toLowerCase().includes(q) ||
       p.barcode?.includes(q) ||
       p.variants?.some((v) => v.name.toLowerCase().includes(q) || v.sku?.toLowerCase().includes(q) || v.barcode?.includes(q))
     );
-  }, [products, search]);
+  }, [products, search, labEnabled, posTab]);
 
   const subtotal = cart.reduce((a, c) => a + c.unit_price * c.quantity, 0);
   const taxRate = Number(currentShop?.tax_rate ?? 0);
@@ -300,6 +309,18 @@ export default function POS() {
     <div className="max-w-7xl mx-auto grid md:grid-cols-[1fr_380px] lg:grid-cols-[1fr_420px] gap-4 md:gap-6 md:h-[calc(100vh-9rem)] md:min-h-[620px]">
       <h1 className="sr-only">Point of Sale</h1>
       <div className="flex flex-col min-h-0 order-2 md:order-1">
+        {labEnabled && (
+          <div className="inline-flex rounded-lg border bg-muted/40 p-1 mb-3 self-start">
+            <button type="button" onClick={() => setPosTab("products")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${posTab === "products" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+              Products
+            </button>
+            <button type="button" onClick={() => setPosTab("lab")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors inline-flex items-center gap-1.5 ${posTab === "lab" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+              <FlaskConical className="size-3.5" /> Lab Tests
+            </button>
+          </div>
+        )}
         <div className="flex gap-2 mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />

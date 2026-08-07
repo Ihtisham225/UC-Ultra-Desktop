@@ -41,6 +41,7 @@ export default function Settings() {
   const [footer, setFooter] = useState("");
   const [showTax, setShowTax] = useState(true);
   const [storeType, setStoreType] = useState("other");
+  const [labTests, setLabTests] = useState(false);
   const [imeiMode, setImeiMode] = useState<"sale" | "product">("sale");
   const [showCustomer, setShowCustomer] = useState(false);
   const [showImei, setShowImei] = useState(false);
@@ -69,6 +70,7 @@ export default function Settings() {
       setLogoUrl(currentShop.logo_url ?? null);
       setShowTax(currentShop.show_tax_line ?? true);
       setStoreType(currentShop.store_type ?? "other");
+      setLabTests(!!currentShop.lab_tests_enabled);
       setImeiMode((currentShop.imei_capture_mode as "sale" | "product") ?? "sale");
       setShowCustomer(currentShop.show_customer_on_receipt ?? false);
       setShowImei(currentShop.show_imei_on_receipt ?? false);
@@ -126,6 +128,7 @@ export default function Settings() {
         name, currency, tax_rate: parseFloat(tax) || 0,
         address: address || null, phone: phone || null, email: email || null,
         store_type: storeType,
+        lab_tests_enabled: labTests,
         imei_capture_mode: imeiMode,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
@@ -342,6 +345,19 @@ export default function Settings() {
               </Select>
               <p className="text-[11px] text-muted-foreground">Tailors the app to your business — e.g. a Phone Shop can capture IMEI numbers.</p>
             </div>
+            {storeType === "pharmacy" && (
+              <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                <div>
+                  <Label>Lab tests</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Turn on if this pharmacy also runs a lab. Adds the Service toggle on products,
+                    a Lab Tests tab in POS, and the Lab queue &amp; Results pages.
+                  </p>
+                </div>
+                <Switch checked={labTests} onCheckedChange={setLabTests} disabled={!canEditShop} />
+              </div>
+            )}
+
             {storeType === "phone" && (
               <div className="space-y-1.5">
                 <Label>Capture IMEI</Label>
