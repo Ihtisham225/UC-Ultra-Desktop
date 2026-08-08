@@ -22,12 +22,28 @@ const withLineBreaks = (value?: string | null) => escapeHtml(value ?? "").replac
 const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; customer: { name: string; phone: string | null } | null; currency: string }) => {
   const showCustomer = sale.shop?.show_customer_on_receipt === true;
   const showImei = sale.shop?.show_imei_on_receipt === true;
+  // Patient details always print on a lab sale — they identify whose sample it
+  // is, which is not the same kind of optional nicety as the customer name.
+  const labOrders: any[] = sale.lab_orders ?? [];
   const metaRows = [
     { label: "Receipt", value: sale.receipt_number ?? "" },
     { label: "Date", value: format(new Date(sale.created_at), "Pp") },
     ...(showCustomer && customer ? [{ label: "Customer", value: customer.name }] : []),
     ...(showCustomer && customer?.phone ? [{ label: "Phone", value: customer.phone }] : []),
+    ...(sale.patient_name ? [{ label: "Patient", value: String(sale.patient_name) }] : []),
+    ...(sale.patient_age || sale.patient_gender
+      ? [{ label: "Age / Sex", value: [sale.patient_age, sale.patient_gender].filter(Boolean).join(" / ") }]
+      : []),
+    ...(sale.patient_phone ? [{ label: "Phone", value: String(sale.patient_phone) }] : []),
   ];
+
+  const labHtml = labOrders.length > 0
+    ? `<div class="rule"></div>
+       <div class="center small">LAB TOKEN${labOrders.length > 1 ? "S" : ""}</div>
+       ${labOrders
+         .map((o) => `<div class="row"><span>${escapeHtml(String(o.test_name ?? ""))}</span><span class="value">${escapeHtml(String(o.token_number ?? ""))}</span></div>`)
+         .join("")}`
+    : "";
 
   const itemsHtml = sale.items
     .map((item: any) => {
@@ -173,6 +189,8 @@ const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; custom
             .join("")}
         </div>
 
+        ${labHtml}
+
         <div class="rule"></div>
 
         <div>${itemsHtml}</div>
@@ -299,7 +317,31 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
               {sale.shop?.show_customer_on_receipt && customer?.phone && (
                 <div className="flex items-start justify-between gap-2"><span className="shrink-0">Phone</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.phone}</span></div>
               )}
+              {sale.patient_name && (
+                <div className="flex items-start justify-between gap-2"><span className="shrink-0">Patient</span><span className="min-w-0 max-w-[58%] text-right break-words">{sale.patient_name}</span></div>
+              )}
+              {(sale.patient_age || sale.patient_gender) && (
+                <div className="flex items-start justify-between gap-2"><span className="shrink-0">Age / Sex</span><span className="min-w-0 max-w-[58%] text-right break-words">{[sale.patient_age, sale.patient_gender].filter(Boolean).join(" / ")}</span></div>
+              )}
+              {sale.patient_phone && (
+                <div className="flex items-start justify-between gap-2"><span className="shrink-0">Phone</span><span className="min-w-0 max-w-[58%] text-right break-words">{sale.patient_phone}</span></div>
+              )}
             </div>
+
+            {(sale.lab_orders ?? []).length > 0 && (
+              <>
+                <div className={dashed} />
+                <div className="text-center text-[11px]">LAB TOKEN{sale.lab_orders.length > 1 ? "S" : ""}</div>
+                <div className="text-[11px] space-y-0.5 mt-0.5">
+                  {sale.lab_orders.map((o: any) => (
+                    <div key={o.id} className="flex items-start justify-between gap-2">
+                      <span className="min-w-0 break-words">{o.test_name}</span>
+                      <span className="shrink-0 font-bold">{o.token_number}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
             <div className={dashed} />
 

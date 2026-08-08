@@ -334,7 +334,12 @@ export default function POS() {
         try {
           await syncAll();
           const orders = await rpc<LabOrderDto[]>("listLabOrdersForSaleAction", saleId);
-          if (orders.length > 0) setLabTokens(orders);
+          if (orders.length > 0) {
+            setLabTokens(orders);
+            // The receipt is already on screen — fold the tokens into it so the
+            // printed slip carries them alongside the patient details.
+            setCompletedSale((prev: any) => (prev && prev.id === saleId ? { ...prev, lab_orders: orders } : prev));
+          }
         } catch {
           toast.info("Lab token will appear in the Lab screen once this sale syncs.");
         }

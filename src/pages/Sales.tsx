@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
+import { rpc } from "@/lib/apiClient";
 import { ReturnDialog } from "@/components/ReturnDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
@@ -101,6 +102,13 @@ export default function Sales() {
     const sale = allSales.find((s) => s.id === saleId);
     if (sale) {
       setOpenSale({ ...sale, items: sale.sale_items, customer: null, shop: currentShop });
+      // Patient details ride along on the local sale row, but the lab tokens
+      // only exist server-side — fetch them so a reprint matches the original.
+      if (sale.patient_id && navigator.onLine) {
+        rpc<{ id: string; token_number: string; test_name: string }[]>("listLabOrdersForSaleAction", saleId)
+          .then((orders) => setOpenSale((prev: any) => (prev && prev.id === saleId ? { ...prev, lab_orders: orders } : prev)))
+          .catch(() => { /* offline — the receipt still prints without tokens */ });
+      }
     }
   };
 
