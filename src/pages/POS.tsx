@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShop } from "@/contexts/ShopContext";
@@ -14,6 +14,11 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { toast } from "sonner";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
+import { PatientPicker, type PatientLite } from "@/components/PatientPicker";
+import { LabTokenDialog, type LabTokenOrder } from "@/components/LabTokenDialog";
+import { rpc } from "@/lib/apiClient";
+import { syncAll } from "@/lib/syncEngine";
+import type { LabOrderDto } from "@/lib/labTypes";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { VariantPickerDialog, type VariantOption } from "@/components/VariantPickerDialog";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -74,6 +79,8 @@ interface CartItem {
   imei2?: string;
   /** Services have no stock, so quantity is never capped. */
   is_service?: boolean;
+  /** Lab tests are billed to a patient, not a customer. */
+  is_lab_test?: boolean;
 }
 
 export default function POS() {
@@ -95,6 +102,8 @@ export default function POS() {
   const [amountPaid, setAmountPaid] = useState<string>("");
   const [completedSale, setCompletedSale] = useState<any | null>(null);
   const [customer, setCustomer] = useState<CustomerLite | null>(null);
+  const [patient, setPatient] = useState<PatientLite | null>(null);
+  const [labTokens, setLabTokens] = useState<LabTokenOrder[] | null>(null);
   const [variantPicker, setVariantPicker] = useState<Product | null>(null);
   const [discountType, setDiscountType] = useState<"amount" | "percent">("amount");
   const [discountValue, setDiscountValue] = useState<string>("");
@@ -102,6 +111,36 @@ export default function POS() {
   // Pharmacies with a lab split the catalog: goods vs lab tests.
   const labEnabled = !!currentShop?.lab_tests_enabled;
   const [posTab, setPosTab] = useState<"products" | "lab">("products");
+  /**
+   * Which services are real lab tests (i.e. have factors defined) is only known
+   * server-side, so cache the id set per shop: fresh when online, last-known
+   * when offline. Without it we'd fall back to "any service", which would put
+   * repair labour on the Lab tab and let it be sold as a test that never
+   * reaches the lab queue.
+   */
+  const [labTestIds, setLabTestIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!labEnabled || !currentShop) return;
+    const key = `ucu.labTestIds.${currentShop.id}`;
+    try {
+      const cached = localStorage.getItem(key);
+      if (cached) setLabTestIds(new Set(JSON.parse(cached) as string[]));
+    } catch { /* ignore */ }
+    if (!navigator.onLine) return;
+    rpc<{ id: string; is_lab_test: boolean }[]>("loadPosProductsAction")
+      .then((rows) => {
+        const ids = rows.filter((r) => r.is_lab_test).map((r) => r.id);
+        setLabTestIds(new Set(ids));
+        try { localStorage.setItem(key, JSON.stringify(ids)); } catch { /* ignore */ }
+      })
+      .catch(() => { /* offline / server hiccup — keep the cached set */ });
+  }, [labEnabled, currentShop]);
+
+  const isLabTest = useCallback(
+    (p: { id: string; is_service?: boolean }) =>
+      labEnabled && (labTestIds ? labTestIds.has(p.id) : !!p.is_service),
+    [labEnabled, labTestIds],
+  );
   const isPhone = currentShop?.store_type === "phone";
   const imeiOnProduct = isPhone && currentShop?.imei_capture_mode === "product";
   const imeiOnSale = isPhone && currentShop?.imei_capture_mode !== "product";
@@ -139,6 +178,7 @@ export default function POS() {
         imei1: imeiOnProduct ? (src.imei1 ?? undefined) : undefined,
         imei2: imeiOnProduct ? (src.imei2 ?? undefined) : undefined,
         is_service: p.is_service,
+        is_lab_test: isLabTest(p),
       }];
     });
   };
@@ -193,7 +233,7 @@ export default function POS() {
     // In a lab-enabled pharmacy the Service toggle *is* the lab-test marker,
     // so the offline cache doesn't need a separate flag.
     const base = labEnabled
-      ? products.filter((p) => (posTab === "lab" ? !!p.is_service : !p.is_service))
+      ? products.filter((p) => (posTab === "lab" ? isLabTest(p) : !isLabTest(p)))
       : products;
     if (!search) return base;
     const q = search.toLowerCase();
@@ -203,7 +243,7 @@ export default function POS() {
       p.barcode?.includes(q) ||
       p.variants?.some((v) => v.name.toLowerCase().includes(q) || v.sku?.toLowerCase().includes(q) || v.barcode?.includes(q))
     );
-  }, [products, search, labEnabled, posTab]);
+  }, [products, search, labEnabled, posTab, isLabTest]);
 
   const subtotal = cart.reduce((a, c) => a + c.unit_price * c.quantity, 0);
   const taxRate = Number(currentShop?.tax_rate ?? 0);
@@ -221,10 +261,16 @@ export default function POS() {
   const owed = Math.max(0, total - effectivePaid);
   const cur = currentShop?.currency ?? "USD";
 
+  // A cart holding lab tests is billed to a patient, so the counter collects
+  // the clinical details here — the lab shouldn't have to chase them later.
+  const hasLabTests = cart.some((c) => c.is_lab_test);
+  const payer = hasLabTests ? patient : customer;
+
   const completeSale = async () => {
     if (!user || !currentShop || cart.length === 0) return;
     if (!isCredit && paymentMethod === "cash" && paid < total) return toast.error("Amount paid is less than total");
-    if (isCredit && !customer) return toast.error("Select a customer for credit sale");
+    if (hasLabTests && !patient) return toast.error("Select a patient for the lab test");
+    if (isCredit && !payer) return toast.error(hasLabTests ? "Select a patient for credit sale" : "Select a customer for credit sale");
     if (isCredit && effectivePaid > total) return toast.error("Paid cannot exceed total");
 
     setBusy(true);
@@ -235,7 +281,14 @@ export default function POS() {
       id: saleId,
       shop_id: currentShop.id,
       cashier_id: user.id,
-      customer_id: customer?.id ?? null,
+      customer_id: hasLabTests ? null : (customer?.id ?? null),
+      // Snapshotted with the sale so the lab order raised on sync (and the
+      // printed report) keeps the patient even if the register changes.
+      patient_id: hasLabTests ? (patient?.id ?? null) : null,
+      patient_name: hasLabTests ? (patient?.name ?? null) : null,
+      patient_phone: hasLabTests ? (patient?.phone ?? null) : null,
+      patient_age: hasLabTests ? (patient?.age ?? null) : null,
+      patient_gender: hasLabTests ? (patient?.gender ?? null) : null,
       subtotal, tax, discount, total,
       amount_paid: effectivePaid,
       change_due: change,
@@ -267,14 +320,14 @@ export default function POS() {
       await upsertLocal("sale_items", item, true);
     }
 
-    if (isCredit && owed > 0 && customer) {
+    if (isCredit && owed > 0 && payer) {
       await upsertLocal("debts", {
         id: uuid(),
         shop_id: currentShop.id,
         created_by: user.id,
         direction: "owed_to_me",
-        person_name: customer.name,
-        phone: customer.phone ?? null,
+        person_name: payer.name,
+        phone: payer.phone ?? null,
         amount: owed,
         paid_amount: 0,
         currency: cur,
@@ -283,7 +336,7 @@ export default function POS() {
         updated_at: now,
         created_at: now,
       }, true);
-      toast.success(`Credit of ${formatMoney(owed, cur)} recorded for ${customer.name}`);
+      toast.success(`Credit of ${formatMoney(owed, cur)} recorded for ${payer.name}`);
     }
 
     notifyChange("sales");
@@ -291,9 +344,26 @@ export default function POS() {
 
     setBusy(false);
     setCompletedSale({ ...saleRecord, items: itemRows, shop: currentShop, customer });
-    setCart([]); setAmountPaid(""); setCustomer(null); setDiscountValue(""); setIsCredit(false);
+    setCart([]); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
     toast.success("Sale completed!");
     refresh();
+
+    // Lab orders (and their tokens) are raised server-side when the sale is
+    // pushed, so grab them once the queue has drained. Offline, the tokens are
+    // issued on the next sync and can be printed from the Lab screen.
+    if (hasLabTests) {
+      if (!navigator.onLine) {
+        toast.info("Offline — the lab token will be issued when this terminal syncs.");
+      } else {
+        try {
+          await syncAll();
+          const orders = await rpc<LabOrderDto[]>("listLabOrdersForSaleAction", saleId);
+          if (orders.length > 0) setLabTokens(orders);
+        } catch {
+          toast.info("Lab token will appear in the Lab screen once this sale syncs.");
+        }
+      }
+    }
   };
 
   const variantOptions: VariantOption[] = useMemo(() => {
@@ -391,7 +461,13 @@ export default function POS() {
                     )}
                     <div className="font-semibold text-sm leading-snug group-hover:text-primary mb-2 pr-6 line-clamp-3">{p.name}</div>
                     <div className={cn("font-bold break-all", formatMoney(p.price, cur).length > 12 ? "text-sm" : "text-base")}>{formatMoney(p.price, cur)}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{t("common.stock")}: {totalStock}</div>
+                    {/* Lab tests have nothing to stock — showing a count (often
+                        negative from older sales) only confuses the counter. */}
+                    {!isLabTest(p) && (
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {p.is_service ? "Service" : `${t("common.stock")}: ${totalStock}`}
+                      </div>
+                    )}
                     {imeiOnProduct && !hasVariants && (p.imei1 || p.imei2) && (
                       <div className="text-[10px] font-mono text-muted-foreground mt-0.5 truncate">IMEI {imeiTail(p.imei1 || p.imei2)}</div>
                     )}
@@ -474,7 +550,9 @@ export default function POS() {
         </div>
 
         <div className="border-t p-4 space-y-3 bg-card">
-          <CustomerPicker value={customer} onChange={setCustomer} />
+          {hasLabTests
+            ? <PatientPicker value={patient} onChange={setPatient} />
+            : <CustomerPicker value={customer} onChange={setCustomer} />}
 
           <div className="flex items-center gap-2">
             <Tag className="size-4 text-muted-foreground shrink-0" />
@@ -545,7 +623,7 @@ export default function POS() {
               className="size-4"
             />
             <span className="font-medium">Credit / pay later</span>
-            <span className="text-xs text-muted-foreground ms-auto">Requires customer</span>
+            <span className="text-xs text-muted-foreground ms-auto">{hasLabTests ? "Requires patient" : "Requires customer"}</span>
           </label>
 
           {isCredit && owed > 0 && (
@@ -599,6 +677,7 @@ export default function POS() {
       {completedSale && (
         <ReceiptDialog sale={completedSale} onClose={() => setCompletedSale(null)} />
       )}
+      <LabTokenDialog orders={labTokens} onClose={() => setLabTokens(null)} />
     </div>
   );
 }

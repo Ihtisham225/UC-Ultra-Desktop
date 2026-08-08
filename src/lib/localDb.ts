@@ -33,6 +33,7 @@ export const SYNC_TABLES = [
   'sales',
   'sale_items',
   'customers',
+  'patients',
   'expenses',
   'purchases',
   'purchase_items',

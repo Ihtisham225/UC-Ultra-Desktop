@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse } from "lucide-react";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
@@ -44,6 +44,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/inventory", label: "Inventory", icon: Boxes, show: perms.canManageProducts },
     { to: "/lab", label: "Lab", icon: FlaskConical, show: !!currentShop?.lab_tests_enabled && hasPerm("lab", "view") },
     { to: "/lab-results", label: "Results", icon: ClipboardCheck, show: !!currentShop?.lab_tests_enabled && hasPerm("lab", "view") },
+    { to: "/patients", label: "Patients", icon: HeartPulse, show: !!currentShop?.lab_tests_enabled && hasPerm("lab", "view") },
     { to: "/sales", label: t("nav.sales"), icon: Receipt, show: true },
     { to: "/returns", label: t("nav.returns"), icon: Undo2, show: true },
     { to: "/customers", label: t("nav.customers"), icon: Users, show: true },

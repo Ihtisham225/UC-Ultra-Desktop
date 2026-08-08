@@ -12,6 +12,7 @@ export interface LabOrderDto {
   id: string;
   test_name: string;
   token_number: string;
+  patient_id: string | null;
   patient_name: string | null;
   patient_phone: string | null;
   patient_age: string | null;

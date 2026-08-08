@@ -8,10 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FlaskConical, Printer, RefreshCw, ClipboardList } from "lucide-react";
+import { FlaskConical, Printer, RefreshCw, ClipboardList, Ticket, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { LabReportDialog } from "@/components/LabReportDialog";
+import { LabTokenDialog } from "@/components/LabTokenDialog";
 import { rpc } from "@/lib/apiClient";
 import type { LabOrderDto } from "@/lib/labTypes";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -28,6 +29,10 @@ export default function LabClient() {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [report, setReport] = useState<LabOrderDto | null>(null);
+  const [token, setToken] = useState<LabOrderDto | null>(null);
+  // Patient details are captured at the counter when the test is sold; the lab
+  // only corrects them if the counter got something wrong.
+  const [editPatient, setEditPatient] = useState(false);
 
   const load = useCallback(async () => {
     if (!currentShop) return;
@@ -50,6 +55,7 @@ export default function LabClient() {
       age: o.patient_age ?? "", gender: o.patient_gender ?? "",
     });
     setNotes(o.notes ?? "");
+    setEditPatient(false);
   };
 
   const save = async (thenPrint: boolean) => {
@@ -146,7 +152,14 @@ export default function LabClient() {
               <TableRow key={o.id}>
                 <TableCell className="font-mono font-semibold">{o.token_number}</TableCell>
                 <TableCell>{o.test_name}</TableCell>
-                <TableCell>{o.patient_name || <span className="text-muted-foreground">Walk-in</span>}</TableCell>
+                <TableCell>
+                  {o.patient_name || <span className="text-muted-foreground">Walk-in</span>}
+                  {(o.patient_age || o.patient_gender || o.patient_phone) && (
+                    <div className="text-xs text-muted-foreground">
+                      {[o.patient_age, o.patient_gender, o.patient_phone].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell className="text-sm">{format(new Date(o.created_at), "MMM d, HH:mm")}</TableCell>
                 <TableCell>
                   {o.status === "pending"
@@ -155,6 +168,9 @@ export default function LabClient() {
                 </TableCell>
                 <TableCell className="text-end">
                   <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setToken(o)} title="Print token slip">
+                      <Ticket className="size-4" />
+                    </Button>
                     <Button size="sm" variant={o.status === "pending" ? "default" : "outline"} onClick={() => openOrder(o)}>
                       <ClipboardList className="size-4 me-1" />
                       {o.status === "pending" ? "Enter result" : "Edit"}
@@ -182,24 +198,40 @@ export default function LabClient() {
           </DialogHeader>
           {editing && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Patient name</Label>
-                  <Input value={patient.name} onChange={(e) => setPatient({ ...patient, name: e.target.value })} placeholder="Full name" />
+              {editPatient ? (
+                <div className="space-y-3 rounded-lg border p-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label>Patient name</Label>
+                      <Input value={patient.name} onChange={(e) => setPatient({ ...patient, name: e.target.value })} placeholder="Full name" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Age</Label>
+                      <Input value={patient.age} onChange={(e) => setPatient({ ...patient, age: e.target.value })} placeholder="e.g. 32" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Sex</Label>
+                      <Input value={patient.gender} onChange={(e) => setPatient({ ...patient, gender: e.target.value })} placeholder="M / F" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Phone</Label>
+                    <Input value={patient.phone} onChange={(e) => setPatient({ ...patient, phone: e.target.value })} placeholder="03XX-XXXXXXX" inputMode="tel" />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Age</Label>
-                  <Input value={patient.age} onChange={(e) => setPatient({ ...patient, age: e.target.value })} placeholder="e.g. 32" />
+              ) : (
+                <div className="rounded-lg border bg-muted/30 p-3 flex items-start justify-between gap-3">
+                  <div className="text-sm space-y-0.5 min-w-0">
+                    <div className="font-semibold">{patient.name || "Walk-in patient"}</div>
+                    <div className="text-muted-foreground text-xs">
+                      {[patient.age && `Age ${patient.age}`, patient.gender, patient.phone].filter(Boolean).join(" · ") || "No details taken at the counter"}
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setEditPatient(true)}>
+                    <Pencil className="size-3.5 me-1" /> Correct
+                  </Button>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Sex</Label>
-                  <Input value={patient.gender} onChange={(e) => setPatient({ ...patient, gender: e.target.value })} placeholder="M / F" />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Phone</Label>
-                <Input value={patient.phone} onChange={(e) => setPatient({ ...patient, phone: e.target.value })} placeholder="03XX-XXXXXXX" inputMode="tel" />
-              </div>
+              )}
 
               <div className="border rounded-lg divide-y">
                 <div className="hidden sm:grid grid-cols-[1fr_9rem_6rem_9rem] gap-2 px-3 py-2 text-xs text-muted-foreground bg-muted/40">
@@ -237,6 +269,7 @@ export default function LabClient() {
       </Dialog>
 
       <LabReportDialog order={report} onClose={() => setReport(null)} />
+      <LabTokenDialog orders={token ? [token] : null} onClose={() => setToken(null)} />
     </div>
   );
 }
