@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { upsertLocal, deleteLocal, notifyChange } from "@/lib/localDb";
+import { syncAll } from "@/lib/syncEngine";
 import { CategorySelect, flattenCategories, type CategoryDto, type CategoryOption } from "@/components/CategorySelect";
 import { BrandSelect, type BrandDto } from "@/components/BrandSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -66,6 +67,7 @@ interface Product {
   imei2?: string | null;
   created_at?: string;
   is_service?: boolean;
+  is_lab_test?: boolean;
   product_variants?: Variant[];
 }
 
@@ -186,6 +188,13 @@ export default function Products() {
       hasVariants: variants.length > 0,
       variants,
     });
+    // Factors aren't part of the offline catalog, so fetch them for the form.
+    // (Without this the builder would open empty and wipe them on save.)
+    if ((p as { is_lab_test?: boolean }).is_lab_test) {
+      rpc<{ name: string; unit: string | null; normal_range: string | null }[]>("listLabParametersAction", p.id)
+        .then((rows) => setEditing((e) => (e && e.id === p.id ? { ...e, lab_parameters: rows } : e)))
+        .catch(() => { /* offline — leave the builder empty and don't save over them */ });
+    }
   };
 
   const setVariants = (variants: BuilderVariant[]) => {
@@ -254,6 +263,7 @@ export default function Products() {
       generic_name: (editing as any).generic_name?.trim() || null,
       shelf_location: (editing as any).shelf_location?.trim() || null,
       is_service: (editing as any).is_service ?? false,
+      is_lab_test: (editing as any).is_lab_test ?? false,
       is_active: editing.is_active !== false,
       updated_at: now,
       created_at: editing.id
@@ -311,6 +321,21 @@ export default function Products() {
     }
 
     notifyChange("products");
+
+    // Lab factors live server-side (they're catalog config, not POS data), so
+    // they need the product pushed first. Everything else is already saved —
+    // only the factors are at risk when the terminal is offline.
+    const labParams = (editing as { lab_parameters?: { name: string; unit?: string | null; normal_range?: string | null }[] }).lab_parameters;
+    if ((editing as { is_lab_test?: boolean }).is_lab_test && labParams) {
+      try {
+        await syncAll();
+        const res = await rpc<{ ok: boolean; error?: string }>("saveLabParametersAction", productId, labParams);
+        if (!res.ok) toast.warning(res.error ?? "Test factors could not be saved");
+      } catch {
+        toast.warning("Saved, but the test's factors need a connection — reopen this test once online.");
+      }
+    }
+
     toast.success(editing.id ? t("products.productUpdated") : t("products.productAdded"));
     setEditing(null);
     load();

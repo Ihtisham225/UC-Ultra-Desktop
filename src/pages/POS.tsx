@@ -50,6 +50,7 @@ interface Product {
   generic_name?: string | null;
   shelf_location?: string | null;
   is_service?: boolean;
+  is_lab_test?: boolean;
   variants?: Variant[];
 }
 /** Expiry status for pharmacy stock: null when no date or comfortably fresh. */
@@ -111,35 +112,10 @@ export default function POS() {
   // Pharmacies with a lab split the catalog: goods vs lab tests.
   const labEnabled = !!currentShop?.lab_tests_enabled;
   const [posTab, setPosTab] = useState<"products" | "lab">("products");
-  /**
-   * Which services are real lab tests (i.e. have factors defined) is only known
-   * server-side, so cache the id set per shop: fresh when online, last-known
-   * when offline. Without it we'd fall back to "any service", which would put
-   * repair labour on the Lab tab and let it be sold as a test that never
-   * reaches the lab queue.
-   */
-  const [labTestIds, setLabTestIds] = useState<Set<string> | null>(null);
-  useEffect(() => {
-    if (!labEnabled || !currentShop) return;
-    const key = `ucu.labTestIds.${currentShop.id}`;
-    try {
-      const cached = localStorage.getItem(key);
-      if (cached) setLabTestIds(new Set(JSON.parse(cached) as string[]));
-    } catch { /* ignore */ }
-    if (!navigator.onLine) return;
-    rpc<{ id: string; is_lab_test: boolean }[]>("loadPosProductsAction")
-      .then((rows) => {
-        const ids = rows.filter((r) => r.is_lab_test).map((r) => r.id);
-        setLabTestIds(new Set(ids));
-        try { localStorage.setItem(key, JSON.stringify(ids)); } catch { /* ignore */ }
-      })
-      .catch(() => { /* offline / server hiccup — keep the cached set */ });
-  }, [labEnabled, currentShop]);
-
+  /** The product's own flag, synced with the catalog, so this works offline. */
   const isLabTest = useCallback(
-    (p: { id: string; is_service?: boolean }) =>
-      labEnabled && (labTestIds ? labTestIds.has(p.id) : !!p.is_service),
-    [labEnabled, labTestIds],
+    (p: { is_lab_test?: boolean }) => labEnabled && !!p.is_lab_test,
+    [labEnabled],
   );
   const isPhone = currentShop?.store_type === "phone";
   const imeiOnProduct = isPhone && currentShop?.imei_capture_mode === "product";

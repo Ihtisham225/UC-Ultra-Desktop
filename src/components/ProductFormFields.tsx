@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { RefreshCw, ScanBarcode, Layers, Pill, Stethoscope } from "lucide-react";
+import { RefreshCw, ScanBarcode, Layers, Pill, Stethoscope, FlaskConical } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
 import { CategorySelect } from "@/components/CategorySelect";
@@ -32,6 +32,7 @@ export interface ProductFormValue {
   generic_name?: string | null;
   shelf_location?: string | null;
   is_service?: boolean;
+  is_lab_test?: boolean;
   /** Factors this lab test measures (only for service items in a lab-enabled pharmacy). */
   lab_parameters?: LabParameterDraft[];
   hasVariants?: boolean;
@@ -70,6 +71,7 @@ export function ProductFormFields<T extends ProductFormValue>({
   // Services (lab tests, repair labour) hold no stock, so stock-shaped fields
   // and the variants section don't apply to them.
   const isService = !!value.is_service;
+  const isLabTest = !!value.is_lab_test;
 
   const set = (patch: Partial<ProductFormValue>) => onChange({ ...value, ...patch } as T);
 
@@ -259,15 +261,39 @@ export function ProductFormFields<T extends ProductFormValue>({
             id="isService"
             checked={isService}
             onCheckedChange={(checked) =>
-              set(checked ? { is_service: true, hasVariants: false, variants: [] } : { is_service: false })
+              set(checked
+                ? { is_service: true, hasVariants: false, variants: [] }
+                : { is_service: false, is_lab_test: false })
             }
           />
         </div>
       </div>
       )}
 
-      {/* A service in a lab-enabled pharmacy is a lab test — define its factors. */}
+      {/* Being a lab test is an explicit choice, not something inferred from
+          the factor list — a test is a test before its factors are typed in. */}
       {isService && isPharmacy && labEnabled && (
+        <div className="rounded-lg border bg-card p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <Label htmlFor="isLabTest" className="cursor-pointer flex items-center gap-2">
+                <FlaskConical className="size-4 text-primary" />
+                Lab test
+              </Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Sells on the POS <b>Lab Tests</b> tab and raises a token in the Lab queue.
+              </p>
+            </div>
+            <Switch
+              id="isLabTest"
+              checked={isLabTest}
+              onCheckedChange={(checked) => set({ is_lab_test: checked })}
+            />
+          </div>
+        </div>
+      )}
+
+      {isLabTest && isPharmacy && labEnabled && (
         <LabParametersBuilder
           value={value.lab_parameters ?? []}
           onChange={(lab_parameters) => set({ lab_parameters })}

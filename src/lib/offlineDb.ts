@@ -14,6 +14,7 @@ export interface CachedProduct {
   generic_name?: string | null
   shelf_location?: string | null
   is_service?: boolean
+  is_lab_test?: boolean
   variants: CachedVariant[]
   _syncedAt: number
 }

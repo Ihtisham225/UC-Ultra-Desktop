@@ -233,7 +233,15 @@ export default function LabClient() {
                 </div>
               )}
 
-              <div className="border rounded-lg divide-y">
+              {editing.results.length === 0 && (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  This test has no factors defined, so there is nothing to fill in. Add them on the
+                  product (Products → this test → Lab test factors) and future orders will carry them;
+                  this one can still be closed with a note.
+                </div>
+              )}
+
+              <div className={`border rounded-lg divide-y ${editing.results.length === 0 ? "hidden" : ""}`}>
                 <div className="hidden sm:grid grid-cols-[1fr_9rem_6rem_9rem] gap-2 px-3 py-2 text-xs text-muted-foreground bg-muted/40">
                   <span>Factor</span><span>Result</span><span>Unit</span><span>Normal range</span>
                 </div>

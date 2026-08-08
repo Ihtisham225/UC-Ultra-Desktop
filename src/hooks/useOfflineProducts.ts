@@ -69,6 +69,7 @@ export function useOfflineProducts(shopId: string | undefined) {
         generic_name: (p as { generic_name?: string | null }).generic_name ?? null,
         shelf_location: (p as { shelf_location?: string | null }).shelf_location ?? null,
         is_service: (p as { is_service?: boolean }).is_service ?? false,
+        is_lab_test: (p as { is_lab_test?: boolean }).is_lab_test ?? false,
         variants: variantsByProduct.get(p.id) ?? [],
         _syncedAt: Date.now(),
       }))
