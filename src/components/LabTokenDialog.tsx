@@ -24,15 +24,14 @@ const buildTokenPrintHtml = (orders: LabTokenOrder[], shop: { name?: string; add
   <style>
     @page { margin: 0; }
     html, body { margin: 0; padding: 0; background: #fff; color: #000;
-      font-family: "Courier New", Courier, monospace; font-weight: 700;
-      text-shadow: 0.35px 0 0 #000, -0.35px 0 0 #000, 0 0.35px 0 #000, 0 -0.35px 0 #000; }
+      font-family: "Courier New", Courier, monospace; }
     body { width: 80mm; margin: 0 auto; }
-    .slip { width: 72mm; margin: 0 auto; padding: 4mm 0 6mm; font-size: 13px; line-height: 1.4;
+    .slip { width: 72mm; margin: 0 auto; padding: 4mm 0 6mm; font-size: 12px; line-height: 1.35;
       page-break-after: always; }
     .slip:last-child { page-break-after: auto; }
     .center { text-align: center; }
-    .title { font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em; }
-    .token { font-size: 30px; letter-spacing: 0.06em; margin: 3mm 0; }
+    .title { font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+    .token { font-size: 30px; font-weight: 700; letter-spacing: 0.06em; margin: 3mm 0; }
     .small { font-size: 11px; }
     .rule { border-top: 1px dashed #000; margin: 6px 0; }
     .row { display: flex; justify-content: space-between; gap: 6px; }
