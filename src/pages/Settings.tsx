@@ -17,6 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "sonner";
 import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, TrendingUp } from "lucide-react";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { AppUpdateCard } from "@/components/AppUpdateCard";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR", "JOD", "EGP", "INR", "PKR", "NGN", "KES", "ZAR", "BRL", "MXN"];
 
@@ -494,6 +495,7 @@ export default function Settings() {
               ))}
             </div>
           </Card>
+          <AppUpdateCard />
         </TabsContent>
 
         {canEdit && (

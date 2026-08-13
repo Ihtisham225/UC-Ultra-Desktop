@@ -8,6 +8,13 @@ interface PrinterInfo {
   isDefault?: boolean
 }
 
+export interface UpdateState {
+  status: 'idle' | 'checking' | 'available' | 'downloaded' | 'none' | 'error'
+  version?: string
+  percent?: number
+  message?: string
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -16,6 +23,9 @@ declare global {
       platform?: string
       onUpdateAvailable?: (cb: (version: string) => void) => void
       onUpdateDownloaded?: (cb: (version: string) => void) => void
+      onUpdateState?: (cb: (state: UpdateState) => void) => void
+      getUpdateState?: () => Promise<UpdateState>
+      checkForUpdates?: () => Promise<UpdateState>
       installUpdate?: () => void
       getAppVersion?: () => Promise<string>
       openExternal?: (url: string) => Promise<void>

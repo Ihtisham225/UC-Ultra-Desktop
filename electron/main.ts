@@ -131,12 +131,66 @@ ipcMain.handle('print-receipt', async (_event, html: string, printerName?: strin
 
 // ─── Auto-updater ──────────────────────────────────────────────────────────
 
+type UpdateState = {
+  status: 'idle' | 'checking' | 'available' | 'downloaded' | 'none' | 'error'
+  version?: string
+  percent?: number
+  message?: string
+}
+
+/**
+ * The renderer mounts a second or two after the main process starts checking,
+ * and a cached update finishes downloading almost instantly — so the events
+ * routinely fired before anyone was listening and the pill never appeared.
+ * Keep the last state here and let the renderer read it on mount.
+ */
+let updateState: UpdateState = { status: 'idle' }
+
+const setUpdateState = (next: UpdateState) => {
+  updateState = next
+  mainWindow?.webContents.send('update-state', next)
+}
+
+autoUpdater.on('checking-for-update', () => setUpdateState({ status: 'checking' }))
+
 autoUpdater.on('update-available', (info) => {
+  setUpdateState({ status: 'available', version: info.version, percent: 0 })
   mainWindow?.webContents.send('update-available', info.version)
 })
 
+autoUpdater.on('download-progress', (p) => {
+  setUpdateState({ status: 'available', version: updateState.version, percent: Math.round(p.percent) })
+})
+
+autoUpdater.on('update-not-available', () => setUpdateState({ status: 'none' }))
+
 autoUpdater.on('update-downloaded', (info) => {
+  setUpdateState({ status: 'downloaded', version: info.version })
   mainWindow?.webContents.send('update-downloaded', info.version)
+})
+
+// Without this the updater fails silently — a bad manifest, a network block or
+// a signature mismatch looked exactly like "no update available".
+autoUpdater.on('error', (err) => {
+  console.error('[updater]', err)
+  setUpdateState({ status: 'error', message: err?.message ?? String(err) })
+})
+
+ipcMain.handle('get-update-state', () => updateState)
+
+ipcMain.handle('check-for-updates', async (): Promise<UpdateState> => {
+  if (!app.isPackaged) return { status: 'error', message: 'Updates only run in the installed app, not in dev.' }
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    // checkForUpdates resolves before the download finishes; the events above
+    // carry it the rest of the way.
+    if (!result) return updateState
+    return updateState.status === 'idle' ? { status: 'checking' } : updateState
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    setUpdateState({ status: 'error', message })
+    return updateState
+  }
 })
 
 ipcMain.on('install-update', () => {
