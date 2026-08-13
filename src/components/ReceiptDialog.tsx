@@ -93,36 +93,49 @@ const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; custom
           padding: 0;
           background: #ffffff;
           color: #000000;
-          font-family: "Courier New", Courier, monospace;
+          /* Courier's thin strokes print faint on a thermal head. Arial's real
+             bold face prints dark and stays crisp — unlike a synthetic
+             double-strike, which just smudges. */
+          font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+          font-weight: 700;
+          font-variant-numeric: tabular-nums;
         }
         body {
-          width: 80mm;
+          /* The page the driver hands us is the full 80mm roll, but an 80mm
+             head only prints 576 dots = 72mm of it, leaving ~3.75mm dead on
+             each side. Anything drawn out there is physically cut off, so cap
+             the slip at that 72mm print window rather than the paper width.
+             A 100% width keeps it correct on a 58mm roll too, where the page
+             is already narrower than the cap. */
+          width: 100%;
+          max-width: 72mm;
           margin: 0 auto;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
         }
         .receipt {
-          width: 72mm;
-          margin: 0 auto;
-          padding: 4mm 0 6mm;
-          font-size: 12px;
-          line-height: 1.35;
+          width: 100%;
+          /* Side padding keeps text off both edges, and buys a few mm of slack
+             for heads whose print window is a shade narrower than nominal. */
+          padding: 4mm 3mm 6mm;
+          font-size: 13px;
+          line-height: 1.45;
         }
         .center { text-align: center; }
         .title {
-          font-size: 16px;
+          font-size: 18px;
           font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.04em;
         }
-        .small { font-size: 11px; }
+        .small { font-size: 12px; }
         .note {
           white-space: pre-line;
           word-break: break-word;
         }
         .rule {
-          border-top: 1px dashed #000000;
-          margin: 8px 0;
+          border-top: 1px solid #000000;
+          margin: 7px 0;
         }
         .row {
           display: flex;
@@ -141,6 +154,11 @@ const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; custom
         }
         .item {
           margin-bottom: 6px;
+          /* Item lines print in Arial Regular so the bold header, totals and
+             footer stand out against them. Arial ships Regular and Bold only,
+             so this is the smallest real step down that exists — a 500 or 600
+             would just snap back to Bold. */
+          font-weight: 400;
         }
         .item-name {
           white-space: normal;
@@ -153,11 +171,11 @@ const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; custom
           justify-content: space-between;
           align-items: flex-start;
           gap: 8px;
-          font-size: 13px;
+          font-size: 16px;
           font-weight: 700;
-          border-top: 1px solid #000000;
-          margin-top: 4px;
-          padding-top: 4px;
+          border-top: 2px solid #000000;
+          margin-top: 5px;
+          padding-top: 5px;
         }
         .value {
           text-align: right;
@@ -281,16 +299,21 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
     }
   };
 
-  const dashed = "border-t border-dashed border-black my-2";
+  // Solid rules print crisper than dashed on a thermal head; the preview
+  // mirrors the printed slip so what the cashier sees is what comes out.
+  const dashed = "border-t border-black my-2";
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-white text-black">
-        <div className="px-4 pt-5 pb-2 flex justify-center">
+      {/* Column layout: only the paper scrolls, so Print/WhatsApp/New sale stay
+          on screen no matter how many lines the sale has or how short the
+          laptop screen is. */}
+      <DialogContent className="sm:max-w-md p-0 sm:p-0 md:p-0 gap-0 overflow-hidden bg-white text-black flex flex-col max-h-[100dvh] sm:max-h-[calc(100dvh-2rem)]">
+        <div className="px-4 pt-5 pb-3 flex justify-center flex-1 min-h-0 overflow-y-auto">
           <div
             id="receipt-print"
             dir="ltr"
-            className="w-full max-w-[72mm] mx-auto bg-white text-black font-mono text-[12px] leading-[1.35]"
+            className="w-full max-w-[72mm] mx-auto bg-white text-black font-sans font-bold text-[13px] leading-[1.45] [font-variant-numeric:tabular-nums]"
             style={{ direction: "ltr", unicodeBidi: "isolate" }}
           >
             <div className="text-center">
@@ -341,7 +364,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
 
             <div className="space-y-1.5">
               {sale.items.map((it: any, i: number) => (
-                <div key={i} className="space-y-0.5">
+                <div key={i} className="space-y-0.5 font-normal">
                   <div className="whitespace-normal break-words [overflow-wrap:anywhere] leading-tight">{it.product_name}</div>
                   <div className="flex items-start justify-between text-[11px] gap-2">
                     <span className="shrink-0">{it.quantity} x {formatMoney(it.unit_price, cur)}</span>
@@ -389,7 +412,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
         </DialogHeader>
 
         {/* Receipt is a white "paper" preview, so keep the footer buttons light in any theme. */}
-        <DialogFooter className="p-4 pt-0 print:hidden flex-col sm:flex-row gap-2 bg-white">
+        <DialogFooter className="p-4 pt-3 print:hidden flex-col sm:flex-row gap-2 bg-white shrink-0 border-t border-gray-200">
           {customer?.phone && (
             isPro ? (
               <Button variant="outline" onClick={sendWhatsApp} disabled={sending || sent} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">

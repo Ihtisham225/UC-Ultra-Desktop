@@ -23,17 +23,21 @@ const buildTokenPrintHtml = (orders: LabTokenOrder[], shop: { name?: string; add
   <html><head><meta charset="utf-8" /><title>Lab token</title>
   <style>
     @page { margin: 0; }
+    /* Same thermal rules as the sale receipt: Arial Bold prints dark where
+       Courier printed faint, and the slip is capped at the head's 72mm print
+       window (not the 80mm paper) so nothing is cut off the right edge. */
     html, body { margin: 0; padding: 0; background: #fff; color: #000;
-      font-family: "Courier New", Courier, monospace; }
-    body { width: 80mm; margin: 0 auto; }
-    .slip { width: 72mm; margin: 0 auto; padding: 4mm 0 6mm; font-size: 12px; line-height: 1.35;
+      font-family: Arial, Helvetica, "Segoe UI", sans-serif; font-weight: 700;
+      font-variant-numeric: tabular-nums; }
+    body { width: 100%; max-width: 72mm; margin: 0 auto; }
+    .slip { width: 100%; padding: 4mm 3mm 6mm; font-size: 13px; line-height: 1.45;
       page-break-after: always; }
     .slip:last-child { page-break-after: auto; }
     .center { text-align: center; }
-    .title { font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
-    .token { font-size: 30px; font-weight: 700; letter-spacing: 0.06em; margin: 3mm 0; }
-    .small { font-size: 11px; }
-    .rule { border-top: 1px dashed #000; margin: 6px 0; }
+    .title { font-size: 17px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .token { font-size: 32px; font-weight: 700; letter-spacing: 0.06em; margin: 3mm 0; }
+    .small { font-size: 12px; }
+    .rule { border-top: 1px solid #000; margin: 6px 0; }
     .row { display: flex; justify-content: space-between; gap: 6px; }
     .row span:last-child { text-align: right; word-break: break-word; }
   </style></head><body>
@@ -100,13 +104,13 @@ export function LabTokenDialog({ orders, onClose }: { orders: LabTokenOrder[] | 
       <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-white text-black">
         <div className="px-4 pt-5 pb-2 max-h-[70vh] overflow-y-auto">
           {orders.map((o) => (
-            <div key={o.id} className="w-full max-w-[72mm] mx-auto font-mono text-[12px] leading-[1.35] mb-4">
+            <div key={o.id} className="w-full max-w-[72mm] mx-auto font-sans font-bold text-[13px] leading-[1.45] [font-variant-numeric:tabular-nums] mb-4">
               <div className="text-center font-bold uppercase tracking-[0.08em]">{currentShop?.name}</div>
               {currentShop?.address && <div className="text-center text-[11px]">{currentShop.address}</div>}
-              <div className="border-t border-dashed border-black my-2" />
+              <div className="border-t border-black my-2" />
               <div className="text-center text-[11px]">LAB TOKEN</div>
               <div className="text-center text-3xl font-bold tracking-widest my-2">{o.token_number}</div>
-              <div className="border-t border-dashed border-black my-2" />
+              <div className="border-t border-black my-2" />
               <div className="space-y-0.5 text-[11px]">
                 <div className="flex justify-between gap-2"><span>Patient</span><span className="text-right">{o.patient_name || "—"}</span></div>
                 <div className="flex justify-between gap-2"><span>Age / Sex</span><span className="text-right">{[o.patient_age, o.patient_gender].filter(Boolean).join(" / ") || "—"}</span></div>
@@ -114,7 +118,7 @@ export function LabTokenDialog({ orders, onClose }: { orders: LabTokenOrder[] | 
                 <div className="flex justify-between gap-2"><span>Test</span><span className="text-right">{o.test_name}</span></div>
                 <div className="flex justify-between gap-2"><span>Date</span><span className="text-right">{format(new Date(o.created_at), "Pp")}</span></div>
               </div>
-              <div className="border-t border-dashed border-black my-2" />
+              <div className="border-t border-black my-2" />
               <div className="text-center text-[11px]">Please keep this slip to collect your report.</div>
             </div>
           ))}

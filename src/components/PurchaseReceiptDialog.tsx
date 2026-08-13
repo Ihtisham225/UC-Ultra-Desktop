@@ -83,20 +83,23 @@ const buildPrintHtml = ({ purchase, shop, currency }: { purchase: Purchase; shop
       <style>
         @page { margin: 0; }
         * { box-sizing: border-box; }
-        html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: "Courier New", Courier, monospace; }
-        body { width: 80mm; margin: 0 auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .receipt { width: 72mm; margin: 0 auto; padding: 4mm 0 6mm; font-size: 12px; line-height: 1.35; }
+        /* Same thermal rules as the sale receipt: Arial Bold prints dark where
+           Courier printed faint, and the slip is capped at the head's 72mm
+           print window (not the 80mm paper) so nothing is cut off the right. */
+        html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: Arial, Helvetica, "Segoe UI", sans-serif; font-weight: 700; font-variant-numeric: tabular-nums; }
+        body { width: 100%; max-width: 72mm; margin: 0 auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .receipt { width: 100%; padding: 4mm 3mm 6mm; font-size: 13px; line-height: 1.45; }
         .center { text-align: center; }
-        .title { font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
-        .small { font-size: 11px; }
+        .title { font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+        .small { font-size: 12px; }
         .note { white-space: pre-line; word-break: break-word; }
-        .rule { border-top: 1px dashed #000; margin: 8px 0; }
+        .rule { border-top: 1px solid #000; margin: 7px 0; }
         .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
         .row > :first-child { flex: 0 0 auto; }
         .row > .value { flex: 1 1 auto; min-width: 0; text-align: right; word-break: break-word; }
-        .item { margin-bottom: 6px; }
+        .item { margin-bottom: 6px; font-weight: 400; }
         .item-name { white-space: normal; word-break: break-word; overflow-wrap: anywhere; margin-bottom: 2px; }
-        .total-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; font-size: 13px; font-weight: 700; border-top: 1px solid #000; margin-top: 4px; padding-top: 4px; }
+        .total-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; font-size: 16px; font-weight: 700; border-top: 2px solid #000; margin-top: 5px; padding-top: 5px; }
         .value { text-align: right; }
       </style>
     </head>
@@ -170,25 +173,27 @@ export const PurchaseReceiptDialog = ({ purchase, onClose }: { purchase: Purchas
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-white text-black">
-        <div className="px-4 pt-5 pb-2 flex justify-center">
-          <div dir="ltr" className="w-full max-w-[72mm] mx-auto bg-white text-black font-mono text-[12px] leading-[1.35]">
+      {/* Column layout: only the paper scrolls, so Close/Print stay on screen
+          however many lines the purchase has. */}
+      <DialogContent className="sm:max-w-md p-0 sm:p-0 md:p-0 gap-0 overflow-hidden bg-white text-black flex flex-col max-h-[100dvh] sm:max-h-[calc(100dvh-2rem)]">
+        <div className="px-4 pt-5 pb-3 flex justify-center flex-1 min-h-0 overflow-y-auto">
+          <div dir="ltr" className="w-full max-w-[72mm] mx-auto bg-white text-black font-sans font-bold text-[13px] leading-[1.45] [font-variant-numeric:tabular-nums]">
             <div className="text-center">
               <div className="font-bold text-base uppercase tracking-[0.08em]">{shop.name}</div>
               {shop.address && <div className="text-[11px] whitespace-pre-line break-words">{shop.address}</div>}
               {shop.phone && <div className="text-[11px]">{shop.phone}</div>}
               <div className="text-[11px] mt-1 font-bold">PURCHASE VOUCHER</div>
             </div>
-            <div className="border-t border-dashed border-black my-2" />
+            <div className="border-t border-black my-2" />
             <div className="text-[11px] space-y-0.5">
               <div className="flex justify-between gap-2"><span className="shrink-0">Voucher</span><span className="text-right break-words">{purchase.reference_number}</span></div>
               <div className="flex justify-between gap-2"><span className="shrink-0">Date</span><span className="text-right break-words">{format(new Date(purchase.created_at), "Pp")}</span></div>
               {purchase.suppliers?.name && <div className="flex justify-between gap-2"><span className="shrink-0">Supplier</span><span className="text-right break-words">{purchase.suppliers.name}</span></div>}
             </div>
-            <div className="border-t border-dashed border-black my-2" />
+            <div className="border-t border-black my-2" />
             <div className="space-y-1.5">
               {purchase.purchase_items.map((it, i) => (
-                <div key={it.id ?? i} className="space-y-0.5">
+                <div key={it.id ?? i} className="space-y-0.5 font-normal">
                   <div className="whitespace-normal break-words [overflow-wrap:anywhere] leading-tight">{it.product_name}</div>
                   <div className="flex justify-between text-[11px] gap-2">
                     <span className="shrink-0">{Number(it.quantity)} x {formatMoney(it.unit_cost, cur)}</span>
@@ -197,7 +202,7 @@ export const PurchaseReceiptDialog = ({ purchase, onClose }: { purchase: Purchas
                 </div>
               ))}
             </div>
-            <div className="border-t border-dashed border-black my-2" />
+            <div className="border-t border-black my-2" />
             <div className="space-y-0.5 text-[11px]">
               <div className="flex justify-between gap-2"><span>Subtotal</span><span className="tabular-nums">{formatMoney(purchase.subtotal, cur)}</span></div>
               {Number(purchase.tax) > 0 && <div className="flex justify-between gap-2"><span>Tax</span><span className="tabular-nums">{formatMoney(purchase.tax, cur)}</span></div>}
@@ -209,7 +214,7 @@ export const PurchaseReceiptDialog = ({ purchase, onClose }: { purchase: Purchas
           </div>
         </div>
         {/* Receipt is a white "paper" preview, so keep the footer buttons light in any theme. */}
-        <div className="flex gap-2 p-4 border-t border-gray-200 bg-gray-50">
+        <div className="flex gap-2 p-4 border-t border-gray-200 bg-gray-50 shrink-0">
           <Button variant="outline" className="flex-1 border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900" onClick={onClose}>Close</Button>
           <Button className="flex-1 bg-gradient-primary text-white border-0 hover:opacity-90" onClick={print}>
             <Printer className="size-4 mr-2" /> Print
