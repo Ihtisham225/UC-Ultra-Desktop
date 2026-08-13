@@ -18,7 +18,9 @@ interface SaleItem {
   variant_id: string | null;
   product_name: string;
   quantity: number;
+  /** What the customer actually paid per unit, discount included. */
   unit_price: number;
+  list_unit_price?: number;
 }
 
 interface Props {
@@ -146,7 +148,14 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
                       <tr key={i.id} className="border-t">
                         <td className="p-2.5">
                           <div className="font-medium">{i.product_name}</div>
-                          <div className="text-xs text-muted-foreground tabular-nums">{formatMoney(i.unit_price, cur)} ea</div>
+                          <div className="text-xs text-muted-foreground tabular-nums">
+                            {formatMoney(i.unit_price, cur)} ea
+                            {/* Show the pre-discount price too, so the cashier can
+                                see why the refund is less than the shelf price. */}
+                            {(i.list_unit_price ?? 0) > i.unit_price && (
+                              <span className="ms-1 line-through opacity-60">{formatMoney(i.list_unit_price as number, cur)}</span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-2.5 text-center tabular-nums">{Number(i.quantity)}</td>
                         <td className="p-2.5 text-center tabular-nums text-muted-foreground">{done || "—"}</td>

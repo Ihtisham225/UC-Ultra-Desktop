@@ -65,7 +65,9 @@ interface Line {
   variant_id: string | null;
   product_name: string;
   unit_cost: number | null;
-  quantity: number;
+  /** Null until typed, so a fresh line shows an empty box instead of a 1 the
+   *  user has to clear first. Services are a flat charge and stay at 1. */
+  quantity: number | null;
   /** Landed-cost charges for the whole line (transport, loading, …). */
   expense_amount: number | null;
   /** Services (lab tests, labour) are a flat charge — no quantity. */
@@ -335,7 +337,7 @@ export default function Purchases() {
     if (page > totalPages) setPage(totalPages);
   }, [totalCount, pageSize, page]);
 
-  const subtotal = useMemo(() => lines.reduce((a, l) => a + (l.unit_cost ?? 0) * l.quantity, 0), [lines]);
+  const subtotal = useMemo(() => lines.reduce((a, l) => a + (l.unit_cost ?? 0) * (l.quantity ?? 0), 0), [lines]);
   const expensesTotal = useMemo(() => lines.reduce((a, l) => a + (l.expense_amount ?? 0), 0), [lines]);
   const [sharedExpense, setSharedExpense] = useState<string>("");
 
@@ -347,7 +349,7 @@ export default function Purchases() {
   const distributeShared = () => {
     const amount = parseFloat(sharedExpense) || 0;
     if (amount <= 0 || lines.length === 0) return;
-    const values = lines.map((l) => (l.unit_cost ?? 0) * l.quantity);
+    const values = lines.map((l) => (l.unit_cost ?? 0) * (l.quantity ?? 0));
     const totalValue = values.reduce((a, v) => a + v, 0);
     const shares = lines.map((_, i) =>
       totalValue > 0 ? (values[i] / totalValue) * amount : amount / lines.length,
@@ -379,7 +381,7 @@ export default function Purchases() {
       variant_id: v?.id ?? null,
       product_name: display_name,
       unit_cost: null,
-      quantity: 1,
+      quantity: (p as { is_service?: boolean }).is_service ? 1 : null,
       expense_amount: null,
       is_service: (p as { is_service?: boolean }).is_service,
     }]);
@@ -559,7 +561,7 @@ export default function Purchases() {
     if (!user || !currentShop) return;
     if (sourceType === "walkin" && !sellerName.trim()) return toast.error("Seller name is required for walk-in purchases");
     if (lines.length === 0) return toast.error(t("purchases.addAtLeastOne"));
-    if (lines.some((l) => l.quantity <= 0 || l.unit_cost == null || l.unit_cost < 0)) return toast.error(t("purchases.invalidLine"));
+    if (lines.some((l) => l.quantity == null || l.quantity <= 0 || l.unit_cost == null || l.unit_cost < 0)) return toast.error(t("purchases.invalidLine"));
     setBusy(true);
 
     const walkin = sourceType === "walkin";
@@ -580,7 +582,7 @@ export default function Purchases() {
         variant_id: l.variant_id || null,
         product_name: l.product_name,
         unit_cost: l.unit_cost ?? 0,
-        quantity: l.quantity,
+        quantity: l.quantity as number,
         expense_amount: l.expense_amount ?? 0,
       })),
     };
@@ -995,9 +997,12 @@ export default function Purchases() {
                               {l.is_service ? (
                                 <span className="text-xs text-muted-foreground">—</span>
                               ) : (
-                                <Input type="number" inputMode="numeric" step="1" value={l.quantity}
+                                <Input type="number" inputMode="numeric" step="1" placeholder="Qty" value={l.quantity ?? ""}
                                   className="h-9 px-2 text-sm tabular-nums"
-                                  onChange={(e) => updateLine(l.key, { quantity: parseFloat(e.target.value) || 0 })} />
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    updateLine(l.key, { quantity: v === "" ? null : (parseFloat(v) || 0) });
+                                  }} />
                               )}
                             </TableCell>
                             <TableCell className="p-2">
@@ -1008,7 +1013,7 @@ export default function Purchases() {
                                   updateLine(l.key, { expense_amount: v === "" ? null : (parseFloat(v) || 0) });
                                 }} />
                             </TableCell>
-                            <TableCell className="text-end tabular-nums">{formatMoney((l.unit_cost ?? 0) * l.quantity + (l.expense_amount ?? 0), cur)}</TableCell>
+                            <TableCell className="text-end tabular-nums">{formatMoney((l.unit_cost ?? 0) * (l.quantity ?? 0) + (l.expense_amount ?? 0), cur)}</TableCell>
                             <TableCell>
                               <Button variant="ghost" size="icon" onClick={() => removeLine(l.key)}><X className="size-4" /></Button>
                             </TableCell>
@@ -1046,10 +1051,13 @@ export default function Purchases() {
                           {!l.is_service && (
                             <div className="space-y-1">
                               <Label className="text-xs">{t("purchases.qty")}</Label>
-                              <Input type="number" inputMode="numeric" step="1"
+                              <Input type="number" inputMode="numeric" step="1" placeholder="Qty"
                                 className="h-11 text-base"
-                                value={l.quantity}
-                                onChange={(e) => updateLine(l.key, { quantity: parseFloat(e.target.value) || 0 })} />
+                                value={l.quantity ?? ""}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  updateLine(l.key, { quantity: v === "" ? null : (parseFloat(v) || 0) });
+                                }} />
                             </div>
                           )}
                           <div className="space-y-1">
@@ -1065,7 +1073,7 @@ export default function Purchases() {
                         </div>
                         <div className="flex justify-between text-sm pt-1 border-t">
                           <span className="text-muted-foreground">{t("purchases.lineTotal")}</span>
-                          <span className="font-semibold tabular-nums">{formatMoney((l.unit_cost ?? 0) * l.quantity + (l.expense_amount ?? 0), cur)}</span>
+                          <span className="font-semibold tabular-nums">{formatMoney((l.unit_cost ?? 0) * (l.quantity ?? 0) + (l.expense_amount ?? 0), cur)}</span>
                         </div>
                       </div>
                     ))}
