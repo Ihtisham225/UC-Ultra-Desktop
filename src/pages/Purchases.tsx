@@ -1459,9 +1459,24 @@ export default function Purchases() {
             expiry_date: (v as { expiry_date?: string | null }).expiry_date ?? null,
             batch_no: (v as { batch_no?: string | null }).batch_no ?? null,
           }))}
+          // A delivery usually covers several variants of the same model, so
+          // they can all be ticked and added as lines in one pass.
+          multiSelect
           onPick={(v) => {
             const variant = variantPicker.variants?.find((x) => x.id === v.id) ?? null;
             if (variant) pushLine(variantPicker, variant);
+          }}
+          onPickMany={(picks) => {
+            // Skip any already on the purchase rather than firing one
+            // "already added" toast per tick.
+            const fresh = picks.filter((p) => !lines.some((l) => l.key === p.id));
+            for (const p of fresh) {
+              const variant = variantPicker.variants?.find((x) => x.id === p.id) ?? null;
+              if (variant) pushLine(variantPicker, variant);
+            }
+            const skipped = picks.length - fresh.length;
+            if (fresh.length) toast.success(`${fresh.length} ${fresh.length === 1 ? "variant" : "variants"} added`);
+            if (skipped) toast.info(`${skipped} already on this purchase`);
           }}
         />
       )}

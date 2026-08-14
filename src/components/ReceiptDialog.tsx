@@ -8,6 +8,7 @@ import { rpc } from "@/lib/apiClient";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { useShop } from "@/contexts/ShopContext";
+import { termsToPrintHtml } from "@/lib/rich-text";
 
 const escapeHtml = (value: string) =>
   value
@@ -186,7 +187,11 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
           font-size: 11px;
           font-weight: 400;
           line-height: 1.35;
+          word-break: break-word;
         }
+        .terms ul, .terms ol { margin: 2px 0; padding-inline-start: 4mm; }
+        .terms li { margin: 0; }
+        .terms p { margin: 0 0 2px; }
       </style>
     </head>
     <body>
@@ -220,7 +225,7 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
 
         ${sale.shop?.receipt_footer ? `<div class="rule"></div><div class="center small note">${withLineBreaks(sale.shop.receipt_footer)}</div>` : ""}
 
-        ${withTerms && sale.shop?.receipt_terms ? `<div class="rule"></div><div class="terms note">${withLineBreaks(sale.shop.receipt_terms)}</div>` : ""}
+        ${withTerms && sale.shop?.receipt_terms ? `<div class="rule"></div><div class="terms">${termsToPrintHtml(sale.shop.receipt_terms)}</div>` : ""}
 
         <div class="center small" style="margin-top:8px;">** Thank you **</div>
       </div>
@@ -418,7 +423,10 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
             {withTerms && terms && (
               <>
                 <div className={dashed} />
-                <div className="text-[11px] font-normal leading-[1.35] whitespace-pre-line break-words">{terms}</div>
+                <div
+                  className="text-[11px] font-normal leading-[1.35] break-words [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:ps-4 [&_ol]:ps-4"
+                  dangerouslySetInnerHTML={{ __html: termsToPrintHtml(terms) }}
+                />
               </>
             )}
 

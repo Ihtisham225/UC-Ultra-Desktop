@@ -84,7 +84,11 @@ export default function Analytics() {
         const unitCost = Number(row.unit_cost);
         const cur = totals.get(key) ?? { qty: 0, cost: 0 };
         cur.qty += qty;
-        cur.cost += qty * unitCost;
+        // Landed cost: goods price alone understates what the stock cost.
+        // schema.prisma defines effective unit cost as
+        // (unitCost*quantity + expenseAmount) / quantity — the same basis
+        // investor lots already use.
+        cur.cost += qty * unitCost + Number(row.expense_amount ?? 0);
         totals.set(key, cur);
       });
       const avg = new Map<string, number>();

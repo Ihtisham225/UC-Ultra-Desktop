@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useShop } from "@/contexts/ShopContext";
-import { Package, Plus, Search } from "lucide-react";
+import { Check, Package, Plus, Search } from "lucide-react";
 
 export interface VariantOption {
   id: string;
@@ -34,6 +35,14 @@ interface Props {
   allowOutOfStock?: boolean;
   /** Shows a "+ New batch" row (Purchases) so a new batch can be stocked inline. */
   onAddBatch?: () => void;
+  /**
+   * Purchases stock several variants of the same product at once, so the rows
+   * become tick boxes and one button adds them all. POS sells a single unit at
+   * a time and leaves this off.
+   */
+  multiSelect?: boolean;
+  /** Called with every ticked variant when `multiSelect` is on. */
+  onPickMany?: (variants: VariantOption[]) => void;
 }
 
 /**
@@ -55,6 +64,8 @@ export const VariantPickerDialog = ({
   onPick,
   allowOutOfStock = false,
   onAddBatch,
+  multiSelect = false,
+  onPickMany,
 }: Props) => {
   const { t } = useTranslation();
   const { currentShop } = useShop();
@@ -64,8 +75,9 @@ export const VariantPickerDialog = ({
   const isBatches = variants.some((v) => !!v.batch_no);
 
   const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   // A stale query from the previous product would silently hide everything.
-  useEffect(() => { if (open) setQuery(""); }, [open, productName]);
+  useEffect(() => { if (open) { setQuery(""); setPicked(new Set()); } }, [open, productName]);
 
   // Short lists are faster to read than to filter; the box would just be noise.
   const showSearch = variants.length > 5;
@@ -90,13 +102,28 @@ export const VariantPickerDialog = ({
 
   const pick = (v: VariantOption, disabled: boolean) => {
     if (disabled) return;
+    if (multiSelect) {
+      setPicked((prev) => {
+        const next = new Set(prev);
+        if (next.has(v.id)) next.delete(v.id); else next.add(v.id);
+        return next;
+      });
+      return;
+    }
     onPick(v);
+    onClose();
+  };
+
+  const addPicked = () => {
+    const chosen = variants.filter((v) => picked.has(v.id));
+    if (chosen.length === 0) return;
+    onPickMany?.(chosen);
     onClose();
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg md:max-w-2xl lg:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="size-5 text-primary" />
@@ -144,8 +171,16 @@ export const VariantPickerDialog = ({
                   type="button"
                   onClick={() => pick(v, disabled)}
                   disabled={disabled}
-                  className="flex items-center justify-between gap-3 rounded-lg border p-3 text-start transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-transparent"
+                  className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-start transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-transparent ${picked.has(v.id) ? "border-primary bg-primary/5" : ""}`}
                 >
+                  {multiSelect && (
+                    <span
+                      aria-hidden
+                      className={`flex size-5 shrink-0 items-center justify-center rounded border ${picked.has(v.id) ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40"}`}
+                    >
+                      {picked.has(v.id) && <Check className="size-3.5" />}
+                    </span>
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="font-medium truncate">
                       {v.batch_no ? `Batch ${v.batch_no}` : v.name}
@@ -194,6 +229,16 @@ export const VariantPickerDialog = ({
             </button>
           )}
         </div>
+        {multiSelect && (
+          <div className="flex items-center justify-between gap-3 border-t pt-3">
+            <span className="text-sm text-muted-foreground">
+              {picked.size === 0 ? "Tick the variants you bought" : `${picked.size} selected`}
+            </span>
+            <Button onClick={addPicked} disabled={picked.size === 0}>
+              Add {picked.size > 0 ? picked.size : ""} to purchase
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

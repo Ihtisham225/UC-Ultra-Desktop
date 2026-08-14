@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, TrendingUp } from "lucide-react";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { AppUpdateCard } from "@/components/AppUpdateCard";
+import { RichTextEditor } from "@/components/RichTextEditor";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR", "JOD", "EGP", "INR", "PKR", "NGN", "KES", "ZAR", "BRL", "MXN"];
 
@@ -406,13 +407,13 @@ export default function Settings() {
             <div className="space-y-1.5 border-t pt-4">
               <Label>Terms &amp; conditions</Label>
               <p className="text-xs text-muted-foreground">
-                Printed at the bottom of the receipt. Write them in any language — for example
-                return and warranty rules. Leave empty to print nothing.
+                Printed at the bottom of the receipt. Write them in any language, and use the
+                buttons for bold, italic or bullet points. Leave empty to print nothing.
               </p>
-              <Textarea
-                rows={4}
+              <RichTextEditor
+                rows={5}
                 value={terms}
-                onChange={(e) => setTerms(e.target.value)}
+                onChange={setTerms}
                 disabled={!canEditShop}
                 placeholder={"e.g. Goods once sold are not returnable\nWarranty claims need this receipt"}
               />

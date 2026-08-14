@@ -330,7 +330,9 @@ function InventoryReport({ shopId, formatMoney, cur }: Omit<ReportProps, "range"
       (pi as any[]).forEach((r) => {
         if (!r.product_id) return;
         const cur = totals.get(r.product_id) ?? { qty: 0, cost: 0 };
-        cur.qty += Number(r.quantity); cur.cost += Number(r.quantity) * Number(r.unit_cost);
+        cur.qty += Number(r.quantity);
+        // Landed cost — includes this line's transport/loading share.
+        cur.cost += Number(r.quantity) * Number(r.unit_cost) + Number(r.expense_amount ?? 0);
         totals.set(r.product_id, cur);
       });
       const enriched = ((products ?? []) as any[]).map((p) => {
@@ -437,7 +439,9 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
       (pi as any[]).forEach((r) => {
         const k = r.variant_id ?? r.product_id; if (!k) return;
         const cur = totals.get(k) ?? { qty: 0, cost: 0 };
-        cur.qty += Number(r.quantity); cur.cost += Number(r.quantity) * Number(r.unit_cost);
+        cur.qty += Number(r.quantity);
+        // Landed cost — includes this line's transport/loading share.
+        cur.cost += Number(r.quantity) * Number(r.unit_cost) + Number(r.expense_amount ?? 0);
         totals.set(k, cur);
       });
       totals.forEach((v, k) => avg.set(k, v.qty > 0 ? v.cost / v.qty : 0));
