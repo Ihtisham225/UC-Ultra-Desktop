@@ -11,6 +11,7 @@ import { VariantsBuilder, type BuilderVariant } from "@/components/VariantsBuild
 import { LabParametersBuilder, type LabParameterDraft } from "@/components/LabParametersBuilder";
 import { BatchesBuilder } from "@/components/BatchesBuilder";
 import { generateSku } from "@/lib/sku";
+import { isLabEnabled } from "@/lib/lab";
 
 /**
  * Shape the shared fields read/write. Deliberately loose so both the Products
@@ -27,6 +28,7 @@ export interface ProductFormValue {
   brand_id?: string | null;
   imei1?: string | null;
   imei2?: string | null;
+  tracks_imei?: boolean;
   expiry_date?: string | null;
   batch_no?: string | null;
   generic_name?: string | null;
@@ -63,10 +65,13 @@ export function ProductFormFields<T extends ProductFormValue>({
   // Phone shops that record the handset serial on the product (not at sale).
   const imeiOnProduct =
     currentShop?.store_type === "phone" && currentShop?.imei_capture_mode === "product";
+  const isPhone = currentShop?.store_type === "phone";
+  // Accessories in a phone shop have no serial, so POS must not ask for one.
+  const tracksImei = value.tracks_imei !== false;
   const isPharmacy = currentShop?.store_type === "pharmacy";
   // The Service toggle (and lab test factors) only exist once the shop says it
   // runs a lab — other store types keep services for repair labour etc.
-  const labEnabled = !!currentShop?.lab_tests_enabled;
+  const labEnabled = isLabEnabled(currentShop);
   const canBeService = !isPharmacy || labEnabled;
   // Services (lab tests, repair labour) hold no stock, so stock-shaped fields
   // and the variants section don't apply to them.
@@ -173,7 +178,20 @@ export function ProductFormFields<T extends ProductFormValue>({
         )}
       </div>
 
-      {imeiOnProduct && !value.hasVariants && (
+      {isPhone && !isService && (
+        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+          <div>
+            <Label>Has IMEI / serial number</Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              On for handsets. Turn off for accessories like cables, adapters and covers —
+              POS then stops asking for an IMEI when you sell them.
+            </p>
+          </div>
+          <Switch checked={tracksImei} onCheckedChange={(v) => set({ tracks_imei: v })} />
+        </div>
+      )}
+
+      {imeiOnProduct && tracksImei && !isService && !value.hasVariants && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label>IMEI 1</Label>

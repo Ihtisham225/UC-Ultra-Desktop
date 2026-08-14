@@ -9,6 +9,7 @@ export interface CachedProduct {
   shop_id: string
   imei1?: string | null
   imei2?: string | null
+  tracks_imei?: boolean
   expiry_date?: string | null
   batch_no?: string | null
   generic_name?: string | null

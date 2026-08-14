@@ -65,6 +65,8 @@ interface Product {
   is_active: boolean;
   imei1?: string | null;
   imei2?: string | null;
+  /** Phone shops: false for accessories, so POS skips the IMEI prompt. */
+  tracks_imei?: boolean;
   created_at?: string;
   is_service?: boolean;
   is_lab_test?: boolean;
@@ -76,7 +78,7 @@ interface EditingProduct extends Partial<Product> {
   hasVariants?: boolean;
 }
 
-const blank: EditingProduct = { name: "", sku: "", barcode: "", unit: "pcs", hasVariants: false, variants: [] };
+const blank: EditingProduct = { name: "", sku: "", barcode: "", unit: "pcs", tracks_imei: true, hasVariants: false, variants: [] };
 
 const SORT_KEY = "pos.sort.products";
 type SortKey = "newest" | "oldest" | "name_asc" | "name_desc" | "price_desc" | "price_asc" | "stock_asc" | "stock_desc";
@@ -257,6 +259,7 @@ export default function Products() {
       low_stock_threshold,
       unit: editing.unit || "pcs",
       imei1: !wantsVariants ? ((editing as any).imei1?.trim() || null) : null,
+      tracks_imei: (editing as { tracks_imei?: boolean }).tracks_imei !== false,
       imei2: !wantsVariants ? ((editing as any).imei2?.trim() || null) : null,
       expiry_date: !wantsVariants ? ((editing as any).expiry_date || null) : null,
       batch_no: !wantsVariants ? ((editing as any).batch_no?.trim() || null) : null,

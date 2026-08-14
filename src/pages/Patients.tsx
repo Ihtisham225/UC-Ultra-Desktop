@@ -18,6 +18,7 @@ import { useRowSelection } from "@/hooks/useRowSelection";
 import { BulkActionBar } from "@/components/BulkActionBar";
 import { downloadCsv } from "@/lib/csv";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { isLabEnabled } from "@/lib/lab";
 
 interface Patient {
   id: string;
@@ -130,7 +131,7 @@ export default function Patients() {
     toast.success(`Exported ${rows.length}`);
   };
 
-  if (!currentShop?.lab_tests_enabled) {
+  if (!isLabEnabled(currentShop)) {
     return (
       <div className="p-12 text-center text-muted-foreground">
         Lab tests are turned off. Enable them in Settings → Shop.

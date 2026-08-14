@@ -64,6 +64,9 @@ export function useOfflineProducts(shopId: string | undefined) {
         shop_id: shopId,
         imei1: (p as { imei1?: string | null }).imei1 ?? null,
         imei2: (p as { imei2?: string | null }).imei2 ?? null,
+        // Without this the offline cart would prompt for an IMEI on every
+        // accessory, since POS reads the flag from the cached row.
+        tracks_imei: (p as { tracks_imei?: boolean }).tracks_imei !== false,
         expiry_date: (p as { expiry_date?: string | null }).expiry_date ?? null,
         batch_no: (p as { batch_no?: string | null }).batch_no ?? null,
         generic_name: (p as { generic_name?: string | null }).generic_name ?? null,

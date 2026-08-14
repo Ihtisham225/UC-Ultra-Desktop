@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { VariantPickerDialog, type VariantOption } from "@/components/VariantPickerDialog";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { cn } from "@/lib/utils";
+import { isLabEnabled } from "@/lib/lab";
 
 interface Variant {
   id: string;
@@ -45,6 +46,8 @@ interface Product {
   stock: number;
   imei1?: string | null;
   imei2?: string | null;
+  /** Phone shops: false for accessories, so POS skips the IMEI prompt. */
+  tracks_imei?: boolean;
   expiry_date?: string | null;
   batch_no?: string | null;
   generic_name?: string | null;
@@ -82,6 +85,8 @@ interface CartItem {
   is_service?: boolean;
   /** Lab tests are billed to a patient, not a customer. */
   is_lab_test?: boolean;
+  /** Phone shops: accessories don't carry a serial, so no IMEI prompt. */
+  tracks_imei?: boolean;
 }
 
 export default function POS() {
@@ -98,6 +103,8 @@ export default function POS() {
   const [search, setSearch] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Accessories can still take a serial on request without cluttering every line.
+  const [revealImei, setRevealImei] = useState<Record<string, boolean>>({});
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "mobile" | "other">("cash");
   const [isCredit, setIsCredit] = useState(false);
   const [amountPaid, setAmountPaid] = useState<string>("");
@@ -110,7 +117,7 @@ export default function POS() {
   const [discountValue, setDiscountValue] = useState<string>("");
 
   // Pharmacies with a lab split the catalog: goods vs lab tests.
-  const labEnabled = !!currentShop?.lab_tests_enabled;
+  const labEnabled = isLabEnabled(currentShop);
   const [posTab, setPosTab] = useState<"products" | "lab">("products");
   /** The product's own flag, synced with the catalog, so this works offline. */
   const isLabTest = useCallback(
@@ -155,6 +162,7 @@ export default function POS() {
         imei2: imeiOnProduct ? (src.imei2 ?? undefined) : undefined,
         is_service: p.is_service,
         is_lab_test: isLabTest(p),
+        tracks_imei: p.tracks_imei !== false,
       }];
     });
   };
@@ -504,7 +512,16 @@ export default function POS() {
                     </div>
                     <Button size="icon" variant="ghost" className="size-7" onClick={() => removeItem(c.key)}><X className="size-3" /></Button>
                   </div>
-                  {imeiOnSale && (
+                  {imeiOnSale && !c.tracks_imei && !c.is_service && !revealImei[c.key] && (
+                    <button
+                      type="button"
+                      onClick={() => setRevealImei((r) => ({ ...r, [c.key]: true }))}
+                      className="mt-1 text-[11px] text-muted-foreground hover:text-primary underline underline-offset-2"
+                    >
+                      + Add IMEI
+                    </button>
+                  )}
+                  {imeiOnSale && (c.tracks_imei ? !c.is_service : revealImei[c.key]) && (
                     <div className="grid grid-cols-2 gap-1 mt-2">
                       <Input
                         value={c.imei1 ?? ""}

@@ -40,6 +40,8 @@ export default function Settings() {
 
   const [header, setHeader] = useState("");
   const [footer, setFooter] = useState("");
+  const [terms, setTerms] = useState("");
+  const [printTerms, setPrintTerms] = useState(true);
   const [showTax, setShowTax] = useState(true);
   const [storeType, setStoreType] = useState("other");
   const [labTests, setLabTests] = useState(false);
@@ -65,6 +67,8 @@ export default function Settings() {
       setTax(String(currentShop.tax_rate));
       setHeader(currentShop.receipt_header ?? "");
       setFooter(currentShop.receipt_footer ?? "");
+      setTerms(currentShop.receipt_terms ?? "");
+      setPrintTerms(currentShop.print_terms_by_default !== false);
       setAddress(currentShop.address ?? "");
       setPhone(currentShop.phone ?? "");
       setEmail(currentShop.email ?? "");
@@ -149,6 +153,7 @@ export default function Settings() {
       const res = await rpc<{ ok: boolean; error?: string }>("updateReceiptAction", {
         header: header || null, footer: footer || null, show_tax_line: showTax,
         show_customer_on_receipt: showCustomer, show_imei_on_receipt: showImei,
+        receipt_terms: terms || null, print_terms_by_default: printTerms,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
     } catch (e) {
@@ -396,6 +401,31 @@ export default function Settings() {
                 <Switch checked={showImei} onCheckedChange={setShowImei} disabled={!canEditShop} />
               </div>
             )}
+            {/* Terms print at the foot of every receipt. Free text, any
+                language — shops write these in Urdu, Pashto or English. */}
+            <div className="space-y-1.5 border-t pt-4">
+              <Label>Terms &amp; conditions</Label>
+              <p className="text-xs text-muted-foreground">
+                Printed at the bottom of the receipt. Write them in any language — for example
+                return and warranty rules. Leave empty to print nothing.
+              </p>
+              <Textarea
+                rows={4}
+                value={terms}
+                onChange={(e) => setTerms(e.target.value)}
+                disabled={!canEditShop}
+                placeholder={"e.g. Goods once sold are not returnable\nWarranty claims need this receipt"}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-2">
+              <div>
+                <Label>Print terms by default</Label>
+                <p className="text-xs text-muted-foreground">
+                  The cashier can still switch them off for a single receipt before printing.
+                </p>
+              </div>
+              <Switch checked={printTerms} onCheckedChange={setPrintTerms} disabled={!canEditShop || !terms.trim()} />
+            </div>
             {canEditShop && <Button disabled={busy} onClick={saveReceipt} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.receipt.saveReceipt")}</Button>}
           </Card>
         </TabsContent>

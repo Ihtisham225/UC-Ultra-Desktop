@@ -71,6 +71,8 @@ export interface DeviceShop {
   imei_capture_mode?: "sale" | "product";
   show_customer_on_receipt?: boolean;
   show_imei_on_receipt?: boolean;
+  receipt_terms?: string | null;
+  print_terms_by_default?: boolean;
   created_by: string;
   role: ShopRole;
 }

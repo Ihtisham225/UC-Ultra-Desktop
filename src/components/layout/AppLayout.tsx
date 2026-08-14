@@ -21,6 +21,7 @@ import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { InstallPwaButton } from "@/components/InstallPwaButton";
 import { Logo } from "@/components/Logo";
+import { isLabEnabled } from "@/lib/lab";
 
 type NavItem = { to: string; label: string; icon: any; show: boolean };
 
@@ -42,9 +43,9 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/categories", label: "Categories", icon: FolderTree, show: perms.canManageProducts },
     { to: "/brands", label: "Brands", icon: Tag, show: perms.canManageProducts },
     { to: "/inventory", label: "Inventory", icon: Boxes, show: perms.canManageProducts },
-    { to: "/lab", label: "Lab", icon: FlaskConical, show: !!currentShop?.lab_tests_enabled && hasPerm("lab", "view") },
-    { to: "/lab-results", label: "Results", icon: ClipboardCheck, show: !!currentShop?.lab_tests_enabled && hasPerm("lab", "view") },
-    { to: "/patients", label: "Patients", icon: HeartPulse, show: !!currentShop?.lab_tests_enabled && hasPerm("lab", "view") },
+    { to: "/lab", label: "Lab", icon: FlaskConical, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
+    { to: "/lab-results", label: "Results", icon: ClipboardCheck, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
+    { to: "/patients", label: "Patients", icon: HeartPulse, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
     { to: "/sales", label: t("nav.sales"), icon: Receipt, show: true },
     { to: "/returns", label: t("nav.returns"), icon: Undo2, show: true },
     { to: "/customers", label: t("nav.customers"), icon: Users, show: true },

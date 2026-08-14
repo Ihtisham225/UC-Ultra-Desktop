@@ -16,6 +16,7 @@ import { LabTokenDialog } from "@/components/LabTokenDialog";
 import { rpc } from "@/lib/apiClient";
 import type { LabOrderDto } from "@/lib/labTypes";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { isLabEnabled } from "@/lib/lab";
 
 export default function LabClient() {
   usePageMeta({ title: "Lab — UCU", description: "Lab tests waiting for results.", path: "/lab" });
@@ -94,7 +95,7 @@ export default function LabClient() {
     }
   };
 
-  if (!currentShop?.lab_tests_enabled) {
+  if (!isLabEnabled(currentShop)) {
     return (
       <div className="p-12 text-center text-muted-foreground">
         Lab tests are turned off. Enable them in Settings → Shop.

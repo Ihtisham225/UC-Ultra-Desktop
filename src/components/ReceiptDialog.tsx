@@ -19,7 +19,7 @@ const escapeHtml = (value: string) =>
 
 const withLineBreaks = (value?: string | null) => escapeHtml(value ?? "").replace(/\n/g, "<br />");
 
-const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; customer: { name: string; phone: string | null } | null; currency: string }) => {
+const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: any; customer: { name: string; phone: string | null } | null; currency: string; withTerms: boolean }) => {
   const showCustomer = sale.shop?.show_customer_on_receipt === true;
   const showImei = sale.shop?.show_imei_on_receipt === true;
   // Patient details always print on a lab sale — they identify whose sample it
@@ -180,6 +180,13 @@ const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; custom
         .value {
           text-align: right;
         }
+        /* Terms can run several lines, so print them lighter and tighter than
+           the body — they are reference text, not the transaction. */
+        .terms {
+          font-size: 11px;
+          font-weight: 400;
+          line-height: 1.35;
+        }
       </style>
     </head>
     <body>
@@ -213,6 +220,8 @@ const buildReceiptPrintHtml = ({ sale, customer, currency }: { sale: any; custom
 
         ${sale.shop?.receipt_footer ? `<div class="rule"></div><div class="center small note">${withLineBreaks(sale.shop.receipt_footer)}</div>` : ""}
 
+        ${withTerms && sale.shop?.receipt_terms ? `<div class="rule"></div><div class="terms note">${withLineBreaks(sale.shop.receipt_terms)}</div>` : ""}
+
         <div class="center small" style="margin-top:8px;">** Thank you **</div>
       </div>
       <script>
@@ -236,6 +245,9 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
   const [customer, setCustomer] = useState<{ name: string; phone: string | null } | null>(
     sale.customer ?? null
   );
+  const terms: string = sale.shop?.receipt_terms ?? "";
+  // Shop-wide default, overridable per print from the toggle below the paper.
+  const [withTerms, setWithTerms] = useState(sale.shop?.print_terms_by_default !== false);
 
   useEffect(() => {
     if (sale.customer || !sale.customer_id) return;
@@ -275,7 +287,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
     }
 
     doc.open();
-    doc.write(buildReceiptPrintHtml({ sale, customer, currency: cur }).replace(
+    doc.write(buildReceiptPrintHtml({ sale, customer, currency: cur, withTerms }).replace(
       "window.print();",
       `window.print();\n            setTimeout(() => window.parent.postMessage(\"receipt-print-done\", \"*\"), 300);`
     ));
@@ -403,6 +415,13 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
               </>
             )}
 
+            {withTerms && terms && (
+              <>
+                <div className={dashed} />
+                <div className="text-[11px] font-normal leading-[1.35] whitespace-pre-line break-words">{terms}</div>
+              </>
+            )}
+
             <div className="text-center text-[11px] mt-2">** Thank you **</div>
           </div>
         </div>
@@ -412,7 +431,20 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
         </DialogHeader>
 
         {/* Receipt is a white "paper" preview, so keep the footer buttons light in any theme. */}
-        <DialogFooter className="p-4 pt-3 print:hidden flex-col sm:flex-row gap-2 bg-white shrink-0 border-t border-gray-200">
+        {/* Per-print override of the shop's terms default. */}
+        {terms && (
+          <label className="flex items-center gap-2 px-4 pt-3 text-sm text-gray-700 bg-white shrink-0 border-t border-gray-200 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={withTerms}
+              onChange={(e) => setWithTerms(e.target.checked)}
+              className="size-4 accent-black"
+            />
+            Print terms &amp; conditions
+          </label>
+        )}
+
+        <DialogFooter className={`p-4 pt-3 print:hidden flex-col sm:flex-row gap-2 bg-white shrink-0 ${terms ? "" : "border-t border-gray-200"}`}>
           {customer?.phone && (
             isPro ? (
               <Button variant="outline" onClick={sendWhatsApp} disabled={sending || sent} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">

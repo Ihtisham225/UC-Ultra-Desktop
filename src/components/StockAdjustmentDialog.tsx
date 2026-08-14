@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 
 interface ProductOption {
@@ -34,6 +37,7 @@ export function StockAdjustmentDialog({ open, onOpenChange, initialProductId, on
   const [reason, setReason] = useState<string>("recount");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [variantOpen, setVariantOpen] = useState(false);
 
   useEffect(() => {
     if (!open || !currentShop) return;
@@ -61,6 +65,7 @@ export function StockAdjustmentDialog({ open, onOpenChange, initialProductId, on
 
   const selectedProduct = products.find(p => p.id === productId);
   const hasVariants = selectedProduct && selectedProduct.variants && selectedProduct.variants.length > 0;
+  const selectedVariant = selectedProduct?.variants.find((v) => v.id === variantId);
 
   const submit = async () => {
     const d = Number(delta);
@@ -110,14 +115,41 @@ export function StockAdjustmentDialog({ open, onOpenChange, initialProductId, on
           {hasVariants && (
             <div>
               <Label>Variant</Label>
-              <Select value={variantId} onValueChange={setVariantId}>
-                <SelectTrigger><SelectValue placeholder="Select variant…" /></SelectTrigger>
-                <SelectContent>
-                  {selectedProduct!.variants.map(v => (
-                    <SelectItem key={v.id} value={v.id}>{v.name} (stock: {v.stock})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Searchable: a pharmacy can carry dozens of batches of one
+                  medicine, and scrolling a plain dropdown to find one is slow. */}
+              <Popover open={variantOpen} onOpenChange={setVariantOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                    <span className={selectedVariant ? "" : "text-muted-foreground"}>
+                      {selectedVariant
+                        ? `${selectedVariant.name} (stock: ${selectedVariant.stock})`
+                        : "Select variant…"}
+                    </span>
+                    <ChevronsUpDown className="size-4 opacity-50 shrink-0" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search variant…" />
+                    <CommandList>
+                      <CommandEmpty>No variant found.</CommandEmpty>
+                      <CommandGroup>
+                        {selectedProduct!.variants.map((v) => (
+                          <CommandItem
+                            key={v.id}
+                            value={v.name}
+                            onSelect={() => { setVariantId(v.id); setVariantOpen(false); }}
+                          >
+                            <Check className={`size-4 me-2 ${variantId === v.id ? "opacity-100" : "opacity-0"}`} />
+                            <span className="flex-1 truncate">{v.name}</span>
+                            <span className="text-xs text-muted-foreground tabular-nums">stock: {v.stock}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 

@@ -424,6 +424,7 @@ export default function Purchases() {
         low_stock_threshold: lowStock,
         unit: (newProduct.unit ?? "").trim() || "pcs",
         imei1: wantsVariants ? null : ((newProduct.imei1 ?? "") || null),
+        tracks_imei: newProduct.tracks_imei !== false,
         imei2: wantsVariants ? null : ((newProduct.imei2 ?? "") || null),
         is_active: true,
         updated_at: now,

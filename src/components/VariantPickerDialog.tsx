@@ -1,8 +1,10 @@
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useShop } from "@/contexts/ShopContext";
-import { Package, Plus } from "lucide-react";
+import { Package, Plus, Search } from "lucide-react";
 
 export interface VariantOption {
   id: string;
@@ -61,6 +63,37 @@ export const VariantPickerDialog = ({
   // Pharmacy batches read as "batch", not the generic "variant".
   const isBatches = variants.some((v) => !!v.batch_no);
 
+  const [query, setQuery] = useState("");
+  // A stale query from the previous product would silently hide everything.
+  useEffect(() => { if (open) setQuery(""); }, [open, productName]);
+
+  // Short lists are faster to read than to filter; the box would just be noise.
+  const showSearch = variants.length > 5;
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const sorted = [...variants].sort((a, b) => {
+      const da = daysLeft(a.expiry_date), db = daysLeft(b.expiry_date);
+      if (da === null && db === null) return 0;
+      if (da === null) return 1;   // undated batches go last
+      if (db === null) return -1;
+      return da - db;
+    });
+    if (!q) return sorted;
+    // Everything printed on the row is searchable, so scanning a barcode or
+    // typing the last digits of an IMEI lands straight on the right one.
+    return sorted.filter((v) =>
+      [v.name, v.batch_no, v.sku, v.barcode, v.imei1, v.imei2, v.expiry_date]
+        .some((f) => f && String(f).toLowerCase().includes(q)),
+    );
+  }, [variants, query]);
+
+  const pick = (v: VariantOption, disabled: boolean) => {
+    if (disabled) return;
+    onPick(v);
+    onClose();
+  };
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
@@ -75,19 +108,33 @@ export const VariantPickerDialog = ({
               : t("products.pickVariantSubtitle", { name: productName })}
           </p>
         </DialogHeader>
+        {showSearch && (
+          <div className="relative">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+            <Input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                // One match left: Enter takes it, so a scan needs no click.
+                if (e.key !== "Enter" || shown.length !== 1) return;
+                const only = shown[0];
+                pick(only, !allowOutOfStock && Number(only.stock) <= 0);
+              }}
+              placeholder={isBatches ? "Search batch, expiry…" : "Search name, SKU, barcode, IMEI…"}
+              className="ps-9"
+            />
+          </div>
+        )}
         <div className="grid gap-2 max-h-[60vh] overflow-y-auto pe-1">
           {variants.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">{t("common.empty")}</p>
+          ) : shown.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              Nothing matches “{query}”.
+            </p>
           ) : (
-            [...variants]
-              .sort((a, b) => {
-                const da = daysLeft(a.expiry_date), db = daysLeft(b.expiry_date);
-                if (da === null && db === null) return 0;
-                if (da === null) return 1;   // undated batches go last
-                if (db === null) return -1;
-                return da - db;
-              })
-              .map((v) => {
+            shown.map((v) => {
               const price = v.price_override ?? basePrice;
               const stock = Number(v.stock);
               const disabled = !allowOutOfStock && stock <= 0;
@@ -95,11 +142,7 @@ export const VariantPickerDialog = ({
                 <button
                   key={v.id}
                   type="button"
-                  onClick={() => {
-                    if (disabled) return;
-                    onPick(v);
-                    onClose();
-                  }}
+                  onClick={() => pick(v, disabled)}
                   disabled={disabled}
                   className="flex items-center justify-between gap-3 rounded-lg border p-3 text-start transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-transparent"
                 >
