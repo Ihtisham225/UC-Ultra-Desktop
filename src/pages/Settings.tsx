@@ -19,6 +19,7 @@ import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shiel
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { AppUpdateCard } from "@/components/AppUpdateCard";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { AppVersionBadge } from "@/components/AppVersionBadge";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR", "JOD", "EGP", "INR", "PKR", "NGN", "KES", "ZAR", "BRL", "MXN"];
 
@@ -262,9 +263,12 @@ export default function Settings() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold">{t("settings.title")}</h1>
-        <p className="text-muted-foreground mt-1">{t("settings.subtitle")}</p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold">{t("settings.title")}</h1>
+          <p className="text-muted-foreground mt-1">{t("settings.subtitle")}</p>
+        </div>
+        <AppVersionBadge />
       </header>
 
       <Tabs defaultValue="profile" className="space-y-4">

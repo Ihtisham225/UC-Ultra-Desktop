@@ -1,9 +1,11 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
+import { toast } from "sonner";
 import { formatMoney } from "@/lib/format";
 import { format } from "date-fns";
 import { useShop } from "@/contexts/ShopContext";
+import { printThermalHtml } from "@/lib/printThermal";
 
 const escapeHtml = (value: string) =>
   value
@@ -147,28 +149,8 @@ export const PurchaseReceiptDialog = ({ purchase, onClose }: { purchase: Purchas
   const balance = Number(purchase.total) - Number(purchase.paid_amount);
 
   const print = () => {
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("aria-hidden", "true");
-    Object.assign(iframe.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", opacity: "0", pointerEvents: "none" } as CSSStyleDeclaration);
-
-    const cleanup = () => { window.removeEventListener("message", handleMessage); setTimeout(() => iframe.remove(), 100); };
-    const handleMessage = (event: MessageEvent) => {
-      if (event.source === iframe.contentWindow && event.data === "receipt-print-done") cleanup();
-    };
-    window.addEventListener("message", handleMessage);
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc) { cleanup(); window.print(); return; }
-    doc.open();
-    doc.write(
-      buildPrintHtml({ purchase, shop, currency: cur }).replace(
-        "window.print();",
-        `window.print();\n            setTimeout(() => window.parent.postMessage("receipt-print-done", "*"), 300);`
-      )
-    );
-    doc.close();
-    setTimeout(cleanup, 60000);
+    void printThermalHtml(buildPrintHtml({ purchase, shop, currency: cur }))
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Could not print"));
   };
 
   return (

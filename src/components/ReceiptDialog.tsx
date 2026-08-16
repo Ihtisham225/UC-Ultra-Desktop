@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { useShop } from "@/contexts/ShopContext";
 import { termsToPrintHtml } from "@/lib/rich-text";
+import { printThermalHtml } from "@/lib/printThermal";
 
 const escapeHtml = (value: string) =>
   value
@@ -262,43 +263,8 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
   }, [sale.customer, sale.customer_id]);
 
   const print = () => {
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("aria-hidden", "true");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.opacity = "0";
-    iframe.style.pointerEvents = "none";
-
-    const cleanup = () => {
-      window.removeEventListener("message", handleMessage);
-      setTimeout(() => iframe.remove(), 100);
-    };
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.source === iframe.contentWindow && event.data === "receipt-print-done") cleanup();
-    };
-
-    window.addEventListener("message", handleMessage);
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      cleanup();
-      window.print();
-      return;
-    }
-
-    doc.open();
-    doc.write(buildReceiptPrintHtml({ sale, customer, currency: cur, withTerms }).replace(
-      "window.print();",
-      `window.print();\n            setTimeout(() => window.parent.postMessage(\"receipt-print-done\", \"*\"), 300);`
-    ));
-    doc.close();
-
-    setTimeout(cleanup, 60000);
+    void printThermalHtml(buildReceiptPrintHtml({ sale, customer, currency: cur, withTerms }))
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Could not print"));
   };
 
   const sendWhatsApp = async () => {

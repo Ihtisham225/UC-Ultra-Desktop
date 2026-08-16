@@ -28,8 +28,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPrinters: (): Promise<Electron.PrinterInfo[]> =>
     ipcRenderer.invoke('get-printers'),
 
-  printReceipt: (html: string, printerName?: string): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke('print-receipt', html, printerName),
+  printReceipt: (html: string, printerName?: string, silent?: boolean): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('print-receipt', html, printerName, silent),
 
   // Google OAuth bridge
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),

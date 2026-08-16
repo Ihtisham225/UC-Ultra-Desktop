@@ -62,3 +62,16 @@ describe("termsToPrintHtml", () => {
     expect(isRichText("plain text")).toBe(false);
   });
 });
+
+describe("stripAutoPrint", () => {
+  it("removes the self-printing script so the main process doesn't print twice", async () => {
+    const { stripAutoPrint } = await import("@/lib/printThermal");
+    const html = `<body><div class="receipt">x</div><script>
+      window.onload = () => { setTimeout(() => { window.focus(); window.print(); }, 150); };
+    </script></body>`;
+    const out = stripAutoPrint(html);
+    expect(out).not.toContain("window.print");
+    expect(out).not.toContain("<script");
+    expect(out).toContain('<div class="receipt">x</div>');
+  });
+});

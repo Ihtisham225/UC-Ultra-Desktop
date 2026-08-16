@@ -1,7 +1,9 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
+import { toast } from "sonner";
 import { useShop } from "@/contexts/ShopContext";
+import { printThermalHtml } from "@/lib/printThermal";
 import { format } from "date-fns";
 
 export interface LabTokenOrder {
@@ -74,29 +76,9 @@ export function LabTokenDialog({ orders, onClose }: { orders: LabTokenOrder[] | 
   if (!orders || orders.length === 0) return null;
 
   const print = () => {
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("aria-hidden", "true");
-    Object.assign(iframe.style, {
-      position: "fixed", right: "0", bottom: "0", width: "0", height: "0",
-      opacity: "0", pointerEvents: "none",
-    });
-    const cleanup = () => {
-      window.removeEventListener("message", onMessage);
-      setTimeout(() => iframe.remove(), 100);
-    };
-    const onMessage = (e: MessageEvent) => {
-      if (e.source === iframe.contentWindow && e.data === "lab-token-print-done") cleanup();
-    };
-    window.addEventListener("message", onMessage);
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow?.document;
-    if (!doc) { cleanup(); window.print(); return; }
-    doc.open();
-    doc.write(buildTokenPrintHtml(orders, {
+    void printThermalHtml(buildTokenPrintHtml(orders, {
       name: currentShop?.name, address: currentShop?.address, phone: currentShop?.phone,
-    }));
-    doc.close();
-    setTimeout(cleanup, 60000);
+    })).catch((e) => toast.error(e instanceof Error ? e.message : "Could not print"));
   };
 
   return (

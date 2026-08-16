@@ -102,7 +102,19 @@ ipcMain.handle('get-printers', async (): Promise<PrinterInfo[]> => {
 })
 
 // Print an HTML receipt to a named printer (defaults to system default)
-ipcMain.handle('print-receipt', async (_event, html: string, printerName?: string) => {
+/**
+ * Print a slip through the main process.
+ *
+ * This exists because the renderer's own `window.print()` is not equivalent:
+ * Chromium in a normal browser honours `@page { margin: 0 }`, but Electron's
+ * print path applies its default page margins regardless, which inset the slip
+ * and push its right edge outside an 80mm head's 72mm print window — the last
+ * character of every line is then physically cut off. Forcing
+ * `marginType: 'none'` here is the only place that can be set.
+ *
+ * `silent` defaults to false so the cashier still chooses the printer.
+ */
+ipcMain.handle('print-receipt', async (_event, html: string, printerName?: string, silent = false) => {
   return new Promise((resolve, reject) => {
     const win = new BrowserWindow({
       show: false,
@@ -113,7 +125,7 @@ ipcMain.handle('print-receipt', async (_event, html: string, printerName?: strin
 
     win.webContents.once('did-finish-load', () => {
       const options: Electron.WebContentsPrintOptions = {
-        silent: true,           // no print dialog
+        silent,
         printBackground: true,
         // Thermal printers typically use 80mm roll — no margins
         margins: { marginType: 'none' },

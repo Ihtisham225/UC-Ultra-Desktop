@@ -19,7 +19,7 @@ declare global {
   interface Window {
     electronAPI?: {
       getPrinters: () => Promise<PrinterInfo[]>
-      printReceipt: (html: string, printerName?: string) => Promise<void>
+      printReceipt: (html: string, printerName?: string, silent?: boolean) => Promise<void>
       platform?: string
       onUpdateAvailable?: (cb: (version: string) => void) => void
       onUpdateDownloaded?: (cb: (version: string) => void) => void
