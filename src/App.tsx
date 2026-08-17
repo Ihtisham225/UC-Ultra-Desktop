@@ -20,6 +20,7 @@ import { useMobileKeyboardScroll } from "@/hooks/useMobileKeyboardScroll";
 import { SyncProvider } from "@/components/SyncProvider";
 import { TitleBar } from "@/components/TitleBar";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import Accounts from "@/pages/Accounts";
 
 // Lazy-load every route so the initial bundle stays small and the app boots fast.
 const Auth = lazy(() => import("./pages/Auth"));
@@ -179,6 +180,7 @@ const App = () => {
               <Route path="/reports" element={<SubShell><RequireRole roles={["owner", "manager"]}><Reports /></RequireRole></SubShell>} />
               <Route path="/inventory" element={<SubShell><RequireRole roles={["owner", "manager"]}><Inventory /></RequireRole></SubShell>} />
               <Route path="/patients" element={<SubShell><Patients /></SubShell>} />
+              <Route path="/accounts" element={<SubShell><Accounts /></SubShell>} />
               <Route path="/lab" element={<SubShell><Lab /></SubShell>} />
               <Route path="/lab-results" element={<SubShell><LabResults /></SubShell>} />
               <Route path="/billing" element={<Shell><Billing /></Shell>} />

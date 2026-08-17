@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse } from "lucide-react";
+import { Landmark, LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse } from "lucide-react";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
@@ -54,6 +54,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, show: perms.canManagePurchases },
     { to: "/suppliers", label: t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
     { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },
+    { to: "/accounts", label: "Accounts", icon: Landmark, show: perms.canManageExpenses || hasPerm("accounts", "view") },
     { to: "/debts", label: `${t("nav.debts")} (Khata)`, icon: HandCoins, show: perms.canManageExpenses },
     { to: "/investors", label: t("nav.investors"), icon: TrendingUp, show: perms.canManageExpenses && !!currentShop?.investors_enabled },
     { to: "/payroll", label: t("nav.payroll"), icon: BadgeDollarSign, show: perms.canManageExpenses },

@@ -32,6 +32,8 @@ export const SYNC_TABLES = [
   'product_variants',
   'sales',
   'sale_items',
+  'sale_payments',
+  'money_accounts',
   'customers',
   'patients',
   'expenses',

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
 import { Card } from "@/components/ui/card";
-import { Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2 } from "lucide-react";
+import { Plus, Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { deleteLocal, notifyChange } from "@/lib/localDb";
+import { ManualSaleDialog, type ManualSaleApi } from "@/components/ManualSaleDialog";
 
 const PAGE_SIZE_KEY = "pos.pageSize.sales";
 const DEFAULT_PAGE_SIZE = 20;
@@ -36,7 +37,22 @@ interface Sale {
   returnStatus: ReturnStatus;
 }
 
+/**
+ * Back-dated entry goes straight to the server rather than the offline queue:
+ * it is an office task, not a till one, and reusing the online checkout keeps
+ * stock, debt and account balances on a single code path.
+ */
+const manualSaleApi: ManualSaleApi = {
+  products: async () => {
+    const rows = await rpc<Array<{ id: string; name: string; price: number; barcode: string | null }>>("loadPosProductsAction");
+    return rows.map((p) => ({ id: p.id, name: p.name, price: Number(p.price), barcode: p.barcode }));
+  },
+  accounts: () => rpc("listAccountOptionsAction"),
+  submit: (input) => rpc("completeSaleAction", input),
+};
+
 export default function Sales() {
+  const [manualOpen, setManualOpen] = useState(false);
   usePageMeta({ title: "Sales History — UCU", description: "Browse past sales, view receipts, filter by date and export to CSV.", path: "/sales" });
   const { t } = useTranslation();
   const { currentShop, role } = useShop();
@@ -163,10 +179,22 @@ export default function Sales() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold">{t("sales.title")}</h1>
-        <p className="text-muted-foreground mt-1">{t("sales.subtitle")}</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold">{t("sales.title")}</h1>
+          <p className="text-muted-foreground mt-1">{t("sales.subtitle")}</p>
+        </div>
+        <Button onClick={() => setManualOpen(true)}>
+          <Plus className="size-4 me-1" /> Record a sale
+        </Button>
       </header>
+
+      <ManualSaleDialog
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        onSaved={() => notifyChange("sales")}
+        api={manualSaleApi}
+      />
 
       <BulkActionBar
         selectedCount={sel.count}

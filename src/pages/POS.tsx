@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw, FlaskConical } from "lucide-react";
 import { useOfflineProducts } from "@/hooks/useOfflineProducts";
-import { upsertLocal, notifyChange } from "@/lib/localDb";
+import { upsertLocal, notifyChange, getAll } from "@/lib/localDb";
+import { allocateTenders, round2 } from "@/lib/tender";
 import { v4 as uuid } from "uuid";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
@@ -108,6 +109,10 @@ export default function POS() {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "mobile" | "other">("cash");
   const [isCredit, setIsCredit] = useState(false);
   const [amountPaid, setAmountPaid] = useState<string>("");
+  /** Where the money is going: 500 cash + 500 wallet + the rest on credit. */
+  const [accounts, setAccounts] = useState<Array<{ id: string; name: string; type: string }>>([]);
+  const [tenders, setTenders] = useState<Array<{ key: string; account_id: string; amount: string }>>([]);
+  const [tendersTouched, setTendersTouched] = useState(false);
   const [completedSale, setCompletedSale] = useState<any | null>(null);
   const [customer, setCustomer] = useState<CustomerLite | null>(null);
   const [patient, setPatient] = useState<PatientLite | null>(null);
@@ -239,10 +244,11 @@ export default function POS() {
   const discountedSubtotal = subtotal - discount;
   const tax = (discountedSubtotal * taxRate) / 100;
   const total = discountedSubtotal + tax;
-  const paid = parseFloat(amountPaid) || 0;
-  const effectivePaid = isCredit ? paid : (paymentMethod === "cash" ? paid : total);
-  const change = !isCredit && paymentMethod === "cash" ? Math.max(0, paid - total) : 0;
-  const owed = Math.max(0, total - effectivePaid);
+  const tendered = round2(tenders.reduce((a, t) => a + (parseFloat(t.amount) || 0), 0));
+  const paid = tendered;
+  const effectivePaid = round2(Math.min(tendered, total));
+  const change = round2(Math.max(0, tendered - total));
+  const owed = round2(Math.max(0, total - tendered));
   const cur = currentShop?.currency ?? "USD";
 
   // A cart holding lab tests is billed to a patient, so the counter collects
@@ -250,12 +256,72 @@ export default function POS() {
   const hasLabTests = cart.some((c) => c.is_lab_test);
   const payer = hasLabTests ? patient : customer;
 
+  useEffect(() => {
+    if (!currentShop) return;
+    // Read the cached copy first so an offline till still has its accounts,
+    // then refresh from the server when it can.
+    getAll<{ id: string; name: string; type: string; is_archived?: boolean }>("money_accounts", currentShop.id)
+      .then((local) => {
+        const usable = local.filter((a) => !a.is_archived);
+        if (usable.length > 0) applyAccounts(usable);
+      })
+      .catch(() => {});
+    rpc<Array<{ id: string; name: string; type: string }>>("listAccountOptionsAction")
+      .then(applyAccounts)
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentShop]);
+
+  const applyAccounts = (list: Array<{ id: string; name: string; type: string }>) => {
+    setAccounts(list);
+    setTenders((prev) => {
+      if (prev.length > 0) return prev;
+      const cash = list.find((a) => a.type === "cash") ?? list[0];
+      return cash ? [{ key: "t0", account_id: cash.id, amount: "" }] : [];
+    });
+  };
+
+  useEffect(() => {
+    if (tendersTouched) return;
+    setTenders((prev) =>
+      prev.length === 1 ? [{ ...prev[0], amount: total > 0 ? String(round2(total)) : "" }] : prev,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total, tendersTouched]);
+
+  const setTender = (key: string, patch: Partial<{ account_id: string; amount: string }>) => {
+    setTendersTouched(true);
+    setTenders((prev) => prev.map((t) => (t.key === key ? { ...t, ...patch } : t)));
+  };
+  const addTender = () => {
+    setTendersTouched(true);
+    const used = new Set(tenders.map((t) => t.account_id));
+    const next = accounts.find((a) => !used.has(a.id)) ?? accounts[0];
+    if (!next) return;
+    setTenders((prev) => [...prev, { key: `t${Date.now()}`, account_id: next.id, amount: owed > 0 ? String(owed) : "" }]);
+  };
+  const removeTender = (key: string) => {
+    setTendersTouched(true);
+    setTenders((prev) => (prev.length === 1 ? prev : prev.filter((t) => t.key !== key)));
+  };
+  const derivedMethod = (): "cash" | "card" | "mobile" | "other" => {
+    const biggest = [...tenders]
+      .filter((t) => (parseFloat(t.amount) || 0) > 0)
+      .sort((a, b) => (parseFloat(b.amount) || 0) - (parseFloat(a.amount) || 0))[0];
+    const type = accounts.find((a) => a.id === biggest?.account_id)?.type;
+    return type === "cash" ? "cash" : type === "wallet" ? "mobile" : type === "bank" ? "card" : "other";
+  };
+
   const completeSale = async () => {
     if (!user || !currentShop || cart.length === 0) return;
-    if (!isCredit && paymentMethod === "cash" && paid < total) return toast.error("Amount paid is less than total");
     if (hasLabTests && !patient) return toast.error("Select a patient for the lab test");
-    if (isCredit && !payer) return toast.error(hasLabTests ? "Select a patient for credit sale" : "Select a customer for credit sale");
-    if (isCredit && effectivePaid > total) return toast.error("Paid cannot exceed total");
+    if (owed > 0 && !payer) {
+      return toast.error(
+        hasLabTests
+          ? "Part of this sale is unpaid — select a patient"
+          : "Part of this sale is unpaid — select a customer so the balance is recorded",
+      );
+    }
 
     setBusy(true);
     const now = new Date().toISOString();
@@ -276,7 +342,7 @@ export default function POS() {
       subtotal, tax, discount, total,
       amount_paid: effectivePaid,
       change_due: change,
-      payment_method: paymentMethod,
+      payment_method: derivedMethod(),
       receipt_number: receiptNumber,
       updated_at: now,
       created_at: now,
@@ -304,7 +370,25 @@ export default function POS() {
       await upsertLocal("sale_items", item, true);
     }
 
-    if (isCredit && owed > 0 && payer) {
+    // Tender lines: each row books its own money into its account when the
+    // push reaches the server.
+    // Allocate the tenders against the bill in order, exactly as the server
+    // does: each account keeps only what it covers, so an overpayment is
+    // change rather than a phantom balance.
+    for (const t of allocateTenders(total, tenders.map((x) => ({
+      account_id: x.account_id, amount: parseFloat(x.amount) || 0,
+    }))).applied) {
+      await upsertLocal("sale_payments", {
+        id: uuid(),
+        shop_id: currentShop.id,
+        sale_id: saleId,
+        account_id: t.account_id,
+        amount: t.amount,
+        created_at: now,
+      }, true);
+    }
+
+    if (owed > 0 && payer) {
       await upsertLocal("debts", {
         id: uuid(),
         shop_id: currentShop.id,
@@ -329,6 +413,8 @@ export default function POS() {
     setBusy(false);
     setCompletedSale({ ...saleRecord, items: itemRows, shop: currentShop, customer });
     setCart([]); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
+    setTendersTouched(false);
+    setTenders((prev) => (prev.length > 0 ? [{ ...prev[0], amount: "" }] : prev));
     toast.success("Sale completed!");
     refresh();
 
@@ -596,53 +682,64 @@ export default function POS() {
           </div>
 
 
-          <div className="grid grid-cols-2 gap-2">
-            <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cash">💵 {t("pos.cash")}</SelectItem>
-                <SelectItem value="card">💳 {t("pos.card")}</SelectItem>
-                <SelectItem value="mobile">📱 {t("pos.mobile")}</SelectItem>
-                <SelectItem value="other">{t("pos.other")}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              type="number" step="0.01" placeholder={isCredit ? "Amount paid now (0 if none)" : t("pos.amountPaid")}
-              value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)}
-              disabled={!isCredit && paymentMethod !== "cash"}
-            />
+          {/* Tender lines: the bill can be settled across several accounts,
+              and whatever is left over becomes the customer's balance. */}
+          <div className="space-y-2">
+            {tenders.map((tRow, idx) => (
+              <div key={tRow.key} className="flex items-center gap-2">
+                <Select value={tRow.account_id} onValueChange={(v) => setTender(tRow.key, { account_id: v })}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Account" /></SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.type === "cash" ? "\u{1F4B5}" : a.type === "wallet" ? "\u{1F4F1}" : "\u{1F3E6}"} {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number" step="0.01" inputMode="decimal" placeholder="0.00"
+                  className="w-28 tabular-nums"
+                  value={tRow.amount}
+                  onChange={(e) => setTender(tRow.key, { amount: e.target.value })}
+                />
+                {tenders.length > 1 && (
+                  <Button size="icon" variant="ghost" className="size-8 shrink-0" onClick={() => removeTender(tRow.key)}>
+                    <X className="size-3.5" />
+                  </Button>
+                )}
+                {tenders.length === 1 && idx === 0 && <span className="w-8 shrink-0" />}
+              </div>
+            ))}
+            {accounts.length > 1 && (
+              <Button variant="outline" size="sm" className="w-full" onClick={addTender}>
+                <Plus className="size-3.5 me-1" /> Split across another account
+              </Button>
+            )}
+            {accounts.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No payment accounts yet \u2014 add one under Accounts.
+              </p>
+            )}
           </div>
 
-          <label className="flex items-center gap-2 text-sm cursor-pointer select-none p-2 rounded-lg border border-dashed hover:bg-muted/40">
-            <input
-              type="checkbox"
-              checked={isCredit}
-              onChange={(e) => { setIsCredit(e.target.checked); if (e.target.checked) setAmountPaid(""); }}
-              className="size-4"
-            />
-            <span className="font-medium">Credit / pay later</span>
-            <span className="text-xs text-muted-foreground ms-auto">{hasLabTests ? "Requires patient" : "Requires customer"}</span>
-          </label>
+          <div className="text-sm flex justify-between px-3 py-2 rounded-lg bg-muted/50">
+            <span className="text-muted-foreground">Paying now</span>
+            <span className="tabular-nums font-medium">{formatMoney(effectivePaid, cur)}</span>
+          </div>
 
-          {isCredit && owed > 0 && (
+          {owed > 0 && (
             <div className="text-sm flex justify-between bg-warning/10 text-warning px-3 py-2 rounded-lg font-medium">
               <span>To be paid later</span>
               <span className="tabular-nums">{formatMoney(owed, cur)}</span>
             </div>
           )}
 
-          {!isCredit && paymentMethod === "cash" && paid > 0 && (
-            paid >= total ? (
-              <div className="text-sm flex justify-between bg-success/10 text-success px-3 py-2 rounded-lg font-medium">
-                <span>{t("pos.changeDue")}</span>
-                <span className="tabular-nums">{formatMoney(paid - total, cur)}</span>
-              </div>
-            ) : (
-              <div className="text-sm flex justify-between bg-destructive/10 text-destructive px-3 py-2 rounded-lg font-medium">
-                <span>Remaining</span>
-                <span className="tabular-nums">{formatMoney(total - paid, cur)}</span>
-              </div>
-            )
+          {change > 0 && (
+            <div className="text-sm flex justify-between bg-success/10 text-success px-3 py-2 rounded-lg font-medium">
+              <span>{t("pos.changeDue")}</span>
+              <span className="tabular-nums">{formatMoney(change, cur)}</span>
+            </div>
           )}
 
           <Button
@@ -651,8 +748,8 @@ export default function POS() {
             size="lg"
             className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground h-14 text-base font-semibold shadow-glow"
           >
-            {busy ? t("common.processing") : isCredit
-              ? `Save on credit · ${formatMoney(total, cur)}`
+            {busy ? t("common.processing") : owed > 0
+              ? `Take ${formatMoney(effectivePaid, cur)} · ${formatMoney(owed, cur)} later`
               : t("pos.charge", { amount: formatMoney(total, cur) })}
           </Button>
         </div>
