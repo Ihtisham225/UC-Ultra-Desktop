@@ -13,6 +13,8 @@ import { RequireRole } from "@/components/RequireRole";
 import { RequireSubscription } from "@/components/RequireSubscription";
 import { RequireSuperAdmin } from "@/components/RequireSuperAdmin";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { setAccountOptionsLoader } from "@/components/AccountPicker";
+import { rpc } from "@/lib/apiClient";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { OAuthBridge } from "@/components/OAuthBridge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -67,6 +69,10 @@ const queryClient = new QueryClient();
 const Shell = ({ children }: { children: React.ReactNode }) => (
   <RequireAuth><RequireShop><AppLayout>{children}</AppLayout></RequireShop></RequireAuth>
 );
+
+// The shared AccountPicker asks the host how to fetch options; desktop goes
+// over rpc.
+setAccountOptionsLoader(() => rpc("listAccountOptionsAction"));
 
 const SubShell = ({ children }: { children: React.ReactNode }) => (
   <RequireAuth><RequireShop><RequireSubscription><AppLayout>{children}</AppLayout></RequireSubscription></RequireShop></RequireAuth>

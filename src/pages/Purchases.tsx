@@ -35,6 +35,7 @@ import { upsertLocal, notifyChange } from "@/lib/localDb";
 import { generateSku, generateBarcode } from "@/lib/sku";
 import { v4 as uuid } from "uuid";
 import { ProductFormFields, type ProductFormValue } from "@/components/ProductFormFields";
+import { AccountPicker } from "@/components/AccountPicker";
 
 const PAGE_SIZE_KEY = "pos.pageSize.purchases";
 const DEFAULT_PAGE_SIZE = 20;
@@ -142,6 +143,7 @@ export default function Purchases() {
 
   const [supplierId, setSupplierId] = useState<string>("");
   const [reference, setReference] = useState("");
+  const [purchaseAccountId, setPurchaseAccountId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "mobile" | "other">("cash");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
@@ -571,6 +573,7 @@ export default function Purchases() {
       investor_id: investorsEnabled ? investorId || null : null,
       reference_number: reference || null,
       payment_method: paymentMethod,
+      account_id: purchaseAccountId,
       notes: notes || null,
       invoice_image_url: invoiceImageUrl,
       seller_name: walkin ? sellerName.trim() : null,
@@ -1106,6 +1109,7 @@ export default function Purchases() {
                         <SelectItem value="other">{t("pos.other")}</SelectItem>
                       </SelectContent>
                     </Select>
+                    <AccountPicker value={purchaseAccountId} onChange={setPurchaseAccountId} label="Paid from" />
                   </div>
                   <div className="space-y-0.5 text-sm px-1">
                     <div className="flex justify-between gap-4">

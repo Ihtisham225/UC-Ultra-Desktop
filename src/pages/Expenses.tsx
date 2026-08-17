@@ -22,6 +22,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
+import { AccountPicker } from "@/components/AccountPicker";
 
 const PAGE_SIZE_KEY = "pos.pageSize.expenses";
 const DEFAULT_PAGE_SIZE = 20;
@@ -64,6 +65,7 @@ export default function Expenses() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [form, setForm] = useState({
     amount: "", paid_to: "", description: "",
     expense_date: format(new Date(), "yyyy-MM-dd"),
@@ -167,6 +169,7 @@ export default function Expenses() {
       description: form.description || null,
       expense_date: form.expense_date,
       payment_method: form.payment_method,
+      account_id: accountId,
       category_id: form.category_id || null,
     };
     try {
@@ -236,6 +239,9 @@ export default function Expenses() {
                     {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5 col-span-1">
+                <AccountPicker value={accountId} onChange={setAccountId} label="Paid from" />
               </div>
               <div className="space-y-1.5 col-span-1">
                 <Label>{t("expenses.paymentMethod")}</Label>

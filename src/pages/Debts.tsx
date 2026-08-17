@@ -24,6 +24,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DetailsDialog } from "@/components/DetailsDialog";
 import { PageTip } from "@/components/PageTip";
+import { AccountPicker } from "@/components/AccountPicker";
 
 type Direction = "owed_to_me" | "i_owe";
 type Status = "open" | "settled";
@@ -105,6 +106,7 @@ export default function Debts() {
   const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
   const [payments, setPayments] = useState<DebtPayment[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [paymentForm, setPaymentForm] = useState({ ...emptyPayment });
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [confirmPaymentDeleteId, setConfirmPaymentDeleteId] = useState<string | null>(null);
@@ -288,6 +290,7 @@ export default function Debts() {
         kind: paymentForm.kind,
         amount,
         payment_date: paymentForm.payment_date,
+      account_id: payAccountId,
         notes: paymentForm.notes.trim() || null,
       });
       if (!res.ok) return toast.error(res.error || "Failed");
@@ -658,6 +661,7 @@ export default function Debts() {
                       />
                     </div>
                   </div>
+                  <AccountPicker value={payAccountId} onChange={setPayAccountId} label="Money in / out of" />
                   <div className="space-y-1.5">
                     <Label>Notes (optional)</Label>
                     <Input

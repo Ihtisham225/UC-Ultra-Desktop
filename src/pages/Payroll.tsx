@@ -15,6 +15,7 @@ import { Wallet, Users, HandCoins, Plus, Pencil, Trash2, FileText, Printer } fro
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { toast } from "sonner";
+import { AccountPicker } from "@/components/AccountPicker";
 
 type PaymentType = "advance" | "salary" | "bonus";
 interface StaffPayrollDto { user_id: string; name: string; role: string; monthly_salary: number; paid_this_month: number; balance: number; }
@@ -48,6 +49,7 @@ export default function Payroll() {
   const { confirm, dialog: confirmDialog } = useConfirm();
 
   const [salaryEdit, setSalaryEdit] = useState<{ staff: StaffPayrollDto; value: string } | null>(null);
+  const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [pay, setPay] = useState<{ staffUserId: string; date: string; type: PaymentType; amount: string; note: string } | null>(null);
   const [slip, setSlip] = useState<PayslipDto | null>(null);
 
@@ -95,7 +97,8 @@ export default function Payroll() {
     setBusy(true);
     try {
       const res = await rpc<{ ok: boolean; error?: string }>("createPayrollPaymentAction", {
-        staff_user_id: pay.staffUserId, date: pay.date, type: pay.type, amount: amt, note: pay.note.trim() || null,
+        staff_user_id: pay.staffUserId, date: pay.date, type: pay.type, amount: amt,
+        account_id: payAccountId, note: pay.note.trim() || null,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
     } catch (e) { return toast.error(e instanceof Error ? e.message : "Failed"); } finally { setBusy(false); }
@@ -293,6 +296,7 @@ export default function Payroll() {
                 </div>
               </div>
               <div className="space-y-1.5"><Label>Amount ({cur})</Label><Input type="number" min="0" step="0.01" placeholder="0.00" value={pay.amount} onChange={(e) => setPay({ ...pay, amount: e.target.value })} autoFocus /></div>
+              <AccountPicker value={payAccountId} onChange={setPayAccountId} label="Paid from" />
               <div className="space-y-1.5"><Label>Note</Label><Input value={pay.note} onChange={(e) => setPay({ ...pay, note: e.target.value })} placeholder="Optional" /></div>
             </div>
           )}
