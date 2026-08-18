@@ -76,16 +76,25 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Build & package (Windows)
-        run: npm run dist:win
+        shell: bash
+        # Code signing. An absent secret still arrives as an EMPTY string, and
+        # electron-builder treats a defined-but-empty WIN_CSC_LINK as a path to
+        # resolve — "cannot resolve: D:\a\... not a file" — so the variables
+        # have to be left undefined rather than set empty.
+        run: |
+          if [ -n "$CERT_B64" ]; then
+            echo "Signing certificate found — the installer will be signed."
+            export WIN_CSC_LINK="$CERT_B64"
+            export WIN_CSC_KEY_PASSWORD="$CERT_PASSWORD"
+          else
+            echo "No signing certificate — building unsigned (SmartScreen will warn)."
+          fi
+          npm run dist:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Code signing. Unsigned installers make Windows SmartScreen show
-          # "unknown publisher", which shop owners read as a virus warning.
-          # electron-builder signs automatically once these are set and skips
-          # signing silently while they are empty, so this is inert until a
-          # certificate exists. WIN_CSC_LINK is the .pfx base64-encoded.
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Held under different names so they are never exported empty.
+          CERT_B64: ${{ secrets.WIN_CSC_LINK }}
+          CERT_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
