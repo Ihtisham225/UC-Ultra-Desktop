@@ -6,7 +6,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +19,7 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 import { AppUpdateCard } from "@/components/AppUpdateCard";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { AppVersionBadge } from "@/components/AppVersionBadge";
+import { SignInMethodsCard } from "@/components/SignInMethodsCard";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR", "JOD", "EGP", "INR", "PKR", "NGN", "KES", "ZAR", "BRL", "MXN"];
 
@@ -30,7 +30,6 @@ export default function Settings() {
   const { user } = useAuth();
 
   const [displayName, setDisplayName] = useState("");
-  const [newPassword, setNewPassword] = useState("");
 
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("USD");
@@ -112,20 +111,6 @@ export default function Settings() {
     toast.success(t("settings.profile.profileSaved"));
   };
 
-  const changePassword = async () => {
-    if (newPassword.length < 6) return toast.error(t("settings.profile.passwordMin"));
-    setBusy(true);
-    try {
-      const res = await rpc<{ ok: boolean; error?: string }>("changePasswordAction", newPassword);
-      if (!res.ok) return toast.error(res.error ?? "Failed");
-    } catch (e) {
-      return toast.error(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setBusy(false);
-    }
-    setNewPassword("");
-    toast.success(t("settings.profile.passwordChanged"));
-  };
 
   const saveShop = async () => {
     if (!currentShop) return;
@@ -293,14 +278,11 @@ export default function Settings() {
               <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
             </div>
             <Button disabled={busy} onClick={saveProfile} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.profile.saveProfile")}</Button>
-            <Separator />
-            <div className="space-y-1.5">
-              <Label>{t("settings.profile.changePassword")}</Label>
-              <PasswordInput placeholder={t("settings.profile.newPasswordPlaceholder")} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-            </div>
-            <Button disabled={busy || newPassword.length < 6} onClick={changePassword} variant="outline">{t("settings.profile.updatePassword")}</Button>
-            <Separator />
           </Card>
+          {/* Replaces the old bare "new password" field, which changed the
+              password from a session alone — no current password, so a
+              hijacked session could lock the owner out. */}
+          <SignInMethodsCard />
         </TabsContent>
 
         <TabsContent value="shop">
