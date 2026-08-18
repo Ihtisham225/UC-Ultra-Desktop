@@ -13,6 +13,13 @@
  */
 export async function printThermalHtml(html: string): Promise<void> {
   const api = window.electronAPI;
+  // Show it first — Electron has no print preview and the Windows print
+  // dialog shows only printer and copies, so this is the only chance to see
+  // the slip before it hits paper. Printing happens from that window.
+  if (api?.previewReceipt) {
+    await api.previewReceipt(stripAutoPrint(html));
+    return;
+  }
   if (api?.printReceipt) {
     // The builders embed an onload hook that calls window.print(); the main
     // process drives printing itself, so that would fire a second job.
