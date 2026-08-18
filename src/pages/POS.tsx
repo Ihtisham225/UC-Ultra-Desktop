@@ -646,8 +646,8 @@ export default function POS() {
         {/* Checkout: the tender rows grow as the bill is split, so this block
             scrolls instead of pushing Charge off a short screen. Charge itself
             sits outside the scroller and stays put. */}
-        <div className="border-t bg-card shrink-0 flex flex-col min-h-0 max-h-[70vh]">
-          <div className="p-4 space-y-3 overflow-y-auto min-h-0">
+        <div className="border-t bg-card flex flex-col min-h-0">
+          <div className="p-4 space-y-3 overflow-y-auto min-h-0 flex-1">
           {hasLabTests
             ? <PatientPicker value={patient} onChange={setPatient} />
             : <CustomerPicker value={customer} onChange={setCustomer} />}
