@@ -79,6 +79,13 @@ jobs:
         run: npm run dist:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing. Unsigned installers make Windows SmartScreen show
+          # "unknown publisher", which shop owners read as a virus warning.
+          # electron-builder signs automatically once these are set and skips
+          # signing silently while they are empty, so this is inert until a
+          # certificate exists. WIN_CSC_LINK is the .pfx base64-encoded.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}

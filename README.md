@@ -59,3 +59,32 @@ update up automatically.
 ## License
 
 Source-available, all rights reserved — see [LICENSE](LICENSE).
+
+## Windows code signing
+
+Unsigned installers trigger Microsoft Defender SmartScreen — "Windows
+protected your PC … Publisher: Unknown" — on download and again on first run.
+Nothing is wrong with the build; Windows simply does not know the publisher.
+
+Only a code signing certificate removes it. The build already reads the
+standard electron-builder variables, so signing turns on by adding two repo
+secrets and cutting a release — no code change:
+
+| Secret | Value |
+| --- | --- |
+| `WIN_CSC_LINK` | the `.pfx` certificate, base64-encoded |
+| `WIN_CSC_KEY_PASSWORD` | its password |
+
+Certificate options, cheapest first:
+
+- **Azure Trusted Signing** — ~$10/month, Microsoft's own service. Signs via
+  an API rather than a USB token and carries SmartScreen reputation from the
+  start. Requires an organisation that can be verified.
+- **OV certificate** — ~$200–400/year. Removes "unknown publisher", but
+  SmartScreen reputation still builds with download volume, so warnings can
+  persist for a while.
+- **EV certificate** — ~$400–800/year on a hardware token. Instant SmartScreen
+  reputation.
+
+Until then, users can continue past the warning with **More info → Run
+anyway**; the download page explains this inline.
