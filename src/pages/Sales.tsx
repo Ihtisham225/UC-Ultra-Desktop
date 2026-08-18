@@ -32,6 +32,8 @@ interface Sale {
   receipt_number: string | null;
   total: number;
   payment_method: string;
+  payments?: { account_name: string; amount: number }[];
+  balance_due?: number;
   created_at: string;
   sale_items: { id: string; product_name: string; quantity: number }[];
   returnStatus: ReturnStatus;
@@ -170,7 +172,8 @@ export default function Sales() {
       { header: "Receipt", value: (r) => r.receipt_number ?? "" },
       { header: "Date", value: (r) => format(new Date(r.created_at), "yyyy-MM-dd HH:mm") },
       { header: "Items", value: (r) => r.sale_items.length },
-      { header: "Payment", value: (r) => r.payment_method },
+      { header: "Payment", value: (r) => (r.payments?.length ? r.payments.map((p) => `${p.account_name} ${p.amount}`).join(" | ") : r.payment_method) },
+      { header: "Balance due", value: (r) => ((r.balance_due ?? 0) > 0 ? (r.balance_due ?? 0).toFixed(2) : "") },
       { header: "Total", value: (r) => r.total },
       { header: "Status", value: (r) => r.returnStatus },
     ]);
@@ -267,7 +270,13 @@ export default function Sales() {
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground mt-0.5">
-                        {format(new Date(s.created_at), "PPp")} · {t("sales.itemsCount", { count: s.sale_items.length })} · {s.payment_method}
+                        {format(new Date(s.created_at), "PPp")} · {t("sales.itemsCount", { count: s.sale_items.length })} ·{" "}
+                        {s.payments?.length
+                          ? s.payments.map((p) => `${p.account_name} ${formatMoney(p.amount, cur)}`).join(" · ")
+                          : s.payment_method}
+                        {(s.balance_due ?? 0) > 0 && (
+                          <span className="text-warning font-medium"> · {formatMoney(s.balance_due ?? 0, cur)} due</span>
+                        )}
                       </div>
                     </button>
                     <div className={`text-lg font-bold tabular-nums ${s.returnStatus === "full" ? "line-through text-muted-foreground" : ""}`}>

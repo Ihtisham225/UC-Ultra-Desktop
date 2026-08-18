@@ -73,9 +73,19 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
       ? `<div class="row"><span>Tax</span><span class="value">${escapeHtml(formatMoney(sale.tax, currency))}</span></div>`
       : "",
     `<div class="total-row"><span>TOTAL</span><span class="value">${escapeHtml(formatMoney(sale.total, currency))}</span></div>`,
-    `<div class="row small"><span>Paid (${escapeHtml(sale.payment_method ?? "")})</span><span class="value">${escapeHtml(formatMoney(sale.amount_paid, currency))}</span></div>`,
+    // One line per tender, so the slip shows 300 cash + 500 wallet rather than
+    // collapsing a split payment into whichever method happened to be biggest.
+    ...((sale.payments ?? []).length > 0
+      ? (sale.payments as Array<{ account_name: string; amount: number }>).map(
+          (p) => `<div class="row small"><span>Paid (${escapeHtml(p.account_name)})</span><span class="value">${escapeHtml(formatMoney(p.amount, currency))}</span></div>`,
+        )
+      : [`<div class="row small"><span>Paid (${escapeHtml(sale.payment_method ?? "")})</span><span class="value">${escapeHtml(formatMoney(sale.amount_paid, currency))}</span></div>`]),
     Number(sale.change_due) > 0
       ? `<div class="row small"><span>Change</span><span class="value">${escapeHtml(formatMoney(sale.change_due, currency))}</span></div>`
+      : "",
+    // Only shown when something is actually outstanding.
+    Number(sale.balance_due ?? 0) > 0
+      ? `<div class="total-row" style="font-size:14px;"><span>BALANCE DUE</span><span class="value">${escapeHtml(formatMoney(sale.balance_due, currency))}</span></div>`
       : "",
   ]
     .filter(Boolean)
@@ -292,7 +302,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
           on screen no matter how many lines the sale has or how short the
           laptop screen is. */}
       <DialogContent className="sm:max-w-md p-0 sm:p-0 md:p-0 gap-0 overflow-hidden bg-white text-black flex flex-col max-h-[100dvh] sm:max-h-[calc(100dvh-2rem)]">
-        <div className="px-4 pt-5 pb-3 flex justify-center flex-1 min-h-0 overflow-y-auto">
+        <div className="px-4 pt-10 pb-3 flex justify-center flex-1 min-h-0 overflow-y-auto">
           <div
             id="receipt-print"
             dir="ltr"
@@ -373,9 +383,24 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
               <div className="border-t border-black mt-1 pt-1 flex justify-between gap-2 font-bold text-[13px]">
                 <span>TOTAL</span><span className="tabular-nums text-right">{formatMoney(sale.total, cur)}</span>
               </div>
-              <div className="flex justify-between text-[11px] gap-2"><span>Paid ({sale.payment_method})</span><span className="tabular-nums text-right">{formatMoney(sale.amount_paid, cur)}</span></div>
+              {(sale.payments ?? []).length > 0 ? (
+                (sale.payments as Array<{ account_name: string; amount: number }>).map((p, i) => (
+                  <div key={i} className="flex justify-between text-[11px] gap-2">
+                    <span>Paid ({p.account_name})</span>
+                    <span className="tabular-nums text-right">{formatMoney(p.amount, cur)}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="flex justify-between text-[11px] gap-2"><span>Paid ({sale.payment_method})</span><span className="tabular-nums text-right">{formatMoney(sale.amount_paid, cur)}</span></div>
+              )}
               {Number(sale.change_due) > 0 && (
                 <div className="flex justify-between text-[11px] gap-2"><span>Change</span><span className="tabular-nums text-right">{formatMoney(sale.change_due, cur)}</span></div>
+              )}
+              {Number(sale.balance_due ?? 0) > 0 && (
+                <div className="border-t border-black mt-1 pt-1 flex justify-between gap-2 font-bold text-[13px]">
+                  <span>BALANCE DUE</span>
+                  <span className="tabular-nums text-right">{formatMoney(sale.balance_due, cur)}</span>
+                </div>
               )}
             </div>
 

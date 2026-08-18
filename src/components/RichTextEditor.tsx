@@ -27,20 +27,36 @@ const BUTTONS = [
  */
 export function RichTextEditor({ value, onChange, disabled, placeholder, rows = 5 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  /** The last HTML this editor emitted, so echoes of it are ignored. */
+  const emitted = useRef<string | null>(null);
 
-  // Only write into the DOM when the incoming value genuinely differs from
-  // what is shown — assigning innerHTML on every keystroke would jump the
-  // caret to the start of the box.
+  /**
+   * Writing innerHTML puts the caret back at the start, so it must happen only
+   * for values that came from outside. Comparing against the DOM is not enough:
+   * the sanitiser normalises what the browser produced (`<br>` becomes
+   * `<br />`, whitespace is trimmed), so every keystroke came back looking
+   * "different" and re-wrote the box mid-typing — which is why the cursor kept
+   * jumping to the top, and why backspace sent it there again.
+   */
   useEffect(() => {
     const el = ref.current;
-    if (el && value !== el.innerHTML) el.innerHTML = value || "";
+    if (!el) return;
+    if (value === emitted.current) return;       // our own change, already shown
+    if (value === el.innerHTML) return;
+    el.innerHTML = value || "";
   }, [value]);
+
+  const emit = (html: string) => {
+    const clean = sanitizeRichText(html);
+    emitted.current = clean;
+    onChange(clean);
+  };
 
   const exec = (cmd: string) => {
     if (disabled) return;
     ref.current?.focus();
     document.execCommand(cmd, false);
-    if (ref.current) onChange(sanitizeRichText(ref.current.innerHTML));
+    if (ref.current) emit(ref.current.innerHTML);
   };
 
   const isEmpty = !value || value === "<br>" || value === "<div><br></div>";
@@ -74,7 +90,7 @@ export function RichTextEditor({ value, onChange, disabled, placeholder, rows = 
           ref={ref}
           contentEditable={!disabled}
           suppressContentEditableWarning
-          onInput={(e) => onChange(sanitizeRichText((e.target as HTMLDivElement).innerHTML))}
+          onInput={(e) => emit((e.target as HTMLDivElement).innerHTML)}
           // Paste as plain text so formatting from Word or a web page cannot
           // drag in markup the receipt can't print.
           onPaste={(e) => {

@@ -173,7 +173,8 @@ function SalesReport({ shopId, range, formatMoney, cur }: ReportProps) {
     { header: "Date", value: (r) => format(new Date(r.created_at), "yyyy-MM-dd HH:mm") },
     { header: "Receipt", value: (r) => r.receipt_number ?? r.id.slice(0, 8) },
     { header: "Customer", value: (r) => r.customers?.name ?? "Walk-in" },
-    { header: "Payment", value: (r) => r.payment_method },
+    { header: "Payment", value: (r) => (r.payments?.length ? r.payments.map((p: any) => `${p.account_name} ${p.amount}`).join(" | ") : r.payment_method) },
+    { header: "Balance due", value: (r) => (r.balance_due > 0 ? r.balance_due.toFixed(2) : "") },
     { header: "Subtotal", value: (r) => Number(r.subtotal).toFixed(2) },
     { header: "Discount", value: (r) => Number(r.discount).toFixed(2) },
     { header: "Tax", value: (r) => Number(r.tax).toFixed(2) },
@@ -207,7 +208,24 @@ function SalesReport({ shopId, range, formatMoney, cur }: ReportProps) {
                     <TableCell className="text-xs">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
                     <TableCell className="font-mono text-xs">{r.receipt_number ?? r.id.slice(0, 8)}</TableCell>
                     <TableCell>{r.customers?.name ?? "Walk-in"}</TableCell>
-                    <TableCell className="capitalize">{r.payment_method}</TableCell>
+                    <TableCell>
+                      {r.payments?.length ? (
+                        <div className="space-y-0.5">
+                          {r.payments.map((p: any, i: number) => (
+                            <div key={i} className="text-xs whitespace-nowrap">
+                              {p.account_name} <span className="tabular-nums">{formatMoney(p.amount, cur)}</span>
+                            </div>
+                          ))}
+                          {r.balance_due > 0 && (
+                            <div className="text-xs text-warning font-medium whitespace-nowrap">
+                              {formatMoney(r.balance_due, cur)} due
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="capitalize">{r.payment_method}</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{formatMoney(r.subtotal, cur)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatMoney(r.tax, cur)}</TableCell>
                     <TableCell className="text-right tabular-nums font-semibold">{formatMoney(r.total, cur)}</TableCell>

@@ -411,7 +411,17 @@ export default function POS() {
     notifyChange("sale_items");
 
     setBusy(false);
-    setCompletedSale({ ...saleRecord, items: itemRows, shop: currentShop, customer });
+    // The slip should show the split immediately, before the row has synced.
+    const receiptPayments = tenders
+      .map((t) => ({
+        account_name: accounts.find((a) => a.id === t.account_id)?.name ?? "Unassigned",
+        amount: parseFloat(t.amount) || 0,
+      }))
+      .filter((p) => p.amount > 0);
+    setCompletedSale({
+      ...saleRecord, items: itemRows, shop: currentShop, customer,
+      payments: receiptPayments, balance_due: owed,
+    });
     setCart([]); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
     setTendersTouched(false);
     setTenders((prev) => (prev.length > 0 ? [{ ...prev[0], amount: "" }] : prev));
