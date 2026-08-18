@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getAll } from "@/lib/localDb";
 import { rpc } from "@/lib/apiClient";
+import { attachPayments } from "@/lib/salePayments";
 import { useShop } from "@/contexts/ShopContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
@@ -47,8 +48,8 @@ export default function Reports() {
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex items-end gap-2">
-            <label className="text-xs text-muted-foreground flex flex-col gap-1">From<Input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} className="h-9 w-[140px]" /></label>
-            <label className="text-xs text-muted-foreground flex flex-col gap-1">To<Input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} className="h-9 w-[140px]" /></label>
+            <label className="text-xs text-muted-foreground flex flex-col gap-1">From<Input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} className="h-9 w-[170px] min-w-[170px] shrink-0" /></label>
+            <label className="text-xs text-muted-foreground flex flex-col gap-1">To<Input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} className="h-9 w-[170px] min-w-[170px] shrink-0" /></label>
           </div>
           <div className="flex gap-1 p-1 bg-muted rounded-lg">
             {[7, 30, 90, 365].map((d) => (
@@ -155,7 +156,9 @@ function SalesReport({ shopId, range, formatMoney, cur }: ReportProps) {
           customers: s.customer_id ? { name: custById.get(s.customer_id)?.name ?? "—" } : null,
           sale_items: itemsBySale.get(s.id) ?? [],
         }));
-      setRows(data);
+      // Cached sale rows carry only the legacy single payment_method; the
+      // tender lines live in their own table and have to be joined back on.
+      setRows(await attachPayments(data, shopId));
       setLoading(false);
     })();
   }, [shopId, fromISO, toISO]);

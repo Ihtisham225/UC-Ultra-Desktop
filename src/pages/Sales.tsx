@@ -82,6 +82,10 @@ export default function Sales() {
   const { data: allSalesRaw, loading, refresh: loadSales } = useLocalStore<any>("sales", currentShop?.id);
   const { data: allSaleItems } = useLocalStore<any>("sale_items", currentShop?.id);
   const { data: allReturns } = useLocalStore<any>("sale_returns", currentShop?.id);
+  // A cached sale row only has the legacy single payment_method, so the tender
+  // lines (and the account names) are joined on from their own tables.
+  const { data: allPayments } = useLocalStore<any>("sale_payments", currentShop?.id);
+  const { data: allAccounts } = useLocalStore<any>("money_accounts", currentShop?.id);
 
   // Sort and paginate locally
   const allSales = useMemo(() => {
@@ -94,9 +98,19 @@ export default function Sales() {
       const returnedQty = saleReturns.reduce((sum: number, r: any) => sum + Number(r.quantity || 0), 0);
       let returnStatus: ReturnStatus = "none";
       if (returnedQty > 0) returnStatus = returnedQty >= totalQty ? "full" : "partial";
-      return { ...s, sale_items: items, returnStatus };
+      const payments = allPayments
+        .filter((p: any) => p.sale_id === s.id)
+        .map((p: any) => ({
+          account_name: allAccounts.find((a: any) => a.id === p.account_id)?.name ?? "Unassigned",
+          amount: Number(p.amount) || 0,
+        }));
+      const balance_due = Math.max(
+        0,
+        Math.round((Number(s.total ?? 0) - Number(s.amount_paid ?? 0)) * 100) / 100,
+      );
+      return { ...s, sale_items: items, returnStatus, payments, balance_due };
     });
-  }, [allSalesRaw, allSaleItems, allReturns]);
+  }, [allSalesRaw, allSaleItems, allReturns, allPayments, allAccounts]);
 
   const totalCount = allSales.length;
   const grandTotal = allSalesRaw.reduce((a: number, s: any) => a + Number(s.total ?? 0), 0);
