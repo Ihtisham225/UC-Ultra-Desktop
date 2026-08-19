@@ -101,59 +101,8 @@ ipcMain.handle('get-printers', async (): Promise<PrinterInfo[]> => {
   return mainWindow.webContents.getPrintersAsync()
 })
 
-// Print an HTML receipt to a named printer (defaults to system default)
 /**
- * Show the slip in a window before it goes to paper.
- *
- * Electron has no print preview of its own, and the Windows print dialog only
- * offers printer and copies — so pressing Print gave no sight of the receipt
- * at all. This opens the real rendered slip at paper width; its Print button
- * hands the ORIGINAL html back to the printer path above, so the preview
- * chrome is never printed and the margin-free rules still apply.
- */
-ipcMain.handle('preview-receipt', async (_event, html: string) => {
-  const win = new BrowserWindow({
-    width: 460,
-    height: 780,
-    title: 'Receipt preview',
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  })
-
-  const toolbar = `
-    <div id="uc-preview-bar" style="position:sticky;top:0;display:flex;gap:8px;align-items:center;
-         padding:10px 12px;background:#111;color:#fff;font:14px system-ui,sans-serif;z-index:99999">
-      <strong style="flex:1">Receipt preview</strong>
-      <button id="uc-print" style="padding:6px 14px;font:600 14px system-ui;cursor:pointer;
-              border:0;border-radius:6px;background:#22c55e;color:#fff">Print</button>
-      <button id="uc-close" style="padding:6px 12px;font:14px system-ui;cursor:pointer;
-              border:0;border-radius:6px;background:#374151;color:#fff">Close</button>
-    </div>
-    <style>@media print { #uc-preview-bar { display: none !important } }</style>
-    <script>
-      document.getElementById('uc-print').onclick = async () => {
-        const btn = document.getElementById('uc-print');
-        btn.disabled = true; btn.textContent = 'Printing…';
-        try { await window.electronAPI.printReceipt(window.__UC_RECEIPT_HTML); window.close(); }
-        catch (e) { btn.disabled = false; btn.textContent = 'Print'; alert('Could not print: ' + e); }
-      };
-      document.getElementById('uc-close').onclick = () => window.close();
-    </script>`
-
-  // The untouched slip travels separately so the toolbar never reaches paper.
-  const carrier = `<script>window.__UC_RECEIPT_HTML = ${JSON.stringify(html)}</script>`
-  const page = html.replace(/<body([^>]*)>/i, `<body$1>${carrier}${toolbar}`)
-
-  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`)
-  return { success: true }
-})
-
-/**
- * Print a slip through the main process.
+ * Print a slip through the main process, to a named printer or the default.
  *
  * This exists because the renderer's own `window.print()` is not equivalent:
  * Chromium in a normal browser honours `@page { margin: 0 }`, but Electron's

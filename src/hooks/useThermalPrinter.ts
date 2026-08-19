@@ -20,7 +20,6 @@ declare global {
     electronAPI?: {
       getPrinters: () => Promise<PrinterInfo[]>
       printReceipt: (html: string, printerName?: string, silent?: boolean) => Promise<void>
-      previewReceipt?: (html: string) => Promise<void>
       platform?: string
       onUpdateAvailable?: (cb: (version: string) => void) => void
       onUpdateDownloaded?: (cb: (version: string) => void) => void

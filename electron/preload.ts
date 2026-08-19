@@ -30,8 +30,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   printReceipt: (html: string, printerName?: string, silent?: boolean): Promise<{ success: boolean }> =>
     ipcRenderer.invoke('print-receipt', html, printerName, silent),
-  previewReceipt: (html: string): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke('preview-receipt', html),
 
   // Google OAuth bridge
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),
