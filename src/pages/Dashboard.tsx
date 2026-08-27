@@ -11,6 +11,11 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 import { PageTip } from "@/components/PageTip";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
+import { useState } from "react";
+import { rpc } from "@/lib/apiClient";
+import { isHandicraft } from "@/lib/handicraft";
+import HandicraftDashboard from "@/components/HandicraftDashboard";
+import type { CraftDashboard } from "@/lib/handicraftTypes";
 
 export default function Dashboard() {
   usePageMeta({ title: "Dashboard — UCU", description: "Real-time overview of your shop sales, top products, low-stock alerts and revenue trends." });
@@ -20,6 +25,20 @@ export default function Dashboard() {
   const formatMoney = useFormatMoney();
 
   useEffect(() => { document.title = `${t("nav.dashboard")} — UCU`; }, [t]);
+
+  // A handicraft shop has no sales and no stock — its figures come from the
+  // server, since none of the register lives in the offline store.
+  const craft = isHandicraft(currentShop);
+  const [craftStats, setCraftStats] = useState<CraftDashboard | null>(null);
+  const [craftError, setCraftError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!craft || !currentShop) return;
+    let cancelled = false;
+    rpc<CraftDashboard>("loadCraftDashboardAction")
+      .then((d) => { if (!cancelled) { setCraftStats(d); setCraftError(null); } })
+      .catch((e) => { if (!cancelled) setCraftError(e instanceof Error ? e.message : "Failed to load"); });
+    return () => { cancelled = true; };
+  }, [craft, currentShop]);
 
   const { data: allSales, loading: salesLoading } = useLocalStore<any>("sales", currentShop?.id);
   const { data: allProducts, loading: productsLoading } = useProductsWithVariants<any>(currentShop?.id);
@@ -55,6 +74,23 @@ export default function Dashboard() {
   }, [allSales, allProducts]);
 
   const cur = currentShop?.currency ?? "USD";
+
+  if (craft) {
+    if (craftError) {
+      return (
+        <div className="max-w-2xl mx-auto p-12 text-center space-y-2">
+          <p className="text-muted-foreground">{craftError}</p>
+          <p className="text-sm text-muted-foreground">
+            The register needs an internet connection — it isn&apos;t kept on this machine.
+          </p>
+        </div>
+      );
+    }
+    if (!craftStats) {
+      return <div className="p-12 text-center text-muted-foreground">Loading…</div>;
+    }
+    return <HandicraftDashboard stats={craftStats} />;
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">

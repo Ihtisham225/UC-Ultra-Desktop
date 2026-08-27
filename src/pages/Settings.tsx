@@ -14,7 +14,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, TrendingUp } from "lucide-react";
+import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, TrendingUp, Layers } from "lucide-react";
+import { JobProcessesSection } from "@/components/JobProcessesSection";
+import { isHandicraft } from "@/lib/handicraft";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { AppUpdateCard } from "@/components/AppUpdateCard";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -263,6 +265,7 @@ export default function Settings() {
           <TabsTrigger value="receipt"><Receipt className="size-3.5 mr-1.5" />{t("settings.tabs.receipt")}</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="size-3.5 mr-1.5" />{t("settings.tabs.notifications")}</TabsTrigger>
           {canEdit && <TabsTrigger value="investors"><TrendingUp className="size-3.5 mr-1.5" />Investors</TabsTrigger>}
+          {isHandicraft(currentShop) && <TabsTrigger value="processes"><Layers className="size-3.5 mr-1.5" />Processing work</TabsTrigger>}
           <TabsTrigger value="data"><Download className="size-3.5 mr-1.5" />{t("settings.tabs.data")}</TabsTrigger>
           {canEdit && <TabsTrigger value="danger"><Shield className="size-3.5 mr-1.5" />{t("settings.tabs.danger")}</TabsTrigger>}
         </TabsList>
@@ -333,11 +336,25 @@ export default function Settings() {
                   <SelectItem value="industry">Industry</SelectItem>
                   <SelectItem value="wholesale">Whole Sale</SelectItem>
                   <SelectItem value="accessories">Accessories</SelectItem>
+                  <SelectItem value="handicraft">Handicraft / Shawls</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-[11px] text-muted-foreground">Tailors the app to your business — e.g. a Phone Shop can capture IMEI numbers.</p>
             </div>
+            {storeType === "handicraft" && (
+              <div className="rounded-lg border p-3 text-xs text-muted-foreground space-y-1.5">
+                <p className="font-medium text-foreground">What changes for a handicraft shop</p>
+                <p>
+                  This shop keeps a register instead of a till: material purchases with a running
+                  balance per party, and job-work challans for goods sent out for bumbul, rangai,
+                  dhulai or press. POS, sales, products and stock are hidden, because none of that
+                  applies — nothing is deleted, and switching the store type back brings it all
+                  straight back.
+                </p>
+                <p>The <b>Processing work</b> tab sets up the work your factories do.</p>
+              </div>
+            )}
             {storeType === "pharmacy" && (
               <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
                 <div>
@@ -429,6 +446,10 @@ export default function Settings() {
             </div>
             {canEditShop && <Button disabled={busy} onClick={saveNotifications} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.notifications.saveNotifications")}</Button>}
           </Card>
+        </TabsContent>
+
+        <TabsContent value="processes">
+          <JobProcessesSection canEdit={canEditShop} />
         </TabsContent>
 
         <TabsContent value="investors">

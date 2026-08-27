@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { LayoutDashboard, ScanBarcode, Menu, Settings as SettingsIcon, Package, Receipt, Users, BarChart3, PackageOpen, Wallet, ShieldCheck, ShieldAlert, Sparkles, LogOut, Undo2, LifeBuoy, HandCoins, Truck, FileBarChart, Boxes, FolderTree } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Menu, Settings as SettingsIcon, Package, Receipt, Users, BarChart3, PackageOpen, Wallet, ShieldCheck, ShieldAlert, Sparkles, LogOut, Undo2, LifeBuoy, HandCoins, Truck, Factory, FileBarChart, Boxes, FolderTree } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
+import { isHandicraft } from "@/lib/handicraft";
+import { useShop } from "@/contexts/ShopContext";
 import { useProAccess } from "@/hooks/useProAccess";
 import { useIsSuperAdmin } from "@/hooks/useIsSuperAdmin";
 
@@ -21,6 +23,9 @@ export const MobileBottomNav = () => {
   const { isPro, daysLeft } = useProAccess();
   const { isSuperAdmin } = useIsSuperAdmin();
   const { t } = useTranslation();
+  const { currentShop } = useShop();
+  // Same rule as the sidebar: a handicraft shop has no till and no stock.
+  const craft = isHandicraft(currentShop);
 
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -28,26 +33,30 @@ export const MobileBottomNav = () => {
 
   const allNav: NavItem[] = [
     { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
-    { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: true },
-    { to: "/products", label: t("nav.products"), icon: Package, show: true },
-    { to: "/categories", label: "Categories", icon: FolderTree, show: perms.canManageProducts },
-    { to: "/inventory", label: "Inventory", icon: Boxes, show: perms.canManageProducts },
-    { to: "/sales", label: t("nav.sales"), icon: Receipt, show: true },
-    { to: "/returns", label: t("nav.returns"), icon: Undo2, show: true },
-    { to: "/customers", label: t("nav.customers"), icon: Users, show: true },
-    { to: "/analytics", label: t("nav.analytics"), icon: BarChart3, show: perms.canManageExpenses },
+    { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: !craft },
+    { to: "/products", label: t("nav.products"), icon: Package, show: !craft },
+    { to: "/categories", label: "Categories", icon: FolderTree, show: !craft && perms.canManageProducts },
+    { to: "/inventory", label: "Inventory", icon: Boxes, show: !craft && perms.canManageProducts },
+    { to: "/sales", label: t("nav.sales"), icon: Receipt, show: !craft },
+    { to: "/returns", label: t("nav.returns"), icon: Undo2, show: !craft },
+    { to: "/customers", label: t("nav.customers"), icon: Users, show: !craft },
+    { to: "/analytics", label: t("nav.analytics"), icon: BarChart3, show: !craft && perms.canManageExpenses },
     { to: "/reports", label: "Reports", icon: FileBarChart, show: perms.canManageExpenses },
-    { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, show: perms.canManagePurchases },
-    { to: "/suppliers", label: t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
+    { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, show: !craft && perms.canManagePurchases },
+    { to: "/material-purchases", label: t("nav.purchases"), icon: PackageOpen, show: craft && perms.canManagePurchases },
+    { to: "/job-work", label: "Job Work", icon: Factory, show: craft && perms.canManagePurchases },
+    { to: "/suppliers", label: craft ? "Parties" : t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
     { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },
-    { to: "/debts", label: t("nav.debts"), icon: HandCoins, show: perms.canManageExpenses },
+    { to: "/debts", label: t("nav.debts"), icon: HandCoins, show: !craft && perms.canManageExpenses },
     { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, show: perms.canManageStaff },
   ].filter((n) => n.show);
 
   return (
     <>
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-xl border-t border-border safe-area-bottom">
-        <div className="grid grid-cols-4 h-16">
+        {/* The raised POS button is the whole point of this bar in a shop with a
+            till; a handicraft shop has none, so it drops to three columns. */}
+        <div className={cn("grid h-16", craft ? "grid-cols-3" : "grid-cols-4")}>
           <Link
             to="/dashboard"
             className={cn(
@@ -59,15 +68,17 @@ export const MobileBottomNav = () => {
             <span className="text-[10px] font-medium">{t("nav.dashboard")}</span>
           </Link>
 
-          <Link to="/pos" className="flex flex-col items-center justify-center gap-1">
-            <div className={cn(
-              "size-12 -mt-5 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95",
-              isActive("/pos") ? "bg-gradient-primary text-primary-foreground shadow-glow" : "bg-primary text-primary-foreground"
-            )}>
-              <ScanBarcode className="size-6" />
-            </div>
-            <span className={cn("text-[10px] font-medium", isActive("/pos") ? "text-primary" : "text-muted-foreground")}>{t("nav.pos")}</span>
-          </Link>
+          {!craft && (
+            <Link to="/pos" className="flex flex-col items-center justify-center gap-1">
+              <div className={cn(
+                "size-12 -mt-5 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95",
+                isActive("/pos") ? "bg-gradient-primary text-primary-foreground shadow-glow" : "bg-primary text-primary-foreground"
+              )}>
+                <ScanBarcode className="size-6" />
+              </div>
+              <span className={cn("text-[10px] font-medium", isActive("/pos") ? "text-primary" : "text-muted-foreground")}>{t("nav.pos")}</span>
+            </Link>
+          )}
 
           <div className="flex items-center justify-center">
             <GlobalSearch variant="mobile-icon" />

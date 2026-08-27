@@ -16,6 +16,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent } from "lucide-react";
 import { downloadCsv, CsvColumn } from "@/lib/csv";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import { isHandicraft } from "@/lib/handicraft";
+import CraftReports from "@/components/CraftReports";
 
 type Rng = { from: string; to: string };
 
@@ -38,6 +40,9 @@ export default function Reports() {
     return <div className="p-12 text-center text-muted-foreground">You don't have access to Reports.</div>;
   }
   if (!currentShop) return null;
+  // Sales, stock and tax reports mean nothing to a handicraft shop; it gets
+  // purchases, job work and party balances instead.
+  if (isHandicraft(currentShop)) return <CraftReports />;
 
   return (
     <div className="max-w-7xl mx-auto space-y-5">

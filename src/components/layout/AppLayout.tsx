@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { Landmark, LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse } from "lucide-react";
+import { Landmark, LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Factory, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse } from "lucide-react";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,6 +22,7 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { InstallPwaButton } from "@/components/InstallPwaButton";
 import { Logo } from "@/components/Logo";
 import { isLabEnabled } from "@/lib/lab";
+import { isHandicraft } from "@/lib/handicraft";
 
 type NavItem = { to: string; label: string; icon: any; show: boolean };
 
@@ -36,26 +37,33 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcState, setCalcState] = useState<CalculatorState>({ expr: "", display: "0" });
 
+  // Handicraft shops don't sell through the app and hold no stock in it, so
+  // every selling- and product-shaped screen comes off their nav. Nothing is
+  // deleted — switching the store type back shows them all again.
+  const craft = isHandicraft(currentShop);
+
   const nav: NavItem[] = [
     { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
-    { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: true },
-    { to: "/products", label: t("nav.products"), icon: Package, show: true },
-    { to: "/categories", label: "Categories", icon: FolderTree, show: perms.canManageProducts },
-    { to: "/brands", label: "Brands", icon: Tag, show: perms.canManageProducts },
-    { to: "/inventory", label: "Inventory", icon: Boxes, show: perms.canManageProducts },
+    { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: !craft },
+    { to: "/products", label: t("nav.products"), icon: Package, show: !craft },
+    { to: "/categories", label: "Categories", icon: FolderTree, show: !craft && perms.canManageProducts },
+    { to: "/brands", label: "Brands", icon: Tag, show: !craft && perms.canManageProducts },
+    { to: "/inventory", label: "Inventory", icon: Boxes, show: !craft && perms.canManageProducts },
     { to: "/lab", label: "Lab", icon: FlaskConical, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
     { to: "/lab-results", label: "Results", icon: ClipboardCheck, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
     { to: "/patients", label: "Patients", icon: HeartPulse, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
-    { to: "/sales", label: t("nav.sales"), icon: Receipt, show: true },
-    { to: "/returns", label: t("nav.returns"), icon: Undo2, show: true },
-    { to: "/customers", label: t("nav.customers"), icon: Users, show: true },
-    { to: "/analytics", label: t("nav.analytics"), icon: BarChart3, show: perms.canManageExpenses },
+    { to: "/sales", label: t("nav.sales"), icon: Receipt, show: !craft },
+    { to: "/returns", label: t("nav.returns"), icon: Undo2, show: !craft },
+    { to: "/customers", label: t("nav.customers"), icon: Users, show: !craft },
+    { to: "/analytics", label: t("nav.analytics"), icon: BarChart3, show: !craft && perms.canManageExpenses },
     { to: "/reports", label: "Reports", icon: FileBarChart, show: perms.canManageExpenses },
-    { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, show: perms.canManagePurchases },
-    { to: "/suppliers", label: t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
+    { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, show: !craft && perms.canManagePurchases },
+    { to: "/material-purchases", label: t("nav.purchases"), icon: PackageOpen, show: craft && perms.canManagePurchases },
+    { to: "/job-work", label: "Job Work", icon: Factory, show: craft && perms.canManagePurchases },
+    { to: "/suppliers", label: craft ? "Parties" : t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
     { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },
     { to: "/accounts", label: "Accounts", icon: Landmark, show: perms.canManageExpenses || hasPerm("accounts", "view") },
-    { to: "/debts", label: `${t("nav.debts")} (Khata)`, icon: HandCoins, show: perms.canManageExpenses },
+    { to: "/debts", label: `${t("nav.debts")} (Khata)`, icon: HandCoins, show: !craft && perms.canManageExpenses },
     { to: "/investors", label: t("nav.investors"), icon: TrendingUp, show: perms.canManageExpenses && !!currentShop?.investors_enabled },
     { to: "/payroll", label: t("nav.payroll"), icon: BadgeDollarSign, show: perms.canManageExpenses },
     { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, show: perms.canManageStaff },

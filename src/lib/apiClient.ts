@@ -255,6 +255,30 @@ export async function uploadInvoiceImage(file: File): Promise<string> {
   return (body as { url: string }).url;
 }
 
+/**
+ * Attach a photo of a paper bill to a handicraft record. Multipart, so it goes
+ * to its own route rather than the JSON rpc bridge, and the row is written
+ * server-side once the record is confirmed to belong to this shop.
+ */
+export async function uploadAttachment(
+  entityType: string,
+  entityId: string,
+  file: File,
+): Promise<{ id: string; url: string }> {
+  if (!navigator.onLine) throw new Error("offline");
+  const form = new FormData();
+  form.append("entity_type", entityType);
+  form.append("entity_id", entityId);
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/desktop/upload-attachment`, { method: "POST", headers, body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+  return (body as { attachment: { id: string; url: string } }).attachment;
+}
+
 /** Upload a walk-in seller's CNIC photo (front/back), returning its public URL. */
 export async function uploadCnicImage(file: File): Promise<string> {
   if (!navigator.onLine) throw new Error("offline");
