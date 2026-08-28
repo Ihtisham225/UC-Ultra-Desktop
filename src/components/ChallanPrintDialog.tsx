@@ -2,6 +2,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { useShop } from "@/contexts/ShopContext";
+import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { UR, URDU_FONT_STACK, printCss } from "@/lib/urdu-print";
 import { CHALLAN_KIND } from "@/lib/handicraft";
 import type { ChallanDto, JobProcessDto } from "@/lib/handicraftTypes";
@@ -23,7 +24,9 @@ export function ChallanPrintDialog({
   onClose: () => void;
 }) {
   const { currentShop } = useShop();
+  const formatMoney = useFormatMoney();
   if (!challan) return null;
+  const currency = currentShop?.currency ?? "PKR";
   const making = challan.kind === "making";
   const copy = CHALLAN_KIND[challan.kind];
 
@@ -33,6 +36,7 @@ export function ChallanPrintDialog({
   const used = processes.filter((p) => challan.items.some((it) => it.process_ids.includes(p.id)));
   const columns = making ? [] : used.length > 0 ? used : processes.slice(0, 4);
   const anyWeight = challan.items.some((it) => it.per_piece_weight);
+  const anyRate = challan.items.some((it) => it.rate);
 
   return (
     <Dialog open={!!challan} onOpenChange={(o) => !o && onClose()}>
@@ -69,6 +73,12 @@ export function ChallanPrintDialog({
                     <th className="border border-black p-1 w-20">{UR.totalWeight}</th>
                   </>
                 )}
+                {making && anyRate && (
+                  <>
+                    <th className="border border-black p-1 w-20">{UR.rate}</th>
+                    <th className="border border-black p-1 w-24">{UR.amount}</th>
+                  </>
+                )}
                 {columns.map((p) => (
                   <th key={p.id} className="border border-black p-1 w-14">
                     <div>{p.name_local || p.name}</div>
@@ -87,6 +97,14 @@ export function ChallanPrintDialog({
                       <td className="border border-black p-1 text-center">{it.per_piece_weight ?? ""}</td>
                       <td className="border border-black p-1 text-center">
                         {it.per_piece_weight ? Number((it.quantity * it.per_piece_weight).toFixed(3)) : ""}
+                      </td>
+                    </>
+                  )}
+                  {making && anyRate && (
+                    <>
+                      <td className="border border-black p-1 text-center" dir="ltr">{it.rate ?? ""}</td>
+                      <td className="border border-black p-1 text-center" dir="ltr">
+                        {it.rate ? formatMoney(it.quantity * it.rate, currency) : ""}
                       </td>
                     </>
                   )}
@@ -112,6 +130,12 @@ export function ChallanPrintDialog({
                       <td className="border border-black p-1" />
                     </>
                   )}
+                  {making && anyRate && (
+                    <>
+                      <td className="border border-black p-1" />
+                      <td className="border border-black p-1" />
+                    </>
+                  )}
                   {columns.map((p) => <td key={p.id} className="border border-black p-1" />)}
                 </tr>
               ))}
@@ -127,6 +151,17 @@ export function ChallanPrintDialog({
                           .reduce((sum, it) => sum + it.quantity * (it.per_piece_weight ?? 0), 0)
                           .toFixed(3),
                       ) || ""}
+                    </td>
+                  </>
+                )}
+                {making && anyRate && (
+                  <>
+                    <td className="border border-black p-1" />
+                    <td className="border border-black p-1 text-center" dir="ltr">
+                      {formatMoney(
+                        challan.items.reduce((sum, it) => sum + it.quantity * (it.rate ?? 0), 0),
+                        currency,
+                      )}
                     </td>
                   </>
                 )}

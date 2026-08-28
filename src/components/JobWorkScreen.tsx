@@ -33,8 +33,9 @@ type ItemDraft = {
   bundles: string;
   pieces_per_bundle: string;
   quantity: string;
-  /** Making challans weigh the goods. */
+  /** Making challans weigh the goods and agree a rate up front. */
   per_piece_weight: string;
+  rate: string;
   /** Set by hand, so bundles × pieces stops filling it in. */
   quantityEdited: boolean;
   process_ids: string[];
@@ -55,7 +56,7 @@ type ChallanDraft = {
 const num = (s: string) => (s.trim() === "" ? 0 : Number(s)) || 0;
 
 const emptyItem = (): ItemDraft => ({
-  description: "", bundles: "", pieces_per_bundle: "", quantity: "", per_piece_weight: "",
+  description: "", bundles: "", pieces_per_bundle: "", quantity: "", per_piece_weight: "", rate: "",
   quantityEdited: false, process_ids: [],
 });
 
@@ -205,6 +206,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         pieces_per_bundle: it.pieces_per_bundle === null ? "" : String(it.pieces_per_bundle),
         quantity: String(it.quantity),
         per_piece_weight: it.per_piece_weight === null ? "" : String(it.per_piece_weight),
+        rate: it.rate === null ? "" : String(it.rate),
         quantityEdited: true,
         process_ids: it.process_ids,
       })),
@@ -251,6 +253,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
   const draftBundles = draft?.items.reduce((s, it) => s + num(it.bundles), 0) ?? 0;
   const draftWeight =
     draft?.items.reduce((s, it) => s + num(it.quantity) * num(it.per_piece_weight), 0) ?? 0;
+  const draftAmount = draft?.items.reduce((s, it) => s + num(it.quantity) * num(it.rate), 0) ?? 0;
 
   const saveChallan = async () => {
     if (!draft) return;
@@ -277,6 +280,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         bundles: it.bundles === "" ? null : num(it.bundles),
         pieces_per_bundle: it.pieces_per_bundle === "" ? null : num(it.pieces_per_bundle),
         per_piece_weight: it.per_piece_weight === "" ? null : num(it.per_piece_weight),
+        rate: it.rate === "" ? null : num(it.rate),
         process_ids: it.process_ids,
       })),
       },
@@ -745,6 +749,28 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                                 }
                               />
                             </div>
+                            <div className="w-[100px] space-y-1">
+                              <Label className="text-xs">Rate</Label>
+                              <Input
+                                className="h-9"
+                                type="number"
+                                step="0.01"
+                                value={it.rate}
+                                onChange={(e) => setItem(i, { rate: e.target.value })}
+                              />
+                            </div>
+                            <div className="w-[120px] space-y-1">
+                              <Label className="text-xs">Total rate</Label>
+                              <Input
+                                className="h-9 bg-muted/40"
+                                readOnly
+                                value={
+                                  num(it.quantity) * num(it.rate)
+                                    ? formatMoney(num(it.quantity) * num(it.rate), currency)
+                                    : ""
+                                }
+                              />
+                            </div>
                           </>
                         )}
                         <Button
@@ -796,7 +822,9 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   Type bundles and pieces-per-bundle and the piece count fills itself in — the ×-sum from
-                  the bottom of your book.{making ? " Total weight is pieces × weight per piece." : " Tick the work each lot needs."}
+                  the bottom of your book.{making
+                    ? " Total weight is pieces × weight per piece, and total rate is pieces × rate."
+                    : " Tick the work each lot needs."}
                 </p>
               </div>
 
@@ -822,6 +850,11 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                   {making && draftWeight > 0 && (
                     <span className="text-sm font-normal text-muted-foreground">
                       {" "}· {Number(draftWeight.toFixed(3))} weight
+                    </span>
+                  )}
+                  {making && draftAmount > 0 && (
+                    <span className="text-sm font-normal text-muted-foreground">
+                      {" "}· {formatMoney(draftAmount, currency)} making
                     </span>
                   )}
                 </span>

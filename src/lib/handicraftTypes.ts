@@ -118,6 +118,7 @@ export interface ChallanItemDto {
   bundles: number | null;
   pieces_per_bundle: number | null;
   per_piece_weight: number | null;
+  rate: number | null;
   process_ids: string[];
   received: number;
   short: number;
@@ -191,6 +192,7 @@ export interface ReceiptDraftLine {
   sent: number;
   pending: number;
   per_piece_weight: number | null;
+  rate: number | null;
   process_ids: string[];
 }
 

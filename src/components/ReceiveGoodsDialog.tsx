@@ -99,7 +99,14 @@ export function ReceiveGoodsDialog({
                 }))
               : d.challan.kind === "making"
                 ? // Making is paid per piece, not per process — one rate line.
-                  [{ process_id: null, process_name: "Making", rate: "", quantity: received, quantityEdited: false }]
+                  [{
+                    process_id: null,
+                    process_name: "Making",
+                    // Agreed when the material went out; still editable here.
+                    rate: l.rate != null ? String(l.rate) : "",
+                    quantity: received,
+                    quantityEdited: false,
+                  }]
                 : l.process_ids.map((pid) => ({
                     process_id: pid,
                     process_name: processName(pid),
