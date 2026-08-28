@@ -1,3 +1,5 @@
+import type { ChallanKindValue } from "@/lib/handicraft";
+
 /**
  * Shapes returned by the handicraft server actions, mirrored here because the
  * desktop talks to them over the rpc bridge and can't import the Next app's
@@ -9,7 +11,9 @@ export interface PartyOption {
   id: string;
   name: string;
   city: string | null;
-  role: string;
+  is_supplier: boolean;
+  is_maker: boolean;
+  is_processor: boolean;
 }
 
 export interface MaterialPurchaseItemDto {
@@ -31,6 +35,7 @@ export interface MaterialPurchaseDto {
   supplier_name: string;
   city: string | null;
   bilty_number: string | null;
+  received_by: string | null;
   notes: string | null;
   total: number;
   items: MaterialPurchaseItemDto[];
@@ -87,7 +92,9 @@ export interface PartyBalance {
   id: string;
   name: string;
   city: string | null;
-  role: string;
+  is_supplier: boolean;
+  is_maker: boolean;
+  is_processor: boolean;
   opening_balance: number;
   purchases_total: number;
   job_work_total: number;
@@ -110,6 +117,7 @@ export interface ChallanItemDto {
   quantity: number;
   bundles: number | null;
   pieces_per_bundle: number | null;
+  per_piece_weight: number | null;
   process_ids: string[];
   received: number;
   short: number;
@@ -119,6 +127,7 @@ export interface ChallanItemDto {
 
 export interface ChallanDto {
   id: string;
+  kind: ChallanKindValue;
   number: number;
   book_number: string | null;
   date: string;
@@ -151,6 +160,7 @@ export interface ReceiptItemDto {
   received_qty: number;
   short_qty: number;
   damaged_qty: number;
+  per_piece_weight: number | null;
   note: string | null;
   line_total: number;
   charges: ReceiptChargeDto[];
@@ -158,6 +168,7 @@ export interface ReceiptItemDto {
 
 export interface ReceiptDto {
   id: string;
+  kind: ChallanKindValue;
   number: number;
   book_number: string | null;
   date: string;
@@ -170,6 +181,7 @@ export interface ReceiptDto {
   charges_total: number;
   deduction: number;
   total: number;
+  paid_now: number;
   items: ReceiptItemDto[];
 }
 
@@ -178,12 +190,14 @@ export interface ReceiptDraftLine {
   description: string;
   sent: number;
   pending: number;
+  per_piece_weight: number | null;
   process_ids: string[];
 }
 
 export interface ReceiptDraft {
   challan: {
     id: string;
+    kind: ChallanKindValue;
     number: number;
     book_number: string | null;
     date: string;
@@ -233,6 +247,7 @@ export interface JobWorkByProcessRow {
 }
 
 export interface PendingAtCompanyRow {
+  kind: ChallanKindValue;
   company: string;
   city: string | null;
   challan_number: number;
@@ -250,7 +265,7 @@ export interface PendingAtCompanyRow {
 export interface PartyBalanceReportRow {
   party: string;
   city: string | null;
-  role: string;
+  roles: string;
   opening: number;
   purchases: number;
   job_work: number;
@@ -283,6 +298,43 @@ export interface CraftDashboard {
   payable_job_work: number;
   in_credit: number;
   pieces_at_companies: number;
+  open_challans: number;
+  month_purchases: number;
+  month_job_work: number;
+  month_payments: number;
+  month_label: string;
+  by_company: CompanyPending[];
+  top_balances: PartyBalanceRow[];
+}
+
+
+/** What the handicraft dashboard needs, straight off craftDashboardStats. */
+export interface CompanyPending {
+  id: string;
+  name: string;
+  city: string | null;
+  kind: ChallanKindValue;
+  pieces: number;
+  challans: number;
+  oldest_days: number;
+}
+
+export interface PartyBalanceRow {
+  id: string;
+  name: string;
+  city: string | null;
+  roles: string;
+  balance: number;
+}
+
+export interface CraftDashboard {
+  payable_total: number;
+  payable_material: number;
+  payable_job_work: number;
+  in_credit: number;
+  pieces_at_companies: number;
+  pieces_with_makers: number;
+  pieces_at_processors: number;
   open_challans: number;
   month_purchases: number;
   month_job_work: number;

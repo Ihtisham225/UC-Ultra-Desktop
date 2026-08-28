@@ -22,7 +22,9 @@ import { downloadCsv } from "@/lib/csv";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { isHandicraft, isMaterialSupplier, isProcessor, PARTY_ROLE_LABEL, type PartyRoleValue } from "@/lib/handicraft";
+import {
+  isHandicraft, isMaterialSupplier, isMaker, isProcessor, partyRoleLabel, PARTY_ROLE_FIELDS,
+} from "@/lib/handicraft";
 import { formatMoney } from "@/lib/format";
 import type { PartyBalance } from "@/lib/handicraftTypes";
 
@@ -32,17 +34,13 @@ interface Supplier {
   phone: string | null;
   email: string | null;
   notes: string | null;
-  /** Handicraft shops only: sells material, does job work, or both. */
-  role?: PartyRoleValue;
+  /** Handicraft shops only: what this party does. */
+  is_supplier?: boolean;
+  is_maker?: boolean;
+  is_processor?: boolean;
   city?: string | null;
   opening_balance?: number;
 }
-
-const ROLE_BADGE: Record<PartyRoleValue, string> = {
-  supplier: "Supplier",
-  processor: "Processing",
-  both: "Supplier + Processing",
-};
 
 export default function Suppliers() {
   const { t } = useTranslation();
@@ -58,7 +56,7 @@ export default function Suppliers() {
   const sel = useRowSelection();
   // Handicraft shops read this page as a khata of what each party is owed.
   const [balances, setBalances] = useState<Record<string, PartyBalance>>({});
-  const [roleTab, setRoleTab] = useState<"all" | "supplier" | "processor">("all");
+  const [roleTab, setRoleTab] = useState<"all" | "supplier" | "maker" | "processor">("all");
 
   const canManage = perms.canManageSuppliers;
   const craft = isHandicraft(currentShop);
@@ -74,8 +72,9 @@ export default function Suppliers() {
 
   const byRole = useMemo(() => {
     if (!craft || roleTab === "all") return items;
-    if (roleTab === "supplier") return items.filter((x) => isMaterialSupplier(x.role));
-    return items.filter((x) => isProcessor(x.role));
+    if (roleTab === "supplier") return items.filter(isMaterialSupplier);
+    if (roleTab === "maker") return items.filter(isMaker);
+    return items.filter(isProcessor);
   }, [items, craft, roleTab]);
 
   const filtered = useMemo(() => {
@@ -138,7 +137,9 @@ export default function Suppliers() {
       notes: editing.notes || null,
       ...(craft
         ? {
-            role: (editing.role ?? "supplier") as PartyRoleValue,
+            is_supplier: !!editing.is_supplier,
+            is_maker: !!editing.is_maker,
+            is_processor: !!editing.is_processor,
             city: editing.city || null,
             opening_balance: Number(editing.opening_balance) || 0,
           }
@@ -214,7 +215,12 @@ export default function Suppliers() {
         {canManage && (
           <Button
             onClick={() =>
-              setEditing({ name: "", role: craft && roleTab === "processor" ? "processor" : "supplier" })
+              setEditing({
+                name: "",
+                is_supplier: !craft || roleTab === "all" || roleTab === "supplier",
+                is_maker: craft && roleTab === "maker",
+                is_processor: craft && roleTab === "processor",
+              })
             }
             className="bg-gradient-primary hover:opacity-90 text-primary-foreground"
           >
@@ -227,12 +233,9 @@ export default function Suppliers() {
         <Tabs value={roleTab} onValueChange={(v) => setRoleTab(v as typeof roleTab)}>
           <TabsList>
             <TabsTrigger value="all">All ({items.length})</TabsTrigger>
-            <TabsTrigger value="supplier">
-              Suppliers ({items.filter((x) => isMaterialSupplier(x.role)).length})
-            </TabsTrigger>
-            <TabsTrigger value="processor">
-              Processing companies ({items.filter((x) => isProcessor(x.role)).length})
-            </TabsTrigger>
+            <TabsTrigger value="supplier">Suppliers ({items.filter(isMaterialSupplier).length})</TabsTrigger>
+            <TabsTrigger value="maker">Makers ({items.filter(isMaker).length})</TabsTrigger>
+            <TabsTrigger value="processor">Processing ({items.filter(isProcessor).length})</TabsTrigger>
           </TabsList>
         </Tabs>
       )}
@@ -287,7 +290,7 @@ export default function Suppliers() {
                       {s.name}
                       {craft && (
                         <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold">
-                          {ROLE_BADGE[(s.role ?? "supplier") as PartyRoleValue]}
+                          {partyRoleLabel(s)}
                         </span>
                       )}
                     </div>
@@ -338,25 +341,35 @@ export default function Suppliers() {
               </div>
               {craft && (
                 <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label>This party</Label>
-                      <Select
-                        value={editing.role ?? "supplier"}
-                        onValueChange={(v) => setEditing({ ...editing, role: v as PartyRoleValue })}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {(Object.keys(PARTY_ROLE_LABEL) as PartyRoleValue[]).map((r) => (
-                            <SelectItem key={r} value={r}>{PARTY_ROLE_LABEL[r]}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                  <div className="space-y-1.5">
+                    <Label>What this party does</Label>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {PARTY_ROLE_FIELDS.map((f) => (
+                        <label
+                          key={f.key}
+                          className={`flex items-start gap-2 rounded-lg border p-2.5 cursor-pointer transition-colors ${
+                            editing[f.key] ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                          }`}
+                        >
+                          <Checkbox
+                            checked={!!editing[f.key]}
+                            onCheckedChange={(v) => setEditing({ ...editing, [f.key]: !!v })}
+                            className="mt-0.5"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium">{f.label}</span>
+                            <span className="block text-[11px] text-muted-foreground">{f.hint}</span>
+                          </span>
+                        </label>
+                      ))}
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>City</Label>
-                      <Input value={editing.city ?? ""} onChange={(e) => setEditing({ ...editing, city: e.target.value })} placeholder="Swat, Multan, Lilliani…" />
-                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Tick every one that applies — it decides which forms offer this party.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>City</Label>
+                    <Input value={editing.city ?? ""} onChange={(e) => setEditing({ ...editing, city: e.target.value })} placeholder="Swat, Multan, Lilliani…" />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Opening balance</Label>
@@ -391,7 +404,7 @@ export default function Suppliers() {
           rows={[
             ...(craft
               ? [
-                  { label: "Role", value: ROLE_BADGE[(details.role ?? "supplier") as PartyRoleValue] },
+                  { label: "Roles", value: partyRoleLabel(details) },
                   { label: "City", value: details.city ?? "—" },
                   { label: "Opening balance", value: formatMoney(details.opening_balance ?? 0, currency) },
                   { label: "Purchases", value: formatMoney(balances[details.id]?.purchases_total ?? 0, currency) },

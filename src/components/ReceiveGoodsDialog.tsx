@@ -27,6 +27,8 @@ type LineDraft = {
   received: string;
   short: string;
   damaged: string;
+  /** Making bills weigh what came back and pay per piece. */
+  per_piece_weight: string;
   note: string;
   charges: ChargeDraft[];
 };
@@ -61,6 +63,7 @@ export function ReceiveGoodsDialog({
   const [receivedVia, setReceivedVia] = useState("");
   const [notes, setNotes] = useState("");
   const [deduction, setDeduction] = useState("0");
+  const [paidNow, setPaidNow] = useState("0");
   const [rememberRates, setRememberRates] = useState(true);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -94,13 +97,16 @@ export function ReceiveGoodsDialog({
                   quantity: String(c.quantity),
                   quantityEdited: true,
                 }))
-              : l.process_ids.map((pid) => ({
-                  process_id: pid,
-                  process_name: processName(pid),
-                  rate: String(d.rates[pid] ?? 0),
-                  quantity: received,
-                  quantityEdited: false,
-                }));
+              : d.challan.kind === "making"
+                ? // Making is paid per piece, not per process — one rate line.
+                  [{ process_id: null, process_name: "Making", rate: "", quantity: received, quantityEdited: false }]
+                : l.process_ids.map((pid) => ({
+                    process_id: pid,
+                    process_name: processName(pid),
+                    rate: String(d.rates[pid] ?? 0),
+                    quantity: received,
+                    quantityEdited: false,
+                  }));
             return {
               challan_item_id: l.challan_item_id,
               description: prev?.description ?? l.description,
@@ -110,6 +116,12 @@ export function ReceiveGoodsDialog({
               received,
               short: prev ? String(prev.short_qty || "") : "",
               damaged: prev ? String(prev.damaged_qty || "") : "",
+              per_piece_weight:
+                prev?.per_piece_weight != null
+                  ? String(prev.per_piece_weight)
+                  : l.per_piece_weight != null
+                    ? String(l.per_piece_weight)
+                    : "",
               note: prev?.note ?? "",
               charges,
             };
@@ -121,6 +133,7 @@ export function ReceiveGoodsDialog({
         setReceivedVia(receipt?.received_via ?? "");
         setNotes(receipt?.notes ?? "");
         setDeduction(String(receipt?.deduction ?? 0));
+        setPaidNow(String(receipt?.paid_now ?? 0));
         setPendingPhotos([]);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to open the challan");
@@ -200,7 +213,9 @@ export function ReceiveGoodsDialog({
     );
   };
 
+  const making = draft?.challan.kind === "making";
   const lineTotal = (l: LineDraft) => l.charges.reduce((s, c) => s + num(c.rate) * num(c.quantity), 0);
+  const lineWeight = (l: LineDraft) => num(l.received) * num(l.per_piece_weight);
   const chargesTotal = lines.reduce((s, l) => s + lineTotal(l), 0);
   const total = chargesTotal - num(deduction);
   const shortPieces = lines.reduce((s, l) => s + num(l.short) + num(l.damaged), 0);
@@ -221,6 +236,7 @@ export function ReceiveGoodsDialog({
       received_via: receivedVia || null,
       notes: notes || null,
       deduction: num(deduction),
+      paid_now: num(paidNow),
       remember_rates: rememberRates,
       items: touched.map((l) => ({
         challan_item_id: l.challan_item_id,
@@ -228,6 +244,7 @@ export function ReceiveGoodsDialog({
         received_qty: num(l.received),
         short_qty: num(l.short),
         damaged_qty: num(l.damaged),
+        per_piece_weight: l.per_piece_weight === "" ? null : num(l.per_piece_weight),
         note: l.note || null,
         charges: l.charges
           .filter((c) => num(c.quantity) > 0)
@@ -326,6 +343,25 @@ export function ReceiveGoodsDialog({
                       </div>
                     </div>
 
+                    {making && (
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Weight / piece</Label>
+                          <Input
+                            className="h-8"
+                            type="number"
+                            step="0.001"
+                            value={l.per_piece_weight}
+                            onChange={(e) => setLine(i, { per_piece_weight: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Total weight</Label>
+                          <Input className="h-8 bg-muted/40" readOnly value={lineWeight(l) ? String(Number(lineWeight(l).toFixed(3))) : ""} />
+                        </div>
+                      </div>
+                    )}
+
                     {over && (
                       <p className="text-xs text-destructive">
                         Only {l.pending} left at the company on this line, but {claimed} is entered.
@@ -334,10 +370,14 @@ export function ReceiveGoodsDialog({
 
                     <div className="rounded-md bg-muted/30 p-2 space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">Work charged</span>
-                        <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => addCharge(i)}>
-                          Add work
-                        </Button>
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {making ? "Making charge" : "Work charged"}
+                        </span>
+                        {!making && (
+                          <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => addCharge(i)}>
+                            Add work
+                          </Button>
+                        )}
                       </div>
                       {l.charges.length === 0 ? (
                         <p className="text-xs text-muted-foreground py-1">
@@ -403,6 +443,19 @@ export function ReceiveGoodsDialog({
               <div className="flex items-center justify-between border-t pt-2">
                 <span className="text-sm text-muted-foreground">Bill total</span>
                 <span className="text-xl font-bold">{formatMoney(total, currency)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t pt-2">
+                <div>
+                  <Label className="text-sm">Paid now <span className="text-muted-foreground" dir="rtl">وصول رقم</span></Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Money handed over as the bill was settled. It goes on their khata as a payment.
+                  </p>
+                </div>
+                <Input className="h-8 w-32 text-end" type="number" step="0.01" value={paidNow} onChange={(e) => setPaidNow(e.target.value)} />
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Left on this bill <span dir="rtl">بقایہ رقم</span></span>
+                <span className="font-semibold">{formatMoney(total - num(paidNow), currency)}</span>
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Added to what you owe {draft.challan.supplier_name}, and shown in the register.

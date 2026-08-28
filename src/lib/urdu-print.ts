@@ -28,6 +28,8 @@ export const UR = {
   deduction: "کٹوتی",
   note: "نوٹ",
   goodsOut: "بھیجا گیا مال",
+  perPieceWeight: "فی عدد وزن",
+  totalWeight: "کل وزن",
   goodsIn: "وصول شدہ مال",
 } as const;
 

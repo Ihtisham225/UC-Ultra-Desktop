@@ -28,6 +28,7 @@ export function JobWorkBillPrintDialog({
   // A column per process actually charged on this bill.
   const names = [...new Set(receipt.items.flatMap((it) => it.charges.map((c) => c.process_name)))];
   const anyShort = receipt.items.some((it) => it.short_qty > 0 || it.damaged_qty > 0);
+  const anyWeight = receipt.items.some((it) => it.per_piece_weight);
   const amountFor = (itemIndex: number, name: string) =>
     receipt.items[itemIndex].charges
       .filter((c) => c.process_name === name)
@@ -43,7 +44,9 @@ export function JobWorkBillPrintDialog({
               {[currentShop?.address, currentShop?.phone].filter(Boolean).join(" · ")}
             </div>
             <div className="mt-1 text-base font-bold">{UR.goodsIn}</div>
-            <div className="text-[10px] tracking-wide" dir="ltr">GOODS RECEIVED &amp; WORK BILL</div>
+            <div className="text-[10px] tracking-wide" dir="ltr">
+              {receipt.kind === "making" ? "GOODS RECEIVED & MAKING BILL" : "GOODS RECEIVED & WORK BILL"}
+            </div>
           </div>
 
           <div className="flex justify-between text-sm mb-2">
@@ -65,6 +68,7 @@ export function JobWorkBillPrintDialog({
                 <th className="border border-black p-1 w-14">{UR.received}</th>
                 {anyShort && <th className="border border-black p-1 w-12">{UR.short}</th>}
                 {anyShort && <th className="border border-black p-1 w-12">{UR.damaged}</th>}
+                {anyWeight && <th className="border border-black p-1 w-20">{UR.totalWeight}</th>}
                 {names.map((n) => (
                   <th key={n} className="border border-black p-1 w-20">{n}</th>
                 ))}
@@ -82,6 +86,11 @@ export function JobWorkBillPrintDialog({
                   <td className="border border-black p-1 text-center font-medium">{it.received_qty}</td>
                   {anyShort && <td className="border border-black p-1 text-center">{it.short_qty || ""}</td>}
                   {anyShort && <td className="border border-black p-1 text-center">{it.damaged_qty || ""}</td>}
+                  {anyWeight && (
+                    <td className="border border-black p-1 text-center">
+                      {it.per_piece_weight ? Number((it.received_qty * it.per_piece_weight).toFixed(3)) : ""}
+                    </td>
+                  )}
                   {names.map((n) => {
                     const amount = amountFor(i, n);
                     return (
@@ -108,6 +117,15 @@ export function JobWorkBillPrintDialog({
                 {anyShort && (
                   <td className="border border-black p-1 text-center">
                     {receipt.items.reduce((s, it) => s + it.damaged_qty, 0) || ""}
+                  </td>
+                )}
+                {anyWeight && (
+                  <td className="border border-black p-1 text-center">
+                    {Number(
+                      receipt.items
+                        .reduce((s, it) => s + it.received_qty * (it.per_piece_weight ?? 0), 0)
+                        .toFixed(3),
+                    ) || ""}
                   </td>
                 )}
                 {names.map((n) => (
@@ -147,10 +165,16 @@ export function JobWorkBillPrintDialog({
                     {receipt.deduction ? formatMoney(receipt.deduction, currency) : "—"}
                   </td>
                 </tr>
+                <tr>
+                  <td className="border border-black p-1.5">{UR.receivedAmount}</td>
+                  <td className="border border-black p-1.5 text-end" dir="ltr">
+                    {receipt.paid_now ? formatMoney(receipt.paid_now, currency) : "—"}
+                  </td>
+                </tr>
                 <tr className="font-bold">
                   <td className="border border-black p-1.5">{UR.remainingAmount}</td>
                   <td className="border border-black p-1.5 text-end" dir="ltr">
-                    {formatMoney(receipt.total, currency)}
+                    {formatMoney(receipt.total - receipt.paid_now, currency)}
                   </td>
                 </tr>
               </tbody>

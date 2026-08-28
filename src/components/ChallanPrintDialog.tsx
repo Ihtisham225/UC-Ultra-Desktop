@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { useShop } from "@/contexts/ShopContext";
 import { UR, URDU_FONT_STACK, printCss } from "@/lib/urdu-print";
+import { CHALLAN_KIND } from "@/lib/handicraft";
 import type { ChallanDto, JobProcessDto } from "@/lib/handicraftTypes";
 
 const ID = "challan-print";
@@ -23,11 +24,15 @@ export function ChallanPrintDialog({
 }) {
   const { currentShop } = useShop();
   if (!challan) return null;
+  const making = challan.kind === "making";
+  const copy = CHALLAN_KIND[challan.kind];
 
   // Only the work this challan actually asks for gets a column — printing all
   // eight of a shop's processes would squash the detail column to nothing.
+  // A making challan carries no process ticks — it carries weights instead.
   const used = processes.filter((p) => challan.items.some((it) => it.process_ids.includes(p.id)));
-  const columns = used.length > 0 ? used : processes.slice(0, 4);
+  const columns = making ? [] : used.length > 0 ? used : processes.slice(0, 4);
+  const anyWeight = challan.items.some((it) => it.per_piece_weight);
 
   return (
     <Dialog open={!!challan} onOpenChange={(o) => !o && onClose()}>
@@ -38,8 +43,8 @@ export function ChallanPrintDialog({
             <div className="text-xs">
               {[currentShop?.address, currentShop?.phone].filter(Boolean).join(" · ")}
             </div>
-            <div className="mt-1 text-base font-bold">{UR.goodsOut}</div>
-            <div className="text-[10px] tracking-wide" dir="ltr">GOODS SENT FOR PROCESSING</div>
+            <div className="mt-1 text-base font-bold">{copy.urdu}</div>
+            <div className="text-[10px] tracking-wide" dir="ltr">{copy.english}</div>
           </div>
 
           <div className="flex justify-between text-sm mb-2">
@@ -58,6 +63,12 @@ export function ChallanPrintDialog({
                 <th className="border border-black p-1 w-10">{UR.serial}</th>
                 <th className="border border-black p-1 text-start">{UR.detail}</th>
                 <th className="border border-black p-1 w-16">{UR.quantity}</th>
+                {making && anyWeight && (
+                  <>
+                    <th className="border border-black p-1 w-20">{UR.perPieceWeight}</th>
+                    <th className="border border-black p-1 w-20">{UR.totalWeight}</th>
+                  </>
+                )}
                 {columns.map((p) => (
                   <th key={p.id} className="border border-black p-1 w-14">
                     <div>{p.name_local || p.name}</div>
@@ -71,6 +82,14 @@ export function ChallanPrintDialog({
                   <td className="border border-black p-1 text-center">{i + 1}</td>
                   <td className="border border-black p-1">{it.description}</td>
                   <td className="border border-black p-1 text-center font-medium">{it.quantity}</td>
+                  {making && anyWeight && (
+                    <>
+                      <td className="border border-black p-1 text-center">{it.per_piece_weight ?? ""}</td>
+                      <td className="border border-black p-1 text-center">
+                        {it.per_piece_weight ? Number((it.quantity * it.per_piece_weight).toFixed(3)) : ""}
+                      </td>
+                    </>
+                  )}
                   {columns.map((p) => (
                     <td key={p.id} className="border border-black p-1 text-center">
                       {it.process_ids.includes(p.id) ? "✓" : "✗"}
@@ -87,12 +106,30 @@ export function ChallanPrintDialog({
                   </td>
                   <td className="border border-black p-1">&nbsp;</td>
                   <td className="border border-black p-1" />
+                  {making && anyWeight && (
+                    <>
+                      <td className="border border-black p-1" />
+                      <td className="border border-black p-1" />
+                    </>
+                  )}
                   {columns.map((p) => <td key={p.id} className="border border-black p-1" />)}
                 </tr>
               ))}
               <tr className="font-bold">
                 <td className="border border-black p-1" colSpan={2}>{UR.total}</td>
                 <td className="border border-black p-1 text-center">{challan.total_qty}</td>
+                {making && anyWeight && (
+                  <>
+                    <td className="border border-black p-1" />
+                    <td className="border border-black p-1 text-center">
+                      {Number(
+                        challan.items
+                          .reduce((sum, it) => sum + it.quantity * (it.per_piece_weight ?? 0), 0)
+                          .toFixed(3),
+                      ) || ""}
+                    </td>
+                  </>
+                )}
                 {columns.map((p) => <td key={p.id} className="border border-black p-1" />)}
               </tr>
             </tbody>

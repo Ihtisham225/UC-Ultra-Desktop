@@ -29,7 +29,6 @@ import type {
   PartyPaymentDto,
   LedgerResult,
   LedgerRow,
-  PartyBalance,
 } from "@/lib/handicraftTypes";
 
 const ALL = "all";
@@ -52,6 +51,7 @@ type PurchaseDraft = {
   book_number: string;
   city: string;
   bilty_number: string;
+  received_by: string;
   notes: string;
   items: ItemDraft[];
 };
@@ -148,7 +148,7 @@ export default function MaterialPurchases() {
   const partyName = (id: string | null) => parties.find((p) => p.id === id)?.name ?? "—";
   // Material comes from suppliers; a pure processing company never sells yarn,
   // so it stays out of the purchase form. Payments still list everyone.
-  const materialSuppliers = parties.filter((p) => isMaterialSupplier(p.role));
+  const materialSuppliers = parties.filter(isMaterialSupplier);
 
   const registerPages = usePagination(ledger.rows, {
     key: "material-register",
@@ -177,6 +177,7 @@ export default function MaterialPurchases() {
       book_number: "",
       city: "",
       bilty_number: "",
+      received_by: "",
       notes: "",
       items: [emptyItem()],
     });
@@ -191,6 +192,7 @@ export default function MaterialPurchases() {
       book_number: p.book_number ?? "",
       city: p.city ?? "",
       bilty_number: p.bilty_number ?? "",
+      received_by: p.received_by ?? "",
       notes: p.notes ?? "",
       items: p.items.length
         ? p.items.map((it) => ({
@@ -246,6 +248,7 @@ export default function MaterialPurchases() {
       book_number: purchaseDraft.book_number || null,
       city: purchaseDraft.city || null,
       bilty_number: purchaseDraft.bilty_number || null,
+      received_by: purchaseDraft.received_by || null,
       notes: purchaseDraft.notes || null,
       items: items.map((it) => ({
         colour: it.colour || null,
@@ -769,6 +772,20 @@ export default function MaterialPurchases() {
                 <div className="space-y-1.5">
                   <Label>Bilty no.</Label>
                   <Input value={purchaseDraft.bilty_number} onChange={(e) => setPurchaseDraft({ ...purchaseDraft, bilty_number: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Received by</Label>
+                  <Input
+                    value={purchaseDraft.received_by}
+                    onChange={(e) => setPurchaseDraft({ ...purchaseDraft, received_by: e.target.value })}
+                    placeholder="Who took delivery"
+                    list="material-received-by"
+                  />
+                  <datalist id="material-received-by">
+                    {Array.from(new Set(purchases.map((x) => x.received_by).filter(Boolean))).map((n) => (
+                      <option key={n as string} value={n as string} />
+                    ))}
+                  </datalist>
                 </div>
                 <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
                   <Label>Notes</Label>

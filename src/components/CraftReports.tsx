@@ -233,16 +233,17 @@ export default function CraftReports() {
 
         <TabsContent value="pending" className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
-            <KPI label="Pieces at the factories" value={String(pendingPieces)} />
+            <KPI label="Pieces still out" value={String(pendingPieces)} />
             <KPI label="Open lines" value={String(pending.length)} />
             <KPI label="Longest outstanding" value={pending.length ? `${pending[0].days_out} days` : "—"} sub={pending.length ? pending[0].company : undefined} />
           </div>
           <Toolbar
-            title="Still at the factories"
+            title="Still out with makers and factories"
             rows={pending}
-            filename={`pending-at-factories-${todayISO()}`}
+            filename={`still-out-${todayISO()}`}
             columns={[
-              { header: "Company", value: (r: PendingAtCompanyRow) => r.company },
+              { header: "Stage", value: (r: PendingAtCompanyRow) => r.kind },
+              { header: "Party", value: (r: PendingAtCompanyRow) => r.company },
               { header: "City", value: (r: PendingAtCompanyRow) => r.city ?? "" },
               { header: "Challan", value: (r: PendingAtCompanyRow) => String(r.challan_number) },
               { header: "Book no.", value: (r: PendingAtCompanyRow) => r.book_number ?? "" },
@@ -257,11 +258,11 @@ export default function CraftReports() {
             ]}
           />
           <Card className="shadow-card overflow-x-auto">
-            {loading ? <Empty msg="Loading…" /> : pending.length === 0 ? <Empty msg="Nothing is out for processing." /> : (
+            {loading ? <Empty msg="Loading…" /> : pending.length === 0 ? <Empty msg="Nothing is out with a maker or a factory." /> : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Company</TableHead><TableHead>Challan</TableHead>
+                    <TableHead>Stage</TableHead><TableHead>Party</TableHead><TableHead>Challan</TableHead>
                     <TableHead>Sent on</TableHead><TableHead className="text-end">Days</TableHead>
                     <TableHead>Detail</TableHead>
                     <TableHead className="text-end">Sent</TableHead><TableHead className="text-end">Back</TableHead>
@@ -271,6 +272,11 @@ export default function CraftReports() {
                 <TableBody>
                   {pending.map((r, i) => (
                     <TableRow key={`${r.challan_number}-${r.description}-${i}`}>
+                      <TableCell>
+                        <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-muted font-bold">
+                          {r.kind === "making" ? "making" : "processing"}
+                        </span>
+                      </TableCell>
                       <TableCell className="font-medium">
                         {r.company}
                         {r.city && <span className="text-xs text-muted-foreground"> · {r.city}</span>}
@@ -302,7 +308,7 @@ export default function CraftReports() {
             columns={[
               { header: "Party", value: (r: PartyBalanceReportRow) => r.party },
               { header: "City", value: (r: PartyBalanceReportRow) => r.city ?? "" },
-              { header: "Role", value: (r: PartyBalanceReportRow) => r.role },
+              { header: "Roles", value: (r: PartyBalanceReportRow) => r.roles },
               { header: "Opening", value: (r: PartyBalanceReportRow) => String(r.opening) },
               { header: "Purchases", value: (r: PartyBalanceReportRow) => String(r.purchases) },
               { header: "Job work", value: (r: PartyBalanceReportRow) => String(r.job_work) },

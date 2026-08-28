@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { LayoutDashboard, ScanBarcode, Menu, Settings as SettingsIcon, Package, Receipt, Users, BarChart3, PackageOpen, Wallet, ShieldCheck, ShieldAlert, Sparkles, LogOut, Undo2, LifeBuoy, HandCoins, Truck, Factory, FileBarChart, Boxes, FolderTree } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Menu, Settings as SettingsIcon, Package, Receipt, Users, BarChart3, PackageOpen, Wallet, ShieldCheck, ShieldAlert, Sparkles, LogOut, Undo2, LifeBuoy, HandCoins, Truck, Factory, Scissors, FileBarChart, Boxes, FolderTree } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ export const MobileBottomNav = () => {
     { to: "/reports", label: "Reports", icon: FileBarChart, show: perms.canManageExpenses },
     { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, show: !craft && perms.canManagePurchases },
     { to: "/material-purchases", label: t("nav.purchases"), icon: PackageOpen, show: craft && perms.canManagePurchases },
+    { to: "/making", label: "Making", icon: Scissors, show: craft && perms.canManagePurchases },
     { to: "/job-work", label: "Job Work", icon: Factory, show: craft && perms.canManagePurchases },
     { to: "/suppliers", label: craft ? "Parties" : t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
     { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },

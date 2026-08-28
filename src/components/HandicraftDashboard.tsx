@@ -45,10 +45,10 @@ export default function HandicraftDashboard({ stats }: { stats: CraftDashboard }
           </div>
         </Card>
         <Card className="shadow-card p-4">
-          <div className="text-xs text-muted-foreground">At the factories</div>
+          <div className="text-xs text-muted-foreground">Out of the shop</div>
           <div className="text-2xl font-bold mt-1">{stats.pieces_at_companies}</div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            pieces on {stats.open_challans} open challan{stats.open_challans === 1 ? "" : "s"}
+            {stats.pieces_with_makers} with makers · {stats.pieces_at_processors} at factories
           </div>
         </Card>
         <Card className="shadow-card p-4">
@@ -70,20 +70,23 @@ export default function HandicraftDashboard({ stats }: { stats: CraftDashboard }
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="shadow-card">
           <div className="p-4 border-b flex items-center justify-between">
-            <h2 className="font-semibold flex items-center gap-2"><Factory className="size-4 text-primary" /> Lying at the factories</h2>
+            <h2 className="font-semibold flex items-center gap-2"><Factory className="size-4 text-primary" /> Still out</h2>
             <Link to="/job-work" className="text-xs text-primary hover:underline">Open job work</Link>
           </div>
           {stats.by_company.length === 0 ? (
             <p className="p-8 text-center text-sm text-muted-foreground">
-              Nothing is out for processing right now.
+              Nothing is out with a maker or a factory right now.
             </p>
           ) : (
             <ul className="divide-y">
               {stats.by_company.map((c) => (
-                <li key={c.id} className="p-4 flex items-center justify-between gap-3">
+                <li key={`${c.id}-${c.kind}`} className="p-4 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-medium truncate">{c.name}</div>
                     <div className="text-xs text-muted-foreground flex items-center gap-2">
+                      <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-muted font-bold">
+                        {c.kind === "making" ? "making" : "processing"}
+                      </span>
                       {c.city && <span>{c.city}</span>}
                       <span>{c.challans} challan{c.challans === 1 ? "" : "s"}</span>
                       {c.oldest_days > 0 && (
@@ -119,9 +122,7 @@ export default function HandicraftDashboard({ stats }: { stats: CraftDashboard }
                   <Link to={`/material-purchases?party=${p.id}`} className="min-w-0 hover:underline">
                     <div className="font-medium truncate">{p.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {[p.city, p.role === "processor" ? "processing" : p.role === "both" ? "supplier + processing" : "supplier"]
-                        .filter(Boolean)
-                        .join(" · ")}
+                      {[p.city, p.roles].filter(Boolean).join(" · ")}
                     </div>
                   </Link>
                   <div className={`font-semibold shrink-0 ${p.balance > 0 ? "text-destructive" : "text-success"}`}>
