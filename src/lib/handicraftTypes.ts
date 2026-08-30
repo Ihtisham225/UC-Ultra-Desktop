@@ -145,6 +145,9 @@ export interface ChallanDto {
   items: ChallanItemDto[];
   total_qty: number;
   total_pending: number;
+  sent_weight: number;
+  received_weight: number;
+  pending_weight: number;
   receipts_count: number;
 }
 
@@ -187,6 +190,7 @@ export interface ReceiptDto {
   total: number;
   paid_now: number;
   closes_challan: boolean;
+  received_weight: number;
   items: ReceiptItemDto[];
 }
 
@@ -203,6 +207,8 @@ export interface ReceiptDraft {
   challan: {
     id: string;
     kind: ChallanKindValue;
+    sent_weight: number;
+    received_weight: number;
     number: number;
     book_number: string | null;
     date: string;

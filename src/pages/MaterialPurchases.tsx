@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { BookOpen, Plus, Trash2, Edit2, Download, HandCoins, X, Paperclip, Printer } from "lucide-react";
+import { BookOpen, Plus, Trash2, Edit2, Download, HandCoins, X, Paperclip, Printer, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { downloadCsv } from "@/lib/csv";
 import { AttachmentsField, AttachmentsDialog, uploadPendingAttachments } from "@/components/AttachmentsField";
 import { PartyStatementPrintDialog } from "@/components/PartyStatementPrintDialog";
+import { RecordDetailsDialog } from "@/components/RecordDetailsDialog";
 import {
   PartyPaymentDialog, emptyPaymentDraft, paymentToDraft, type PaymentDraft,
 } from "@/components/PartyPaymentDialog";
@@ -96,6 +97,7 @@ export default function MaterialPurchases() {
     { type: "material_purchase" | "party_payment"; id: string; title: string } | null
   >(null);
   const [printing, setPrinting] = useState(false);
+  const [viewingPurchase, setViewingPurchase] = useState<MaterialPurchaseDto | null>(null);
 
   // Today is read after mount: a date in a useState initializer renders
   // differently on the server and hydrates with a mismatch.
@@ -556,6 +558,9 @@ export default function MaterialPurchases() {
                         <TableCell className="text-end">{p.items.length}</TableCell>
                         <TableCell className="text-end font-semibold">{formatMoney(p.total, currency)}</TableCell>
                         <TableCell className="text-end whitespace-nowrap">
+                          <Button variant="ghost" size="icon" title="View details" onClick={() => setViewingPurchase(p)}>
+                            <Eye className="size-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -820,6 +825,64 @@ export default function MaterialPurchases() {
         methods={payments.map((x) => x.method)}
         canEdit={canManage}
         onSaved={load}
+      />
+
+      <RecordDetailsDialog
+        open={!!viewingPurchase}
+        onClose={() => setViewingPurchase(null)}
+        title={`Purchase #${viewingPurchase?.number ?? ""}`}
+        subtitle={viewingPurchase ? `${viewingPurchase.supplier_name} · ${viewingPurchase.date}` : undefined}
+        fields={
+          viewingPurchase
+            ? [
+                { label: "Party", value: viewingPurchase.supplier_name },
+                { label: "Date", value: viewingPurchase.date },
+                { label: "Book no.", value: viewingPurchase.book_number },
+                { label: "City", value: viewingPurchase.city },
+                { label: "Bilty no.", value: viewingPurchase.bilty_number },
+                { label: "Received by", value: viewingPurchase.received_by },
+                { label: "Notes", value: viewingPurchase.notes, full: true },
+              ]
+            : []
+        }
+        tables={
+          viewingPurchase
+            ? [
+                {
+                  title: "Goods",
+                  columns: [
+                    { header: "Colour" },
+                    { header: "Act" },
+                    { header: "Bags", align: "end" },
+                    { header: "Pounds", align: "end" },
+                    { header: "Rate", align: "end" },
+                    { header: "Amount", align: "end" },
+                  ],
+                  rows: viewingPurchase.items.map((it) => [
+                    it.colour ?? "—",
+                    it.act ?? "—",
+                    it.bags || "",
+                    it.pounds || "",
+                    it.rate ? formatMoney(it.rate, currency) : "",
+                    formatMoney(it.amount, currency),
+                  ]),
+                  footer: [
+                    "Total",
+                    "",
+                    viewingPurchase.items.reduce((s, it) => s + it.bags, 0) || "",
+                    viewingPurchase.items.reduce((s, it) => s + it.pounds, 0) || "",
+                    "",
+                    formatMoney(viewingPurchase.total, currency),
+                  ],
+                },
+              ]
+            : []
+        }
+        totals={
+          viewingPurchase
+            ? [{ label: "Bill total", value: formatMoney(viewingPurchase.total, currency), strong: true }]
+            : []
+        }
       />
 
       <PartyStatementPrintDialog

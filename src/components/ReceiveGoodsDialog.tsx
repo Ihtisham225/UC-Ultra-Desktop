@@ -120,12 +120,10 @@ export function ReceiveGoodsDialog({
               received,
               short: prev ? String(prev.short_qty || "") : "",
               damaged: prev ? String(prev.damaged_qty || "") : "",
-              per_piece_weight:
-                prev?.per_piece_weight != null
-                  ? String(prev.per_piece_weight)
-                  : l.per_piece_weight != null
-                    ? String(l.per_piece_weight)
-                    : "",
+              // Deliberately not inherited from the challan: that figure is the
+              // weight of a box of raw material, this is the weight of one
+              // finished piece.
+              per_piece_weight: prev?.per_piece_weight != null ? String(prev.per_piece_weight) : "",
               note: prev?.note ?? "",
               charges,
             };
@@ -224,6 +222,11 @@ export function ReceiveGoodsDialog({
   const chargesTotal = lines.reduce((s, l) => s + lineTotal(l), 0);
   const total = chargesTotal - num(deduction);
   const shortPieces = lines.reduce((s, l) => s + num(l.short) + num(l.damaged), 0);
+  const billWeight = lines.reduce((s, l) => s + lineWeight(l), 0);
+  const stillOut = Math.max(
+    0,
+    (draft?.challan.sent_weight ?? 0) - (draft?.challan.received_weight ?? 0) - billWeight,
+  );
 
   const save = async () => {
     if (!draft) return;
@@ -440,6 +443,33 @@ export function ReceiveGoodsDialog({
                 );
               })}
             </div>
+
+            {making && draft.challan.sent_weight > 0 && (
+              <div className="rounded-lg border p-3 space-y-1.5 bg-muted/20">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Weight sent out</span>
+                  <span className="font-medium">{Number(draft.challan.sent_weight.toFixed(3))}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Back {draft.challan.received_weight > 0 ? "(earlier bills + this one)" : "on this bill"}
+                  </span>
+                  <span className="font-medium">
+                    {Number((draft.challan.received_weight + billWeight).toFixed(3))}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm border-t pt-1.5">
+                  <span className="text-muted-foreground">Still with the maker</span>
+                  <span className={`font-semibold ${stillOut > 0 ? "text-primary" : "text-success"}`}>
+                    {Number(stillOut.toFixed(3))}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Weight of one finished piece × what came back. Some weight is always lost in the
+                  making, so tick below when the job is done rather than waiting for zero.
+                </p>
+              </div>
+            )}
 
             <div className="rounded-lg border p-3 space-y-2">
               <div className="flex items-center justify-between text-sm">

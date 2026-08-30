@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import {
-  Truck, Plus, Trash2, Edit2, PackageCheck, X, ChevronDown, ChevronRight, Lock, LockOpen, Paperclip, Printer, Check, HandCoins,
+  Truck, Plus, Trash2, Edit2, PackageCheck, X, ChevronDown, ChevronRight, Lock, LockOpen, Paperclip, Printer, Check, Eye, HandCoins,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,11 +24,12 @@ import { rpc } from "@/lib/apiClient";
 import type {
   JobProcessDto, PartyOption, ChallanDto, ReceiptDto, PartyPaymentDto,
 } from "@/lib/handicraftTypes";
+import { ReceiveGoodsDialog } from "@/components/ReceiveGoodsDialog";
 import {
   PartyPaymentDialog, emptyPaymentDraft, paymentToDraft, type PaymentDraft,
 } from "@/components/PartyPaymentDialog";
-import { ReceiveGoodsDialog } from "@/components/ReceiveGoodsDialog";
 import { ChallanPrintDialog } from "@/components/ChallanPrintDialog";
+import { RecordDetailsDialog } from "@/components/RecordDetailsDialog";
 import { JobWorkBillPrintDialog } from "@/components/JobWorkBillPrintDialog";
 
 const ALL = "all";
@@ -100,6 +101,8 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
   const [viewing, setViewing] = useState<
     { type: "job_work_challan" | "job_work_receipt"; id: string; title: string } | null
   >(null);
+  const [viewingChallan, setViewingChallan] = useState<ChallanDto | null>(null);
+  const [viewingBill, setViewingBill] = useState<ReceiptDto | null>(null);
   const [printingChallan, setPrintingChallan] = useState<ChallanDto | null>(null);
   const [printingBill, setPrintingBill] = useState<ReceiptDto | null>(null);
   // "Goods received" starts from a challan, so the button opens a picker of
@@ -185,6 +188,10 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
   });
 
   const pendingPieces = challans.reduce((s, c) => s + c.total_pending, 0);
+  const weightSent = challans.reduce((s, c) => s + c.sent_weight, 0);
+  const weightBack = challans.reduce((s, c) => s + c.received_weight, 0);
+  const weightOut = challans.reduce((s, c) => s + c.pending_weight, 0);
+  const wt = (n: number) => Number(n.toFixed(3)).toLocaleString();
   const openMaking = challans.filter((c) => c.status === "open").length;
   const openChallans = challans.filter((c) => c.status === "open").length;
   const billedTotal = receipts.reduce((s, r) => s + r.total, 0);
@@ -447,15 +454,19 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="shadow-card p-4 border-primary/40">
-          <div className="text-xs text-muted-foreground">{making ? "Jobs running" : "At the companies"}</div>
-          <div className="text-xl font-bold mt-1 text-primary">{making ? openMaking : pendingPieces}</div>
+          <div className="text-xs text-muted-foreground">
+            {making ? "Weight still with the makers" : "At the companies"}
+          </div>
+          <div className="text-xl font-bold mt-1 text-primary">
+            {making ? wt(weightOut) : pendingPieces}
+          </div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            {making ? "challans not finished" : "pieces not back yet"}
+            {making ? `${wt(weightSent)} sent · ${wt(weightBack)} back` : "pieces not back yet"}
           </div>
         </Card>
         <Card className="shadow-card p-4">
-          <div className="text-xs text-muted-foreground">Open challans</div>
-          <div className="text-xl font-bold mt-1">{openChallans}</div>
+          <div className="text-xs text-muted-foreground">{making ? "Jobs running" : "Open challans"}</div>
+          <div className="text-xl font-bold mt-1">{making ? openMaking : openChallans}</div>
           <div className="text-[11px] text-muted-foreground mt-0.5">of {challans.length} in this range</div>
         </Card>
         <Card className="shadow-card p-4">
@@ -530,6 +541,9 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                               </span>
                             </TableCell>
                             <TableCell className="text-end whitespace-nowrap">
+                              <Button variant="ghost" size="icon" title="View details" onClick={() => setViewingChallan(c)}>
+                                <Eye className="size-4" />
+                              </Button>
                               <Button variant="ghost" size="icon" title="Print challan" onClick={() => setPrintingChallan(c)}>
                                 <Printer className="size-4" />
                               </Button>
@@ -569,7 +583,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                                         {it.quantity} {making ? "boxes" : "pcs"}
                                         {!making && it.bundles ? ` (${it.bundles} × ${it.pieces_per_bundle ?? "?"})` : ""}
                                         {making && it.per_piece_weight
-                                          ? ` · ${Number((it.quantity * it.per_piece_weight).toFixed(3))} weight`
+                                          ? ` · ${wt(it.quantity * it.per_piece_weight)} weight`
                                           : ""}
                                       </span>
                                       <span className="flex flex-wrap gap-1">
@@ -633,6 +647,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                     <TableHead>{copy.party}</TableHead>
                     <TableHead>Challan</TableHead>
                     <TableHead>Book no.</TableHead>
+                    {making && <TableHead className="text-end">Weight back</TableHead>}
                     <TableHead className="text-end">Charges</TableHead>
                     <TableHead className="text-end">Deduction</TableHead>
                     <TableHead className="text-end">Total</TableHead>
@@ -650,10 +665,14 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                         <TableCell className="font-medium">{r.supplier_name}</TableCell>
                         <TableCell>#{r.challan_number}</TableCell>
                         <TableCell>{r.book_number ?? ""}</TableCell>
+                        {making && <TableCell className="text-end">{wt(r.received_weight)}</TableCell>}
                         <TableCell className="text-end">{formatMoney(r.charges_total, currency)}</TableCell>
                         <TableCell className="text-end text-destructive">{r.deduction ? formatMoney(r.deduction, currency) : ""}</TableCell>
                         <TableCell className="text-end font-semibold">{formatMoney(r.total, currency)}</TableCell>
                         <TableCell className="text-end whitespace-nowrap">
+                          <Button variant="ghost" size="icon" title="View details" onClick={() => setViewingBill(r)}>
+                            <Eye className="size-4" />
+                          </Button>
                           <Button variant="ghost" size="icon" title="Print bill" onClick={() => setPrintingBill(r)}>
                             <Printer className="size-4" />
                           </Button>
@@ -1041,6 +1060,153 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
           )}
         </DialogContent>
       </Dialog>
+
+      <RecordDetailsDialog
+        open={!!viewingChallan}
+        onClose={() => setViewingChallan(null)}
+        title={`Challan #${viewingChallan?.number ?? ""}`}
+        subtitle={viewingChallan ? `${viewingChallan.supplier_name} · ${viewingChallan.date}` : undefined}
+        fields={
+          viewingChallan
+            ? [
+                { label: copy.party, value: viewingChallan.supplier_name },
+                { label: "Date", value: viewingChallan.date },
+                { label: "Book no.", value: viewingChallan.book_number },
+                { label: "Sent via", value: viewingChallan.sent_via },
+                { label: "Sent by", value: viewingChallan.sent_by },
+                { label: "Counted by", value: viewingChallan.counted_by },
+                { label: "Total bundles", value: viewingChallan.total_bundles },
+                {
+                  label: "Status",
+                  value: viewingChallan.status === "open" ? (making ? "With maker" : "At company") : "Finished",
+                },
+                { label: "Bills against it", value: viewingChallan.receipts_count },
+                { label: "Notes", value: viewingChallan.notes, full: true },
+              ]
+            : []
+        }
+        tables={
+          viewingChallan
+            ? [
+                {
+                  title: making ? "Material sent" : "Goods sent",
+                  columns: [
+                    { header: "Detail" },
+                    { header: making ? "Boxes" : "Pieces", align: "end" },
+                    ...(making
+                      ? [{ header: "Weight / box", align: "end" as const }, { header: "Total weight", align: "end" as const }]
+                      : [{ header: "Back", align: "end" as const }, { header: "Pending", align: "end" as const }]),
+                    { header: making ? "" : "Work" },
+                  ],
+                  rows: viewingChallan.items.map((it) => [
+                    it.description,
+                    it.quantity,
+                    ...(making
+                      ? [it.per_piece_weight ?? "—", it.per_piece_weight ? wt(it.quantity * it.per_piece_weight) : "—"]
+                      : [it.received, it.pending]),
+                    making
+                      ? ""
+                      : it.process_ids.map(processLabel).join(", ") || "—",
+                  ]),
+                  footer: [
+                    "Total",
+                    viewingChallan.total_qty,
+                    ...(making
+                      ? ["", wt(viewingChallan.sent_weight)]
+                      : ["", viewingChallan.total_pending]),
+                    "",
+                  ],
+                },
+              ]
+            : []
+        }
+        totals={
+          viewingChallan && making
+            ? [
+                { label: "Weight sent", value: wt(viewingChallan.sent_weight) },
+                { label: "Weight back", value: wt(viewingChallan.received_weight) },
+                { label: "Still with the maker", value: wt(viewingChallan.pending_weight), strong: true },
+              ]
+            : []
+        }
+        actions={
+          viewingChallan ? (
+            <Button variant="outline" onClick={() => { setPrintingChallan(viewingChallan); setViewingChallan(null); }}>
+              <Printer className="size-4 mr-1.5" /> Print
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <RecordDetailsDialog
+        open={!!viewingBill}
+        onClose={() => setViewingBill(null)}
+        title={`Bill #${viewingBill?.number ?? ""}`}
+        subtitle={viewingBill ? `${viewingBill.supplier_name} · ${viewingBill.date}` : undefined}
+        fields={
+          viewingBill
+            ? [
+                { label: copy.party, value: viewingBill.supplier_name },
+                { label: "Date", value: viewingBill.date },
+                { label: "Book no.", value: viewingBill.book_number },
+                { label: "Against challan", value: `#${viewingBill.challan_number}` },
+                { label: "Received via", value: viewingBill.received_via },
+                ...(making
+                  ? [{ label: "Finished the challan", value: viewingBill.closes_challan ? "Yes" : "No" }]
+                  : []),
+                { label: "Notes", value: viewingBill.notes, full: true },
+              ]
+            : []
+        }
+        tables={
+          viewingBill
+            ? [
+                {
+                  title: "Goods received",
+                  columns: [
+                    { header: "Detail" },
+                    { header: "Received", align: "end" },
+                    ...(making
+                      ? [{ header: "Weight / piece", align: "end" as const }, { header: "Total weight", align: "end" as const }]
+                      : [{ header: "Short", align: "end" as const }, { header: "Damaged", align: "end" as const }]),
+                    { header: "Work charged" },
+                    { header: "Line total", align: "end" },
+                  ],
+                  rows: viewingBill.items.map((it) => [
+                    it.note ? `${it.description} — ${it.note}` : it.description,
+                    it.received_qty,
+                    ...(making
+                      ? [
+                          it.per_piece_weight ?? "—",
+                          it.per_piece_weight ? wt(it.received_qty * it.per_piece_weight) : "—",
+                        ]
+                      : [it.short_qty || "", it.damaged_qty || ""]),
+                    it.charges.map((c) => `${c.process_name} ${c.rate}×${c.quantity}`).join(", ") || "—",
+                    formatMoney(it.line_total, currency),
+                  ]),
+                },
+              ]
+            : []
+        }
+        totals={
+          viewingBill
+            ? [
+                ...(making ? [{ label: "Weight back on this bill", value: wt(viewingBill.received_weight) }] : []),
+                { label: "Charges", value: formatMoney(viewingBill.charges_total, currency) },
+                { label: "Deduction", value: viewingBill.deduction ? formatMoney(viewingBill.deduction, currency) : "—" },
+                { label: "Bill total", value: formatMoney(viewingBill.total, currency), strong: true },
+                { label: "Paid with the bill", value: viewingBill.paid_now ? formatMoney(viewingBill.paid_now, currency) : "—" },
+              ]
+            : []
+        }
+        actions={
+          viewingBill ? (
+            <Button variant="outline" onClick={() => { setPrintingBill(viewingBill); setViewingBill(null); }}>
+              <Printer className="size-4 mr-1.5" /> Print
+            </Button>
+          ) : undefined
+        }
+      />
 
       <ChallanPrintDialog
         challan={printingChallan}
