@@ -46,9 +46,10 @@ export default function HandicraftDashboard({ stats }: { stats: CraftDashboard }
         </Card>
         <Card className="shadow-card p-4">
           <div className="text-xs text-muted-foreground">Out of the shop</div>
-          <div className="text-2xl font-bold mt-1">{stats.pieces_at_companies}</div>
+          <div className="text-2xl font-bold mt-1">{stats.pieces_at_processors}</div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            {stats.pieces_with_makers} with makers · {stats.pieces_at_processors} at factories
+            pieces at the factories · {stats.open_making_jobs} making job
+            {stats.open_making_jobs === 1 ? "" : "s"} running
           </div>
         </Card>
         <Card className="shadow-card p-4">
@@ -97,8 +98,10 @@ export default function HandicraftDashboard({ stats }: { stats: CraftDashboard }
                     </div>
                   </div>
                   <div className="text-end shrink-0">
-                    <div className="text-lg font-bold">{c.pieces}</div>
-                    <div className="text-[10px] text-muted-foreground">pieces</div>
+                    <div className="text-lg font-bold">{c.kind === "making" ? c.challans : c.pieces}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {c.kind === "making" ? "job" + (c.challans === 1 ? "" : "s") : "pieces"}
+                    </div>
                   </div>
                 </li>
               ))}

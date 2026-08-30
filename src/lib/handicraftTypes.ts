@@ -41,9 +41,12 @@ export interface MaterialPurchaseDto {
   items: MaterialPurchaseItemDto[];
 }
 
+export type PartyPaymentKindValue = "material" | "making" | "processing";
+
 export interface PartyPaymentDto {
   id: string;
   number: number;
+  kind: PartyPaymentKindValue;
   date: string;
   supplier_id: string;
   supplier_name: string;
@@ -118,7 +121,6 @@ export interface ChallanItemDto {
   bundles: number | null;
   pieces_per_bundle: number | null;
   per_piece_weight: number | null;
-  rate: number | null;
   process_ids: string[];
   received: number;
   short: number;
@@ -135,6 +137,7 @@ export interface ChallanDto {
   supplier_id: string;
   supplier_name: string;
   sent_via: string | null;
+  sent_by: string | null;
   counted_by: string | null;
   total_bundles: number | null;
   notes: string | null;
@@ -183,6 +186,7 @@ export interface ReceiptDto {
   deduction: number;
   total: number;
   paid_now: number;
+  closes_challan: boolean;
   items: ReceiptItemDto[];
 }
 
@@ -192,7 +196,6 @@ export interface ReceiptDraftLine {
   sent: number;
   pending: number;
   per_piece_weight: number | null;
-  rate: number | null;
   process_ids: string[];
 }
 
@@ -335,8 +338,8 @@ export interface CraftDashboard {
   payable_job_work: number;
   in_credit: number;
   pieces_at_companies: number;
-  pieces_with_makers: number;
   pieces_at_processors: number;
+  open_making_jobs: number;
   open_challans: number;
   month_purchases: number;
   month_job_work: number;

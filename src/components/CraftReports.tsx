@@ -14,10 +14,7 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { downloadCsv, type CsvColumn } from "@/lib/csv";
 import { rpc } from "@/lib/apiClient";
 import type {
-  PurchasesByPartyRow,
-  JobWorkByProcessRow,
-  PendingAtCompanyRow,
-  PartyBalanceReportRow,
+  PurchasesByPartyRow, JobWorkByProcessRow, PendingAtCompanyRow, PartyBalanceReportRow,
 } from "@/lib/handicraftTypes";
 
 const todayISO = () => format(new Date(), "yyyy-MM-dd");
@@ -233,8 +230,14 @@ export default function CraftReports() {
 
         <TabsContent value="pending" className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
-            <KPI label="Pieces still out" value={String(pendingPieces)} />
-            <KPI label="Open lines" value={String(pending.length)} />
+            <KPI
+              label="Pieces at the factories"
+              value={String(pending.filter((r) => r.kind === "processing").reduce((s, r) => s + r.pending, 0))}
+            />
+            <KPI
+              label="Making jobs running"
+              value={String(new Set(pending.filter((r) => r.kind === "making").map((r) => r.challan_number)).size)}
+            />
             <KPI label="Longest outstanding" value={pending.length ? `${pending[0].days_out} days` : "—"} sub={pending.length ? pending[0].company : undefined} />
           </div>
           <Toolbar
@@ -287,7 +290,9 @@ export default function CraftReports() {
                       <TableCell>{r.description}</TableCell>
                       <TableCell className="text-end">{r.sent}</TableCell>
                       <TableCell className="text-end">{r.received}</TableCell>
-                      <TableCell className="text-end font-semibold text-primary">{r.pending}</TableCell>
+                      <TableCell className="text-end font-semibold text-primary">
+                        {r.kind === "making" ? `${r.sent} sent` : r.pending}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

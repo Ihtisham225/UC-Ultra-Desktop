@@ -21,14 +21,13 @@ import { usePagination } from "@/hooks/usePagination";
 import { downloadCsv } from "@/lib/csv";
 import { AttachmentsField, AttachmentsDialog, uploadPendingAttachments } from "@/components/AttachmentsField";
 import { PartyStatementPrintDialog } from "@/components/PartyStatementPrintDialog";
+import {
+  PartyPaymentDialog, emptyPaymentDraft, paymentToDraft, type PaymentDraft,
+} from "@/components/PartyPaymentDialog";
 import { isMaterialSupplier } from "@/lib/handicraft";
 import { rpc } from "@/lib/apiClient";
 import type {
-  PartyOption,
-  MaterialPurchaseDto,
-  PartyPaymentDto,
-  LedgerResult,
-  LedgerRow,
+  PartyOption, MaterialPurchaseDto, PartyPaymentDto, LedgerResult, LedgerRow,
 } from "@/lib/handicraftTypes";
 
 const ALL = "all";
@@ -54,16 +53,6 @@ type PurchaseDraft = {
   received_by: string;
   notes: string;
   items: ItemDraft[];
-};
-
-type PaymentDraft = {
-  id: string | null;
-  supplier_id: string;
-  date: string;
-  amount: string;
-  method: string;
-  reference: string;
-  note: string;
 };
 
 const emptyItem = (): ItemDraft => ({ colour: "", act: "", bags: "", pounds: "", rate: "", amount: "", amountEdited: false });
@@ -126,7 +115,7 @@ export default function MaterialPurchases() {
         rpc<PartyOption[]>("listPartyOptionsAction"),
         rpc<LedgerResult>("loadRegisterAction", filters),
         rpc<MaterialPurchaseDto[]>("listMaterialPurchasesAction", filters),
-        rpc<PartyPaymentDto[]>("listPartyPaymentsAction", filters),
+        rpc<PartyPaymentDto[]>("listPartyPaymentsAction", { ...filters, kind: "material" }),
       ]);
       setParties(p);
       setLedger(l);
@@ -291,64 +280,9 @@ export default function MaterialPurchases() {
 
   // ----------------------------------------------------------- payments
 
-  const newPayment = () => {
-    setPendingPhotos([]);
-    setPaymentDraft({
-      id: null,
-      supplier_id: party === ALL ? "" : party,
-      date: today,
-      amount: "",
-      method: "Cash",
-      reference: "",
-      note: "",
-    });
-  };
+  const newPayment = () => setPaymentDraft(emptyPaymentDraft(today, party === ALL ? "" : party));
 
-  const editPayment = (p: PartyPaymentDto) => {
-    setPendingPhotos([]);
-    setPaymentDraft({
-      id: p.id,
-      supplier_id: p.supplier_id,
-      date: p.date,
-      amount: String(p.amount),
-      method: p.method,
-      reference: p.reference ?? "",
-      note: p.note ?? "",
-    });
-  };
-
-  const savePayment = async () => {
-    if (!paymentDraft) return;
-    if (!paymentDraft.supplier_id) return toast.error("Choose the party you paid.");
-    if (num(paymentDraft.amount) <= 0) return toast.error("Enter the amount paid.");
-
-    setBusy(true);
-    const result = await rpc<{ ok: boolean; error?: string; id?: string }>(
-      "savePartyPaymentAction",
-      paymentDraft.id,
-      {
-      supplier_id: paymentDraft.supplier_id,
-      date: paymentDraft.date,
-      amount: num(paymentDraft.amount),
-      method: paymentDraft.method.trim() || "Cash",
-      reference: paymentDraft.reference || null,
-      note: paymentDraft.note || null,
-      },
-    );
-    if (result.ok && pendingPhotos.length > 0) {
-      try {
-        await uploadPendingAttachments("party_payment", result.id, pendingPhotos);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Photos could not be attached");
-      }
-    }
-    setBusy(false);
-    if (!result.ok) return toast.error(result.error ?? "Failed");
-    toast.success(paymentDraft.id ? "Payment updated" : "Payment recorded");
-    setPendingPhotos([]);
-    setPaymentDraft(null);
-    load();
-  };
+  const editPayment = (p: PartyPaymentDto) => setPaymentDraft(paymentToDraft(p));
 
   const removePayment = async (p: PartyPaymentDto) => {
     const ok = await confirm({
@@ -878,73 +812,15 @@ export default function MaterialPurchases() {
         </DialogContent>
       </Dialog>
 
-      {/* ------------------------------------------------- payment dialog */}
-      <Dialog open={!!paymentDraft} onOpenChange={(o) => !o && setPaymentDraft(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{paymentDraft?.id ? "Edit payment" : "Record payment"}</DialogTitle></DialogHeader>
-          {paymentDraft && (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label>Party *</Label>
-                <Select value={paymentDraft.supplier_id} onValueChange={(v) => setPaymentDraft({ ...paymentDraft, supplier_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Choose a party" /></SelectTrigger>
-                  <SelectContent>
-                    {parties.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}{p.city ? ` — ${p.city}` : ""}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Date *</Label>
-                  <Input type="date" value={paymentDraft.date} onChange={(e) => setPaymentDraft({ ...paymentDraft, date: e.target.value })} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Amount *</Label>
-                  <Input type="number" step="0.01" value={paymentDraft.amount} onChange={(e) => setPaymentDraft({ ...paymentDraft, amount: e.target.value })} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Method</Label>
-                  <Input
-                    value={paymentDraft.method}
-                    onChange={(e) => setPaymentDraft({ ...paymentDraft, method: e.target.value })}
-                    placeholder="Cash / Meezan Bank"
-                    list="party-payment-methods"
-                  />
-                  <datalist id="party-payment-methods">
-                    {Array.from(new Set(payments.map((p) => p.method))).map((m) => <option key={m} value={m} />)}
-                  </datalist>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Reference</Label>
-                  <Input value={paymentDraft.reference} onChange={(e) => setPaymentDraft({ ...paymentDraft, reference: e.target.value })} placeholder="TID 922452" />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Note</Label>
-                <Textarea rows={2} value={paymentDraft.note} onChange={(e) => setPaymentDraft({ ...paymentDraft, note: e.target.value })} placeholder="Account it went to, e.g. Imran Traders A/C" />
-              </div>
-              <div className="border-t pt-3">
-                <AttachmentsField
-                  entityType="party_payment"
-                  entityId={paymentDraft.id}
-                  canEdit={canManage}
-                  pending={pendingPhotos}
-                  onPendingChange={setPendingPhotos}
-                  compact
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPaymentDraft(null)}>Cancel</Button>
-            <Button disabled={busy} onClick={savePayment} className="bg-gradient-primary text-primary-foreground hover:opacity-90">Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PartyPaymentDialog
+        draft={paymentDraft}
+        setDraft={setPaymentDraft}
+        kind="material"
+        parties={materialSuppliers}
+        methods={payments.map((x) => x.method)}
+        canEdit={canManage}
+        onSaved={load}
+      />
 
       <PartyStatementPrintDialog
         open={printing}

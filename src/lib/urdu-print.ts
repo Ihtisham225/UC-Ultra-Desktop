@@ -29,6 +29,10 @@ export const UR = {
   note: "نوٹ",
   goodsOut: "بھیجا گیا مال",
   perPieceWeight: "فی عدد وزن",
+  /// Raw material goes out in cartons — کاٹن is what the trade calls a box.
+  boxes: "کاٹن",
+  perBoxWeight: "فی کاٹن وزن",
+  sentBy: "بھیجنے والا",
   totalWeight: "کل وزن",
   goodsIn: "وصول شدہ مال",
 } as const;

@@ -65,6 +65,8 @@ export function ReceiveGoodsDialog({
   const [deduction, setDeduction] = useState("0");
   const [paidNow, setPaidNow] = useState("0");
   const [rememberRates, setRememberRates] = useState(true);
+  /** Making only: this bill finishes the job, since nothing subtracts. */
+  const [closesChallan, setClosesChallan] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
@@ -99,14 +101,9 @@ export function ReceiveGoodsDialog({
                 }))
               : d.challan.kind === "making"
                 ? // Making is paid per piece, not per process — one rate line.
-                  [{
-                    process_id: null,
-                    process_name: "Making",
-                    // Agreed when the material went out; still editable here.
-                    rate: l.rate != null ? String(l.rate) : "",
-                    quantity: received,
-                    quantityEdited: false,
-                  }]
+                  // Making is paid per piece of finished goods, agreed when
+                  // they come back rather than when the material went out.
+                  [{ process_id: null, process_name: "Making", rate: "", quantity: received, quantityEdited: false }]
                 : l.process_ids.map((pid) => ({
                     process_id: pid,
                     process_name: processName(pid),
@@ -141,6 +138,7 @@ export function ReceiveGoodsDialog({
         setNotes(receipt?.notes ?? "");
         setDeduction(String(receipt?.deduction ?? 0));
         setPaidNow(String(receipt?.paid_now ?? 0));
+        setClosesChallan(receipt?.closes_challan ?? false);
         setPendingPhotos([]);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to open the challan");
@@ -244,6 +242,7 @@ export function ReceiveGoodsDialog({
       notes: notes || null,
       deduction: num(deduction),
       paid_now: num(paidNow),
+      closes_challan: making ? closesChallan : false,
       remember_rates: rememberRates,
       items: touched.map((l) => ({
         challan_item_id: l.challan_item_id,
@@ -321,32 +320,41 @@ export function ReceiveGoodsDialog({
             <div className="space-y-3">
               {lines.map((l, i) => {
                 const claimed = num(l.received) + num(l.short) + num(l.damaged);
-                const over = claimed > l.pending + 0.0001;
+                // Only meaningful when both sides are pieces.
+                const over = !making && claimed > l.pending + 0.0001;
                 return (
                   <div key={l.challan_item_id} className={`rounded-lg border p-3 space-y-3 ${over ? "border-destructive" : ""}`}>
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <div className="font-medium">{l.description}</div>
                       <div className="text-xs text-muted-foreground">
-                        sent {l.sent} · still at the company <b>{l.pending}</b>
+                        {making ? (
+                          <>sent {l.sent} boxes{l.per_piece_weight ? ` · ${l.per_piece_weight} per box` : ""}</>
+                        ) : (
+                          <>sent {l.sent} · still at the company <b>{l.pending}</b></>
+                        )}
                       </div>
                     </div>
 
                     <div className="grid gap-2 sm:grid-cols-4">
                       <div className="space-y-1">
-                        <Label className="text-xs">Received</Label>
+                        <Label className="text-xs">{making ? "Pieces received" : "Received"}</Label>
                         <Input className="h-8" type="number" step="0.01" value={l.received} onChange={(e) => setLine(i, { received: e.target.value })} />
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Short</Label>
-                        <Input className="h-8" type="number" step="0.01" value={l.short} onChange={(e) => setLine(i, { short: e.target.value })} />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Damaged</Label>
-                        <Input className="h-8" type="number" step="0.01" value={l.damaged} onChange={(e) => setLine(i, { damaged: e.target.value })} />
-                      </div>
+                      {!making && (
+                        <>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Short</Label>
+                            <Input className="h-8" type="number" step="0.01" value={l.short} onChange={(e) => setLine(i, { short: e.target.value })} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Damaged</Label>
+                            <Input className="h-8" type="number" step="0.01" value={l.damaged} onChange={(e) => setLine(i, { damaged: e.target.value })} />
+                          </div>
+                        </>
+                      )}
                       <div className="space-y-1">
                         <Label className="text-xs">Note</Label>
-                        <Input className="h-8" value={l.note} onChange={(e) => setLine(i, { note: e.target.value })} placeholder="Why short?" />
+                        <Input className="h-8" value={l.note} onChange={(e) => setLine(i, { note: e.target.value })} placeholder={making ? "Anything to note" : "Why short?"} />
                       </div>
                     </div>
 
@@ -369,7 +377,7 @@ export function ReceiveGoodsDialog({
                       </div>
                     )}
 
-                    {over && (
+                    {over && !making && (
                       <p className="text-xs text-destructive">
                         Only {l.pending} left at the company on this line, but {claimed} is entered.
                       </p>
@@ -442,7 +450,7 @@ export function ReceiveGoodsDialog({
                 <div>
                   <Label className="text-sm">Deduction</Label>
                   <p className="text-[11px] text-muted-foreground">
-                    Withheld for pieces they lost or spoiled{shortPieces > 0 ? ` — ${shortPieces} on this bill` : ""}.
+                    Withheld for pieces they lost or spoiled{!making && shortPieces > 0 ? ` — ${shortPieces} on this bill` : ""}.
                   </p>
                 </div>
                 <Input className="h-8 w-32 text-end" type="number" step="0.01" value={deduction} onChange={(e) => setDeduction(e.target.value)} />
@@ -469,10 +477,23 @@ export function ReceiveGoodsDialog({
               </p>
             </div>
 
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={rememberRates} onCheckedChange={(v) => setRememberRates(!!v)} />
-              Remember these rates for {draft.challan.supplier_name}
-            </label>
+            {making ? (
+              <label className="flex items-start gap-2 text-sm rounded-lg border p-3">
+                <Checkbox checked={closesChallan} onCheckedChange={(v) => setClosesChallan(!!v)} className="mt-0.5" />
+                <span>
+                  This bill completes the challan
+                  <span className="block text-[11px] text-muted-foreground">
+                    Tick when the job is finished. Boxes of material go out and pieces come back, so
+                    nothing can work it out — leave it unticked while more is still to come.
+                  </span>
+                </span>
+              </label>
+            ) : (
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={rememberRates} onCheckedChange={(v) => setRememberRates(!!v)} />
+                Remember these rates for {draft.challan.supplier_name}
+              </label>
+            )}
 
             <div className="border-t pt-3">
               <AttachmentsField

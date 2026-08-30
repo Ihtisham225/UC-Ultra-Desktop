@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import {
-  Truck, Plus, Trash2, Edit2, PackageCheck, X, ChevronDown, ChevronRight, Lock, LockOpen, Paperclip, Printer, Check,
+  Truck, Plus, Trash2, Edit2, PackageCheck, X, ChevronDown, ChevronRight, Lock, LockOpen, Paperclip, Printer, Check, HandCoins,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,7 +21,12 @@ import { usePagination } from "@/hooks/usePagination";
 import { isMaker, isProcessor, CHALLAN_KIND, type ChallanKindValue } from "@/lib/handicraft";
 import { AttachmentsField, AttachmentsDialog, uploadPendingAttachments } from "@/components/AttachmentsField";
 import { rpc } from "@/lib/apiClient";
-import type { JobProcessDto, PartyOption, ChallanDto, ReceiptDto } from "@/lib/handicraftTypes";
+import type {
+  JobProcessDto, PartyOption, ChallanDto, ReceiptDto, PartyPaymentDto,
+} from "@/lib/handicraftTypes";
+import {
+  PartyPaymentDialog, emptyPaymentDraft, paymentToDraft, type PaymentDraft,
+} from "@/components/PartyPaymentDialog";
 import { ReceiveGoodsDialog } from "@/components/ReceiveGoodsDialog";
 import { ChallanPrintDialog } from "@/components/ChallanPrintDialog";
 import { JobWorkBillPrintDialog } from "@/components/JobWorkBillPrintDialog";
@@ -33,9 +38,8 @@ type ItemDraft = {
   bundles: string;
   pieces_per_bundle: string;
   quantity: string;
-  /** Making challans weigh the goods and agree a rate up front. */
+  /** Making challans go out by the box and weigh them. */
   per_piece_weight: string;
-  rate: string;
   /** Set by hand, so bundles × pieces stops filling it in. */
   quantityEdited: boolean;
   process_ids: string[];
@@ -47,6 +51,7 @@ type ChallanDraft = {
   date: string;
   book_number: string;
   sent_via: string;
+  sent_by: string;
   counted_by: string;
   total_bundles: string;
   notes: string;
@@ -56,7 +61,7 @@ type ChallanDraft = {
 const num = (s: string) => (s.trim() === "" ? 0 : Number(s)) || 0;
 
 const emptyItem = (): ItemDraft => ({
-  description: "", bundles: "", pieces_per_bundle: "", quantity: "", per_piece_weight: "", rate: "",
+  description: "", bundles: "", pieces_per_bundle: "", quantity: "", per_piece_weight: "",
   quantityEdited: false, process_ids: [],
 });
 
@@ -75,6 +80,8 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
   const [processes, setProcesses] = useState<JobProcessDto[]>([]);
   const [challans, setChallans] = useState<ChallanDto[]>([]);
   const [receipts, setReceipts] = useState<ReceiptDto[]>([]);
+  const [payments, setPayments] = useState<PartyPaymentDto[]>([]);
+  const [paymentDraft, setPaymentDraft] = useState<PaymentDraft | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [party, setParty] = useState(ALL);
@@ -119,16 +126,19 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
     if (!currentShop) return;
     setLoading(true);
     try {
-      const [p, proc, ch, rc] = await Promise.all([
+      const [p, proc, ch, rc, pay] = await Promise.all([
         rpc<PartyOption[]>("listPartyOptionsAction"),
         rpc<JobProcessDto[]>("listJobProcessesAction"),
         rpc<ChallanDto[]>("listChallansAction", filters),
         rpc<ReceiptDto[]>("listReceiptsAction", { from: filters.from, to: filters.to, supplier_id: filters.supplier_id, kind }),
+        // This stage's payments only; the party's khata still totals them all.
+        rpc<PartyPaymentDto[]>("listPartyPaymentsAction", { from: filters.from, to: filters.to, supplier_id: filters.supplier_id, kind }),
       ]);
       setParties(p);
       setProcesses(proc);
       setChallans(ch);
       setReceipts(rc);
+      setPayments(pay);
       const [challanPhotos, billPhotos] = await Promise.all([
         rpc<Record<string, number>>("countAttachmentsAction", "job_work_challan", ch.map((x) => x.id)),
         rpc<Record<string, number>>("countAttachmentsAction", "job_work_receipt", rc.map((x) => x.id)),
@@ -147,7 +157,8 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
     setPickerLoading(true);
     try {
       const rows = await rpc<ChallanDto[]>("listChallansAction", { status: "open", kind });
-      setReceivableChallans(rows.filter((c) => c.total_pending > 0));
+      // Making has no pending arithmetic — any open challan can take a bill.
+      setReceivableChallans(rows.filter((c) => making || c.total_pending > 0));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load challans");
     }
@@ -167,10 +178,17 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
     defaultSize: 20,
     resetDeps: [party, from, to, receipts.length],
   });
+  const paymentPages = usePagination(payments, {
+    key: `job-work-payments-${kind}`,
+    defaultSize: 20,
+    resetDeps: [party, from, to, payments.length],
+  });
 
   const pendingPieces = challans.reduce((s, c) => s + c.total_pending, 0);
+  const openMaking = challans.filter((c) => c.status === "open").length;
   const openChallans = challans.filter((c) => c.status === "open").length;
   const billedTotal = receipts.reduce((s, r) => s + r.total, 0);
+  const paidTotal = payments.reduce((s, p) => s + p.amount, 0);
 
   // ---------------------------------------------------------- challans
 
@@ -182,6 +200,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
       date: today,
       book_number: "",
       sent_via: "",
+      sent_by: "",
       counted_by: "",
       total_bundles: "",
       notes: "",
@@ -197,6 +216,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
       date: c.date,
       book_number: c.book_number ?? "",
       sent_via: c.sent_via ?? "",
+      sent_by: c.sent_by ?? "",
       counted_by: c.counted_by ?? "",
       total_bundles: c.total_bundles === null ? "" : String(c.total_bundles),
       notes: c.notes ?? "",
@@ -206,7 +226,6 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         pieces_per_bundle: it.pieces_per_bundle === null ? "" : String(it.pieces_per_bundle),
         quantity: String(it.quantity),
         per_piece_weight: it.per_piece_weight === null ? "" : String(it.per_piece_weight),
-        rate: it.rate === null ? "" : String(it.rate),
         quantityEdited: true,
         process_ids: it.process_ids,
       })),
@@ -221,7 +240,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         if (i !== index) return it;
         const next = { ...it, ...patch };
         if (patch.quantity !== undefined) next.quantityEdited = true;
-        if (patch.bundles !== undefined || patch.pieces_per_bundle !== undefined) {
+        if (!making && (patch.bundles !== undefined || patch.pieces_per_bundle !== undefined)) {
           const computed = num(next.bundles) * num(next.pieces_per_bundle);
           if (computed > 0) {
             next.quantity = String(computed);
@@ -253,7 +272,6 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
   const draftBundles = draft?.items.reduce((s, it) => s + num(it.bundles), 0) ?? 0;
   const draftWeight =
     draft?.items.reduce((s, it) => s + num(it.quantity) * num(it.per_piece_weight), 0) ?? 0;
-  const draftAmount = draft?.items.reduce((s, it) => s + num(it.quantity) * num(it.rate), 0) ?? 0;
 
   const saveChallan = async () => {
     if (!draft) return;
@@ -271,6 +289,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
       date: draft.date,
       book_number: draft.book_number || null,
       sent_via: draft.sent_via || null,
+      sent_by: draft.sent_by || null,
       counted_by: draft.counted_by || null,
       total_bundles: draft.total_bundles === "" ? null : num(draft.total_bundles),
       notes: draft.notes || null,
@@ -280,7 +299,6 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         bundles: it.bundles === "" ? null : num(it.bundles),
         pieces_per_bundle: it.pieces_per_bundle === "" ? null : num(it.pieces_per_bundle),
         per_piece_weight: it.per_piece_weight === "" ? null : num(it.per_piece_weight),
-        rate: it.rate === "" ? null : num(it.rate),
         process_ids: it.process_ids,
       })),
       },
@@ -316,7 +334,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
 
   const toggleStatus = async (c: ChallanDto) => {
     const closing = c.status === "open";
-    if (closing && c.total_pending > 0) {
+    if (closing && !making && c.total_pending > 0) {
       const ok = await confirm({
         title: "Close with pieces outstanding?",
         description: `${c.total_pending} pieces are still shown as lying at ${c.supplier_name}. Closing hides this challan from the pending list.`,
@@ -326,6 +344,19 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
     }
     const result = await rpc<{ ok: boolean; error?: string }>("setChallanStatusAction", c.id, closing ? "closed" : "open");
     if (!result.ok) return toast.error(result.error ?? "Failed");
+    load();
+  };
+
+  const removePayment = async (p: PartyPaymentDto) => {
+    const ok = await confirm({
+      title: "Delete this payment?",
+      description: `${p.supplier_name} · ${formatMoney(p.amount, currency)} on ${p.date}.`,
+      variant: "destructive",
+    });
+    if (!ok) return;
+    const result = await rpc<{ ok: boolean; error?: string }>("deletePartyPaymentAction", p.id);
+    if (!result.ok) return toast.error(result.error ?? "Failed");
+    toast.success("Payment deleted");
     load();
   };
 
@@ -355,6 +386,12 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         </div>
         {canManage && (
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPaymentDraft(emptyPaymentDraft(today, party === ALL ? "" : party))}
+            >
+              <HandCoins className="size-4 mr-2" /> Record payment
+            </Button>
             <Button variant="outline" onClick={openReceivePicker}>
               <PackageCheck className="size-4 mr-2" /> Goods received
             </Button>
@@ -408,11 +445,13 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         </div>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="shadow-card p-4 border-primary/40">
-          <div className="text-xs text-muted-foreground">{making ? "With the makers" : "At the companies"}</div>
-          <div className="text-xl font-bold mt-1 text-primary">{pendingPieces}</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">pieces not back yet</div>
+          <div className="text-xs text-muted-foreground">{making ? "Jobs running" : "At the companies"}</div>
+          <div className="text-xl font-bold mt-1 text-primary">{making ? openMaking : pendingPieces}</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {making ? "challans not finished" : "pieces not back yet"}
+          </div>
         </Card>
         <Card className="shadow-card p-4">
           <div className="text-xs text-muted-foreground">Open challans</div>
@@ -424,12 +463,20 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
           <div className="text-xl font-bold mt-1">{formatMoney(billedTotal, currency)}</div>
           <div className="text-[11px] text-muted-foreground mt-0.5">{receipts.length} bill{receipts.length === 1 ? "" : "s"}, net of deductions</div>
         </Card>
+        <Card className="shadow-card p-4">
+          <div className="text-xs text-muted-foreground">Paid</div>
+          <div className="text-xl font-bold mt-1 text-success">{formatMoney(paidTotal, currency)}</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {payments.length} payment{payments.length === 1 ? "" : "s"} for {copy.title.toLowerCase()}
+          </div>
+        </Card>
       </div>
 
       <Tabs defaultValue="challans" className="space-y-4">
         <TabsList>
           <TabsTrigger value="challans">Sent challans ({challans.length})</TabsTrigger>
           <TabsTrigger value="bills">Received bills ({receipts.length})</TabsTrigger>
+          <TabsTrigger value="payments">Payments ({payments.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="challans">
@@ -452,8 +499,8 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                         <TableHead>Date</TableHead>
                         <TableHead>{copy.party}</TableHead>
                         <TableHead>Book no.</TableHead>
-                        <TableHead className="text-end">Pieces</TableHead>
-                        <TableHead className="text-end">Pending</TableHead>
+                        <TableHead className="text-end">{making ? "Boxes" : "Pieces"}</TableHead>
+                        {!making && <TableHead className="text-end">Pending</TableHead>}
                         <TableHead>Status</TableHead>
                         <TableHead />
                       </TableRow>
@@ -472,12 +519,14 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                             <TableCell className="font-medium">{c.supplier_name}</TableCell>
                             <TableCell>{c.book_number ?? ""}</TableCell>
                             <TableCell className="text-end">{c.total_qty}</TableCell>
-                            <TableCell className={`text-end font-semibold ${c.total_pending > 0 ? "text-primary" : "text-muted-foreground"}`}>
-                              {c.total_pending}
-                            </TableCell>
+                            {!making && (
+                              <TableCell className={`text-end font-semibold ${c.total_pending > 0 ? "text-primary" : "text-muted-foreground"}`}>
+                                {c.total_pending}
+                              </TableCell>
+                            )}
                             <TableCell>
                               <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-bold ${c.status === "open" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                                {c.status === "open" ? (making ? "With maker" : "At company") : "Finished"}
+                                {c.status === "open" ? (making ? "Running" : "At company") : "Finished"}
                               </span>
                             </TableCell>
                             <TableCell className="text-end whitespace-nowrap">
@@ -494,7 +543,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                               </Button>
                               {canManage && (
                                 <>
-                                  {c.total_pending > 0 && (
+                                  {(making ? c.status === "open" : c.total_pending > 0) && (
                                     <Button variant="ghost" size="icon" title="Goods received" onClick={() => { setEditingReceipt(null); setReceiveFor(c.id); }}>
                                       <PackageCheck className="size-4 text-success" />
                                     </Button>
@@ -517,8 +566,11 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                                     <div key={it.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                                       <span className="font-medium min-w-48">{it.description}</span>
                                       <span className="text-muted-foreground">
-                                        {it.quantity} pcs
-                                        {it.bundles ? ` (${it.bundles} × ${it.pieces_per_bundle ?? "?"})` : ""}
+                                        {it.quantity} {making ? "boxes" : "pcs"}
+                                        {!making && it.bundles ? ` (${it.bundles} × ${it.pieces_per_bundle ?? "?"})` : ""}
+                                        {making && it.per_piece_weight
+                                          ? ` · ${Number((it.quantity * it.per_piece_weight).toFixed(3))} weight`
+                                          : ""}
                                       </span>
                                       <span className="flex flex-wrap gap-1">
                                         {it.process_ids.length === 0 ? (
@@ -535,7 +587,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                                         back {it.received}
                                         {it.short > 0 ? ` · short ${it.short}` : ""}
                                         {it.damaged > 0 ? ` · damaged ${it.damaged}` : ""}
-                                        {it.pending > 0 ? ` · pending ${it.pending}` : ""}
+                                        {!making && it.pending > 0 ? ` · pending ${it.pending}` : ""}
                                       </span>
                                     </div>
                                   ))}
@@ -635,7 +687,73 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
             />
           </Card>
         </TabsContent>
+
+        <TabsContent value="payments">
+          <Card className="shadow-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>{copy.party}</TableHead>
+                    <TableHead>Method</TableHead>
+                    <TableHead>Reference</TableHead>
+                    <TableHead>Note</TableHead>
+                    <TableHead className="text-end">Amount</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {payments.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                        No payments for {copy.title.toLowerCase()} in this range.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paymentPages.visible.map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell className="whitespace-nowrap">{p.date}</TableCell>
+                        <TableCell className="font-medium">{p.supplier_name}</TableCell>
+                        <TableCell>{p.method}</TableCell>
+                        <TableCell>{p.reference ?? ""}</TableCell>
+                        <TableCell className="text-muted-foreground">{p.note ?? ""}</TableCell>
+                        <TableCell className="text-end font-semibold text-success">{formatMoney(p.amount, currency)}</TableCell>
+                        <TableCell className="text-end whitespace-nowrap">
+                          {canManage && (
+                            <>
+                              <Button variant="ghost" size="icon" title="Edit" onClick={() => setPaymentDraft(paymentToDraft(p))}><Edit2 className="size-4" /></Button>
+                              <Button variant="ghost" size="icon" title="Delete" onClick={() => removePayment(p)}><Trash2 className="size-4 text-destructive" /></Button>
+                            </>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <Pagination
+              page={paymentPages.page}
+              pageSize={paymentPages.pageSize}
+              totalItems={paymentPages.totalItems}
+              onPageChange={paymentPages.setPage}
+              onPageSizeChange={paymentPages.setPageSize}
+            />
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <PartyPaymentDialog
+        draft={paymentDraft}
+        setDraft={setPaymentDraft}
+        kind={kind}
+        parties={processors}
+        partyLabel={copy.party}
+        methods={payments.map((x) => x.method)}
+        canEdit={canManage}
+        onSaved={load}
+      />
 
       {/* ------------------------------------------------- challan dialog */}
       <Dialog open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
@@ -677,6 +795,14 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                   <Input value={draft.sent_via} onChange={(e) => setDraft({ ...draft, sent_via: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
+                  <Label>Sent by</Label>
+                  <Input
+                    value={draft.sent_by}
+                    onChange={(e) => setDraft({ ...draft, sent_by: e.target.value })}
+                    placeholder="Who sent it out"
+                  />
+                </div>
+                <div className="space-y-1.5">
                   <Label>Counted by <span className="text-muted-foreground" dir="rtl">کنتی کرنے والا</span></Label>
                   <Input value={draft.counted_by} onChange={(e) => setDraft({ ...draft, counted_by: e.target.value })} />
                 </div>
@@ -707,37 +833,34 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                           <Label className="text-xs">Detail <span dir="rtl">تفصیل</span></Label>
                           <Input className="h-9" value={it.description} onChange={(e) => setItem(i, { description: e.target.value })} placeholder="e.g. سفید 2/72" />
                         </div>
-                        <div className="w-[84px] space-y-1">
-                          <Label className="text-xs">Bundles</Label>
-                          <Input className="h-9" type="number" step="0.01" value={it.bundles} onChange={(e) => setItem(i, { bundles: e.target.value })} />
-                        </div>
-                        <div className="w-[84px] space-y-1">
-                          <Label className="text-xs">× pcs</Label>
-                          <Input className="h-9" type="number" step="0.01" value={it.pieces_per_bundle} onChange={(e) => setItem(i, { pieces_per_bundle: e.target.value })} />
-                        </div>
-                        <div className="w-[100px] space-y-1">
-                          <Label className="text-xs">Pieces</Label>
-                          <Input
-                            className={`h-9 ${it.quantityEdited ? "border-primary" : ""}`}
-                            type="number"
-                            step="0.01"
-                            value={it.quantity}
-                            onChange={(e) => setItem(i, { quantity: e.target.value })}
-                          />
-                        </div>
-                        {making && (
+
+                        {making ? (
                           <>
+                            {/* Raw material goes out by the box — کاٹن — so the
+                                box count is the quantity, and there is no piece
+                                count or rate until the shawls come back. */}
                             <div className="w-[110px] space-y-1">
-                              <Label className="text-xs">Weight / piece</Label>
+                              <Label className="text-xs">Boxes <span dir="rtl">کاٹن</span></Label>
+                              <Input
+                                className="h-9"
+                                type="number"
+                                step="0.01"
+                                value={it.quantity}
+                                onChange={(e) => setItem(i, { quantity: e.target.value })}
+                              />
+                            </div>
+                            <div className="w-[120px] space-y-1">
+                              <Label className="text-xs">Weight / box</Label>
                               <Input
                                 className="h-9"
                                 type="number"
                                 step="0.001"
                                 value={it.per_piece_weight}
                                 onChange={(e) => setItem(i, { per_piece_weight: e.target.value })}
+                                placeholder="optional"
                               />
                             </div>
-                            <div className="w-[110px] space-y-1">
+                            <div className="w-[120px] space-y-1">
                               <Label className="text-xs">Total weight</Label>
                               <Input
                                 className="h-9 bg-muted/40"
@@ -749,30 +872,30 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                                 }
                               />
                             </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-[84px] space-y-1">
+                              <Label className="text-xs">Bundles</Label>
+                              <Input className="h-9" type="number" step="0.01" value={it.bundles} onChange={(e) => setItem(i, { bundles: e.target.value })} />
+                            </div>
+                            <div className="w-[84px] space-y-1">
+                              <Label className="text-xs">× pcs</Label>
+                              <Input className="h-9" type="number" step="0.01" value={it.pieces_per_bundle} onChange={(e) => setItem(i, { pieces_per_bundle: e.target.value })} />
+                            </div>
                             <div className="w-[100px] space-y-1">
-                              <Label className="text-xs">Rate</Label>
+                              <Label className="text-xs">Pieces</Label>
                               <Input
-                                className="h-9"
+                                className={`h-9 ${it.quantityEdited ? "border-primary" : ""}`}
                                 type="number"
                                 step="0.01"
-                                value={it.rate}
-                                onChange={(e) => setItem(i, { rate: e.target.value })}
-                              />
-                            </div>
-                            <div className="w-[120px] space-y-1">
-                              <Label className="text-xs">Total rate</Label>
-                              <Input
-                                className="h-9 bg-muted/40"
-                                readOnly
-                                value={
-                                  num(it.quantity) * num(it.rate)
-                                    ? formatMoney(num(it.quantity) * num(it.rate), currency)
-                                    : ""
-                                }
+                                value={it.quantity}
+                                onChange={(e) => setItem(i, { quantity: e.target.value })}
                               />
                             </div>
                           </>
                         )}
+
                         <Button
                           type="button"
                           variant="ghost"
@@ -821,10 +944,9 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                   ))}
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Type bundles and pieces-per-bundle and the piece count fills itself in — the ×-sum from
-                  the bottom of your book.{making
-                    ? " Total weight is pieces × weight per piece, and total rate is pieces × rate."
-                    : " Tick the work each lot needs."}
+                  {making
+                    ? "Boxes of raw material going out. Weight per box is optional; total weight is boxes × that."
+                    : "Type bundles and pieces-per-bundle and the piece count fills itself in — the ×-sum from the bottom of your book. Tick the work each lot needs."}
                 </p>
               </div>
 
@@ -846,17 +968,13 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
               <div className="flex items-center justify-between border-t pt-3">
                 <span className="text-sm text-muted-foreground">Total going out</span>
                 <span className="text-xl font-bold">
-                  {draftPieces} pieces
+                  {draftPieces} {making ? "boxes" : "pieces"}
                   {making && draftWeight > 0 && (
                     <span className="text-sm font-normal text-muted-foreground">
                       {" "}· {Number(draftWeight.toFixed(3))} weight
                     </span>
                   )}
-                  {making && draftAmount > 0 && (
-                    <span className="text-sm font-normal text-muted-foreground">
-                      {" "}· {formatMoney(draftAmount, currency)} making
-                    </span>
-                  )}
+
                 </span>
               </div>
             </div>
@@ -913,8 +1031,8 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                       </div>
                     </div>
                     <div className="text-end shrink-0">
-                      <div className="font-bold text-primary">{c.total_pending}</div>
-                      <div className="text-[10px] text-muted-foreground">pending</div>
+                      <div className="font-bold text-primary">{making ? c.total_qty : c.total_pending}</div>
+                      <div className="text-[10px] text-muted-foreground">{making ? "boxes sent" : "pending"}</div>
                     </div>
                   </button>
                 </li>
