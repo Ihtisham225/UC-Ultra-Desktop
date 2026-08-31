@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -28,7 +27,7 @@ import {
 import { isMaterialSupplier } from "@/lib/handicraft";
 import { rpc } from "@/lib/apiClient";
 import type {
-  PartyOption, MaterialPurchaseDto, PartyPaymentDto, LedgerResult, LedgerRow,
+  PartyOption, MaterialPurchaseDto, PartyPaymentDto, LedgerResult,
 } from "@/lib/handicraftTypes";
 
 const ALL = "all";
@@ -141,11 +140,6 @@ export default function MaterialPurchases() {
   // so it stays out of the purchase form. Payments still list everyone.
   const materialSuppliers = parties.filter(isMaterialSupplier);
 
-  const registerPages = usePagination(ledger.rows, {
-    key: "material-register",
-    defaultSize: 50,
-    resetDeps: [party, from, to, ledger.rows.length],
-  });
   const purchasePages = usePagination(purchases, {
     key: "material-purchases",
     defaultSize: 20,
@@ -311,36 +305,30 @@ export default function MaterialPurchases() {
     toast.success(`${result.party.name} added`);
   };
 
-  const exportRegister = () => {
-    if (ledger.rows.length === 0) return toast.error("Nothing to export.");
-    downloadCsv(`register-${format(new Date(), "yyyy-MM-dd")}`, ledger.rows, [
-      { header: "Date", value: (r: LedgerRow) => r.date },
-      { header: "Name", value: (r: LedgerRow) => r.supplier_name },
-      { header: "City", value: (r: LedgerRow) => r.city ?? "" },
-      { header: "Bilty", value: (r: LedgerRow) => r.bilty_number ?? r.reference ?? "" },
-      { header: "Detail", value: (r: LedgerRow) => r.label ?? "" },
-      { header: "Colour", value: (r: LedgerRow) => r.colour ?? "" },
-      { header: "Act", value: (r: LedgerRow) => r.act ?? "" },
-      { header: "Bags", value: (r: LedgerRow) => (r.bags ? String(r.bags) : "") },
-      { header: "Pounds", value: (r: LedgerRow) => (r.pounds ? String(r.pounds) : "") },
-      { header: "Rate", value: (r: LedgerRow) => (r.rate ? String(r.rate) : "") },
-      { header: "Amount", value: (r: LedgerRow) => (r.debit ? String(r.debit) : "") },
-      { header: "Received", value: (r: LedgerRow) => (r.credit ? String(r.credit) : "") },
-      { header: "Balance", value: (r: LedgerRow) => String(r.balance) },
+  const exportPurchases = () => {
+    if (purchases.length === 0) return toast.error("Nothing to export.");
+    // One row per goods line, the way the register sheet reads.
+    const rows = purchases.flatMap((p) =>
+      (p.items.length ? p.items : [null]).map((it) => ({ purchase: p, item: it })),
+    );
+    downloadCsv(`purchases-${format(new Date(), "yyyy-MM-dd")}`, rows, [
+      { header: "Date", value: (r) => r.purchase.date },
+      { header: "Bill no.", value: (r) => String(r.purchase.number) },
+      { header: "Book no.", value: (r) => r.purchase.book_number ?? "" },
+      { header: "Party", value: (r) => r.purchase.supplier_name },
+      { header: "City", value: (r) => r.purchase.city ?? "" },
+      { header: "Bilty", value: (r) => r.purchase.bilty_number ?? "" },
+      { header: "Received by", value: (r) => r.purchase.received_by ?? "" },
+      { header: "Colour", value: (r) => r.item?.colour ?? "" },
+      { header: "Act", value: (r) => r.item?.act ?? "" },
+      { header: "Bags", value: (r) => (r.item?.bags ? String(r.item.bags) : "") },
+      { header: "Pounds", value: (r) => (r.item?.pounds ? String(r.item.pounds) : "") },
+      { header: "Rate", value: (r) => (r.item?.rate ? String(r.item.rate) : "") },
+      { header: "Amount", value: (r) => String(r.item?.amount ?? r.purchase.total) },
     ]);
-    toast.success(`Exported ${ledger.rows.length} rows`);
+    toast.success(`Exported ${rows.length} rows`);
   };
 
-  const openLedgerRow = (r: LedgerRow) => {
-    if (!canManage) return;
-    if (r.kind === "purchase") {
-      const p = purchases.find((x) => x.id === r.id);
-      if (p) editPurchase(p);
-    } else if (r.kind === "payment") {
-      const p = payments.find((x) => x.id === r.id);
-      if (p) editPayment(p);
-    }
-  };
 
   const partyLabel = party === ALL ? "All parties" : partyName(party);
 
@@ -399,21 +387,22 @@ export default function MaterialPurchases() {
               </Button>
             )}
             <Button variant="outline" onClick={() => setPrinting(true)} className="ms-auto">
-              <Printer className="size-4 mr-1.5" /> Print
+              <Printer className="size-4 mr-1.5" /> Statement
             </Button>
-            <Button variant="outline" onClick={exportRegister}>
+            <Button variant="outline" onClick={exportPurchases}>
               <Download className="size-4 mr-1.5" /> CSV
             </Button>
           </div>
         </div>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         {[
-          { label: "Opening balance", value: ledger.opening, hint: "سابقہ رقم — carried in" },
           { label: "Purchases", value: ledger.purchase_total, hint: `${purchases.length} bill${purchases.length === 1 ? "" : "s"}` },
           { label: "Paid", value: ledger.credit_total, hint: `${payments.length} payment${payments.length === 1 ? "" : "s"}` },
-          { label: "Material balance", value: ledger.closing, hint: "Owed for material", strong: true },
+          // Still counts each party's carried-over سابقہ رقم, it just doesn't
+          // get a tile of its own.
+          { label: "Balance", value: ledger.closing, hint: "Owed for material", strong: true },
         ].map((c) => (
           <Card key={c.label} className={`shadow-card p-4 ${c.strong ? "border-primary/40" : ""}`}>
             <div className="text-xs text-muted-foreground">{c.label}</div>
@@ -423,108 +412,11 @@ export default function MaterialPurchases() {
         ))}
       </div>
 
-      <Tabs defaultValue="register" className="space-y-4">
+      <Tabs defaultValue="purchases" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="register">Register</TabsTrigger>
           <TabsTrigger value="purchases">Purchases ({purchases.length})</TabsTrigger>
           <TabsTrigger value="payments">Payments ({payments.length})</TabsTrigger>
         </TabsList>
-
-        {/* The sheet, reproduced: goods lines and payments in one running column. */}
-        <TabsContent value="register">
-          <Card className="shadow-card overflow-hidden">
-            {loading ? (
-              <div className="p-12 text-center text-muted-foreground">Loading…</div>
-            ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">SR</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>City</TableHead>
-                        <TableHead>Bilty</TableHead>
-                        <TableHead>Colour</TableHead>
-                        <TableHead>Act</TableHead>
-                        <TableHead className="text-end">Bags</TableHead>
-                        <TableHead className="text-end">Pounds</TableHead>
-                        <TableHead className="text-end">Rate</TableHead>
-                        <TableHead className="text-end">Amount</TableHead>
-                        <TableHead className="text-end">Received</TableHead>
-                        <TableHead className="text-end">Balance</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      <TableRow className="bg-muted/40">
-                        <TableCell />
-                        <TableCell colSpan={9} className="font-medium">
-                          Opening balance <span className="text-muted-foreground" dir="rtl">سابقہ رقم</span>
-                        </TableCell>
-                        <TableCell />
-                        <TableCell />
-                        <TableCell className="text-end font-semibold">{formatMoney(ledger.opening, currency)}</TableCell>
-                      </TableRow>
-
-                      {ledger.rows.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={13} className="text-center text-muted-foreground py-10">
-                            Nothing recorded yet. Add a purchase to start the register.
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        registerPages.visible.map((r, i) => (
-                          <TableRow
-                            key={`${r.kind}-${r.id}-${r.itemId ?? i}`}
-                            className={`${r.kind === "payment" ? "bg-success/5" : r.kind === "job_work" ? "bg-amber-500/5" : ""} ${canManage && r.kind !== "job_work" ? "cursor-pointer" : ""}`}
-                            onClick={() => openLedgerRow(r)}
-                          >
-                            <TableCell className="text-muted-foreground text-xs">
-                              {(registerPages.page - 1) * registerPages.pageSize + i + 1}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap">{r.date}</TableCell>
-                            <TableCell className="font-medium">{r.supplier_name}</TableCell>
-                            {r.kind !== "purchase" ? (
-                              /* Their sheet writes the bank, the TID and the
-                                 account across the goods columns — same here,
-                                 and job-work bills read the same way. */
-                              <TableCell colSpan={7} className="text-muted-foreground">
-                                {[r.label, r.method, r.reference, r.note].filter(Boolean).join(" · ")}
-                              </TableCell>
-                            ) : (
-                              <>
-                                <TableCell>{r.city ?? ""}</TableCell>
-                                <TableCell>{r.bilty_number ?? ""}</TableCell>
-                                <TableCell>{r.colour ?? ""}</TableCell>
-                                <TableCell>{r.act ?? ""}</TableCell>
-                                <TableCell className="text-end">{r.bags || ""}</TableCell>
-                                <TableCell className="text-end">{r.pounds || ""}</TableCell>
-                                <TableCell className="text-end">{r.rate || ""}</TableCell>
-                              </>
-                            )}
-                            <TableCell className="text-end">{r.debit ? formatMoney(r.debit, currency) : ""}</TableCell>
-                            <TableCell className="text-end text-success font-medium">
-                              {r.credit ? formatMoney(r.credit, currency) : ""}
-                            </TableCell>
-                            <TableCell className="text-end font-semibold">{formatMoney(r.balance, currency)}</TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-                <Pagination
-                  page={registerPages.page}
-                  pageSize={registerPages.pageSize}
-                  totalItems={registerPages.totalItems}
-                  onPageChange={registerPages.setPage}
-                  onPageSizeChange={registerPages.setPageSize}
-                />
-              </>
-            )}
-          </Card>
-        </TabsContent>
 
         <TabsContent value="purchases">
           <Card className="shadow-card overflow-hidden">
@@ -544,7 +436,9 @@ export default function MaterialPurchases() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {purchases.length === 0 ? (
+                  {loading ? (
+                    <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-10">Loading…</TableCell></TableRow>
+                  ) : purchases.length === 0 ? (
                     <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-10">No purchases in this range.</TableCell></TableRow>
                   ) : (
                     purchasePages.visible.map((p) => (
@@ -608,7 +502,9 @@ export default function MaterialPurchases() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payments.length === 0 ? (
+                  {loading ? (
+                    <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-10">Loading…</TableCell></TableRow>
+                  ) : payments.length === 0 ? (
                     <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-10">No payments in this range.</TableCell></TableRow>
                   ) : (
                     paymentPages.visible.map((p) => (
