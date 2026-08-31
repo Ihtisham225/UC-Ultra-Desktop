@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatQty } from "@/lib/format";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw, FlaskConical } from "lucide-react";
+import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw, FlaskConical, Car } from "lucide-react";
 import { useOfflineProducts } from "@/hooks/useOfflineProducts";
 import { upsertLocal, notifyChange, getAll } from "@/lib/localDb";
 import { allocateTenders, round2 } from "@/lib/tender";
@@ -25,6 +26,8 @@ import { VariantPickerDialog, type VariantOption } from "@/components/VariantPic
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { cn } from "@/lib/utils";
 import { isLabEnabled } from "@/lib/lab";
+import { isOil, normalizePlate, tidyPlate } from "@/lib/oil";
+import { VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft } from "@/components/VehicleFields";
 
 interface Variant {
   id: string;
@@ -55,6 +58,10 @@ interface Product {
   shelf_location?: string | null;
   is_service?: boolean;
   is_lab_test?: boolean;
+  /** What stock is counted in — the unit a bare quantity means. */
+  unit?: string | null;
+  /** Other units it can be billed in, e.g. a 4-litre bottle of a litre oil. */
+  units?: { id: string; name: string; factor: number }[];
   variants?: Variant[];
 }
 /** Expiry status for pharmacy stock: null when no date or comfortably fresh. */
@@ -88,6 +95,23 @@ interface CartItem {
   is_lab_test?: boolean;
   /** Phone shops: accessories don't carry a serial, so no IMEI prompt. */
   tracks_imei?: boolean;
+  /**
+   * Selling in a unit other than the one stock is counted in (oil: stocked in
+   * litres, sold by the bottle).
+   *
+   * `quantity` and `unit_price` on this line are in the unit the CASHIER
+   * picked, because that's what they're typing and reading. `unit_factor` is
+   * how many base units one of those is worth, and the conversion back to base
+   * units happens once, on the way out — so nothing downstream ever sees a
+   * bottle.
+   */
+  base_unit?: string | null;
+  units?: { id: string; name: string; factor: number }[];
+  /** The chosen unit's name; null means the product's own unit. */
+  unit_label?: string | null;
+  unit_factor: number;
+  /** Price of one BASE unit, so changing unit can re-price the line. */
+  base_price: number;
 }
 
 export default function POS() {
@@ -129,6 +153,13 @@ export default function POS() {
     (p: { is_lab_test?: boolean }) => labEnabled && !!p.is_lab_test,
     [labEnabled],
   );
+  // Shops that take delivery before the purchase bill is entered keep selling;
+  // the stock goes negative and rights itself when the purchase is booked.
+  const allowNegativeStock = !!currentShop?.allow_negative_stock;
+  // Oil shops write the vehicle down at the counter. Optional, because not
+  // every bill is a service — someone buying a filter has no odometer to give.
+  const oilShop = isOil(currentShop);
+  const [vehicle, setVehicle] = useState<VehicleDraft>({ ...blankVehicle });
   const isPhone = currentShop?.store_type === "phone";
   const imeiOnProduct = isPhone && currentShop?.imei_capture_mode === "product";
   const imeiOnSale = isPhone && currentShop?.imei_capture_mode !== "product";
@@ -138,8 +169,12 @@ export default function POS() {
   /** Add a (product, optional variant) to the cart. */
   const pushToCart = (p: Product, v: Variant | null) => {
     const stock = Number(v ? v.stock : p.stock);
-    // Services have no stock to run out of.
-    if (!p.is_service && stock <= 0) { toast.error(t("pos.outOfStock")); return; }
+    // Services have no stock to run out of. Neither, in practice, does a shop
+    // that's allowed to sell ahead of its paperwork — there it's a warning.
+    if (!p.is_service && stock <= 0) {
+      if (!allowNegativeStock) { toast.error(t("pos.outOfStock")); return; }
+      toast.warning(t("pos.sellingBelowStock", { name: v ? `${p.name} — ${v.name}` : p.name }));
+    }
     const exp = expiryStatus(v ? v.expiry_date : p.expiry_date);
     if (exp === "expired") toast.error(`${p.name} has EXPIRED — check before selling`);
     else if (exp === "soon") toast.warning(`${p.name} expires within 30 days`);
@@ -149,7 +184,10 @@ export default function POS() {
     setCart((prev) => {
       const existing = prev.find((c) => c.key === key);
       const currentQty = existing?.quantity ?? 0;
-      if (!p.is_service && currentQty + 1 > stock) {
+      // Stock is in base units, the line's quantity is in whatever the cashier
+      // picked, so the comparison has to go through the factor.
+      const factor = existing?.unit_factor ?? 1;
+      if (!p.is_service && (currentQty + 1) * factor > stock && !allowNegativeStock) {
         toast.error(t("pos.insufficientStock", { name: display_name }));
         return prev;
       }
@@ -168,6 +206,11 @@ export default function POS() {
         is_service: p.is_service,
         is_lab_test: isLabTest(p),
         tracks_imei: p.tracks_imei !== false,
+        base_unit: p.unit ?? null,
+        units: p.units ?? [],
+        unit_label: null,
+        unit_factor: 1,
+        base_price: unit_price,
       }];
     });
   };
@@ -185,7 +228,7 @@ export default function POS() {
       .map((c) => {
         if (c.key !== key) return c;
         const newQty = c.quantity + delta;
-        if (delta > 0 && !c.is_service && newQty > c.stock) {
+        if (delta > 0 && !c.is_service && newQty * c.unit_factor > c.stock && !allowNegativeStock) {
           toast.error(t("pos.insufficientStock", { name: c.product_name }));
           return c;
         }
@@ -195,6 +238,55 @@ export default function POS() {
   };
 
   const removeItem = (key: string) => setCart((prev) => prev.filter((c) => c.key !== key));
+
+  /**
+   * Bill this line in a different unit. The quantity the cashier typed stays
+   * as it is — "2" means two of whatever is now selected — and the price is
+   * re-derived from the base price, so switching litres → bottle turns
+   * "2 at 250" into "2 at 1000" rather than silently selling four times the
+   * oil for the same money. A price typed by hand is overwritten on purpose:
+   * it belonged to the old unit.
+   */
+  const setLineUnit = (key: string, unitId: string) => {
+    setCart((prev) => prev.map((c) => {
+      if (c.key !== key) return c;
+      const u = unitId === "__base" ? null : (c.units ?? []).find((x) => x.id === unitId);
+      const factor = u ? u.factor : 1;
+      return {
+        ...c,
+        unit_label: u ? u.name : null,
+        unit_factor: factor,
+        unit_price: Math.round(c.base_price * factor * 100) / 100,
+      };
+    }));
+  };
+
+  /**
+   * A returning car fills its own form. Only blank fields are touched — never
+   * overwrite what the cashier has already typed — and the last visit's target
+   * reading becomes this visit's likely odometer. Online-only: the register
+   * lives on the server, so an offline terminal just types it fresh.
+   */
+  const prefillVehicle = async (plate: string) => {
+    if (!plate.trim() || !navigator.onLine) return;
+    let prior: { make: string | null; model_number: string | null; visitor_name: string | null; phone: string | null; next_km: number | null } | null = null;
+    try {
+      prior = await rpc("lastVisitAction", plate);
+    } catch {
+      return;
+    }
+    if (!prior) return;
+    const p = prior;
+    setVehicle((v) => ({
+      ...v,
+      make: v.make || (p.make ?? ""),
+      model_number: v.model_number || (p.model_number ?? ""),
+      visitor_name: v.visitor_name || (p.visitor_name ?? ""),
+      phone: v.phone || (p.phone ?? ""),
+      current_km: v.current_km || (p.next_km == null ? "" : String(p.next_km)),
+    }));
+    toast.info("Filled from this vehicle's last visit");
+  };
 
   const handleScanned = (code: string) => {
     // 1) Variant barcode wins
@@ -350,6 +442,10 @@ export default function POS() {
 
     await upsertLocal("sales", saleRecord, true);
 
+    // Stock, returns and every report deal in base units only, and the push
+    // route moves stock straight off `quantity` — so a line billed as "2
+    // bottles at 4000" is written down as 8 litres at 1000, with the label and
+    // factor kept alongside so the receipt can print it back as bottles.
     const itemRows = cart.map((c) => ({
       id: uuid(),
       sale_id: saleId,
@@ -357,9 +453,11 @@ export default function POS() {
       product_id: c.product_id,
       variant_id: c.variant_id,
       product_name: c.product_name,
-      unit_price: c.unit_price,
-      quantity: c.quantity,
+      unit_price: c.unit_price / c.unit_factor,
+      quantity: c.quantity * c.unit_factor,
       line_total: c.unit_price * c.quantity,
+      unit_label: c.unit_label ?? null,
+      unit_factor: c.unit_label ? c.unit_factor : null,
       // IMEI(s) of the specific unit sold, entered at checkout (phone shops).
       imei1: c.imei1?.trim() || null,
       imei2: c.imei2?.trim() || null,
@@ -407,6 +505,31 @@ export default function POS() {
       toast.success(`Credit of ${formatMoney(owed, cur)} recorded for ${payer.name}`);
     }
 
+    // The service record rides the same offline queue as the sale, so a
+    // terminal with no connection still captures the vehicle at the counter.
+    const oilChangeRow = oilShop && vehicle.vehicle_number.trim()
+      ? {
+          ...vehicleDraftToInput(vehicle),
+          vehicle_number: tidyPlate(vehicle.vehicle_number),
+          // The server's indexed lookup key. NOT NULL with no default, so the
+          // push would be rejected without it.
+          vehicle_key: normalizePlate(vehicle.vehicle_number),
+        }
+      : null;
+    if (oilChangeRow) {
+      await upsertLocal("oil_changes", {
+        id: uuid(),
+        shop_id: currentShop.id,
+        sale_id: saleId,
+        created_by: user.id,
+        ...oilChangeRow,
+        serviced_at: now,
+        updated_at: now,
+        created_at: now,
+      }, true);
+      notifyChange("oil_changes");
+    }
+
     notifyChange("sales");
     notifyChange("sale_items");
 
@@ -421,7 +544,9 @@ export default function POS() {
     setCompletedSale({
       ...saleRecord, items: itemRows, shop: currentShop, customer,
       payments: receiptPayments, balance_due: owed,
+      oil_change: oilChangeRow,
     });
+    setVehicle({ ...blankVehicle });
     setCart([]); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
     setTendersTouched(false);
     setTenders((prev) => (prev.length > 0 ? [{ ...prev[0], amount: "" }] : prev));
@@ -536,7 +661,7 @@ export default function POS() {
                   <button
                     key={p.id}
                     onClick={() => handleProductClick(p)}
-                    disabled={!p.is_service && totalStock <= 0}
+                    disabled={!p.is_service && totalStock <= 0 && !allowNegativeStock}
                     className="text-start p-3 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all disabled:opacity-40 disabled:cursor-not-allowed group relative overflow-hidden w-full min-w-0"
                   >
                     {hasVariants && (
@@ -549,8 +674,12 @@ export default function POS() {
                     {/* Lab tests have nothing to stock — showing a count (often
                         negative from older sales) only confuses the counter. */}
                     {!isLabTest(p) && (
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {p.is_service ? "Service" : `${t("common.stock")}: ${totalStock}`}
+                      <div
+                        className={`text-xs mt-0.5 ${
+                          !p.is_service && totalStock <= 0 ? "text-amber-600 font-medium" : "text-muted-foreground"
+                        }`}
+                      >
+                        {p.is_service ? "Service" : `${t("common.stock")}: ${formatQty(totalStock)}`}
                       </div>
                     )}
                     {imeiOnProduct && !hasVariants && (p.imei1 || p.imei2) && (
@@ -591,6 +720,24 @@ export default function POS() {
                     <Button size="icon" variant="outline" className="size-7" onClick={() => updateQty(c.key, -1)}><Minus className="size-3" /></Button>
                     <span className="w-8 text-center font-mono text-sm">{c.quantity}</span>
                     <Button size="icon" variant="outline" className="size-7" onClick={() => updateQty(c.key, 1)}><Plus className="size-3" /></Button>
+                    {(c.units?.length ?? 0) > 0 ? (
+                      <Select
+                        value={c.unit_label ? (c.units!.find((u) => u.name === c.unit_label)?.id ?? "__base") : "__base"}
+                        onValueChange={(v) => setLineUnit(c.key, v)}
+                      >
+                        <SelectTrigger className="h-7 w-24 text-xs px-2"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__base">{c.base_unit || "pcs"}</SelectItem>
+                          {c.units!.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      c.base_unit && !c.is_service && (
+                        <span className="text-[11px] text-muted-foreground">{c.base_unit}</span>
+                      )
+                    )}
                     <div className="ms-auto flex items-center gap-1">
                       <span className="text-[10px] text-muted-foreground">{t("pos.price") ?? "Price"}</span>
                       <Input
@@ -608,6 +755,11 @@ export default function POS() {
                     </div>
                     <Button size="icon" variant="ghost" className="size-7" onClick={() => removeItem(c.key)}><X className="size-3" /></Button>
                   </div>
+                  {c.unit_label && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      = {formatQty(c.quantity * c.unit_factor)} {c.base_unit || "pcs"} off stock
+                    </p>
+                  )}
                   {imeiOnSale && !c.tracks_imei && !c.is_service && !revealImei[c.key] && (
                     <button
                       type="button"
@@ -648,6 +800,43 @@ export default function POS() {
             sits outside the scroller and stays put. */}
         <div className="border-t bg-card flex flex-col min-h-0">
           <div className="p-4 space-y-3 overflow-y-auto min-h-0 flex-1">
+          {oilShop && (
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <Car className="size-4 text-primary shrink-0" />
+                <span className="text-sm font-medium">Oil change</span>
+                <span className="text-[11px] text-muted-foreground ms-auto">Optional</span>
+              </div>
+              {/* Only the plate until there is one — a customer buying a filter
+                  shouldn't have to scroll past eight empty boxes to pay. */}
+              {vehicle.vehicle_number.trim() === "" ? (
+                <Input
+                  value={vehicle.vehicle_number}
+                  onChange={(e) => setVehicle({ ...vehicle, vehicle_number: e.target.value })}
+                  onBlur={() => prefillVehicle(vehicle.vehicle_number)}
+                  placeholder="Vehicle number"
+                  className="uppercase h-9"
+                />
+              ) : (
+                <>
+                  <VehicleFields
+                    value={vehicle}
+                    onChange={setVehicle}
+                    onPlateBlur={prefillVehicle}
+                    compact
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVehicle({ ...blankVehicle })}
+                    className="text-[11px] text-muted-foreground hover:text-destructive underline underline-offset-2"
+                  >
+                    Clear vehicle
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           {hasLabTests
             ? <PatientPicker value={patient} onChange={setPatient} />
             : <CustomerPicker value={customer} onChange={setCustomer} />}

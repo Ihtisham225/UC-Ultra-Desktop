@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatQty } from "@/lib/format";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
@@ -25,15 +26,17 @@ import { downloadCsv } from "@/lib/csv";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { generateSku, generateBarcode } from "@/lib/sku";
 import { VariantsBuilder, type BuilderVariant } from "@/components/VariantsBuilder";
+import type { SaleUnitDraft } from "@/components/SaleUnitsBuilder";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
-import { upsertLocal, deleteLocal, notifyChange } from "@/lib/localDb";
+import { upsertLocal, deleteLocal, notifyChange, getAll } from "@/lib/localDb";
 import { syncAll } from "@/lib/syncEngine";
 import { CategorySelect, flattenCategories, type CategoryDto, type CategoryOption } from "@/components/CategorySelect";
 import { BrandSelect, type BrandDto } from "@/components/BrandSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { rpc } from "@/lib/apiClient";
+import { isOil } from "@/lib/oil";
 import { v4 as uuid } from "uuid";
 
 interface Variant {
@@ -76,9 +79,20 @@ interface Product {
 interface EditingProduct extends Partial<Product> {
   variants?: Variant[];
   hasVariants?: boolean;
+  /** Alternate sale units, held as typed strings while the form is open. */
+  sale_units?: SaleUnitDraft[];
 }
 
-const blank: EditingProduct = { name: "", sku: "", barcode: "", unit: "pcs", tracks_imei: true, hasVariants: false, variants: [] };
+/** A synced `product_units` row as it sits in the local store. */
+interface LocalUnitRow {
+  id: string;
+  product_id: string;
+  name: string;
+  factor: number | string;
+  sort_order?: number;
+}
+
+const blank: EditingProduct = { name: "", sku: "", barcode: "", unit: "pcs", tracks_imei: true, hasVariants: false, variants: [], sale_units: [] };
 
 const SORT_KEY = "pos.sort.products";
 type SortKey = "newest" | "oldest" | "name_asc" | "name_desc" | "price_desc" | "price_asc" | "stock_asc" | "stock_desc";
@@ -190,6 +204,18 @@ export default function Products() {
       hasVariants: variants.length > 0,
       variants,
     });
+    // Sale units ARE synced (the till needs them offline), so they come
+    // straight off the local store — no round trip, and it works with no
+    // connection.
+    getAll<LocalUnitRow>("product_units", currentShop.id)
+      .then((rows) => {
+        const mine = rows
+          .filter((u) => u.product_id === p.id)
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map((u) => ({ id: u.id, name: u.name, factor: String(u.factor) }));
+        setEditing((e) => (e && e.id === p.id ? { ...e, sale_units: mine } : e));
+      })
+      .catch(() => { /* nothing synced yet — the builder opens empty */ });
     // Factors aren't part of the offline catalog, so fetch them for the form.
     // (Without this the builder would open empty and wipe them on save.)
     if ((p as { is_lab_test?: boolean }).is_lab_test) {
@@ -328,6 +354,22 @@ export default function Products() {
     // Lab factors live server-side (they're catalog config, not POS data), so
     // they need the product pushed first. Everything else is already saved —
     // only the factors are at risk when the terminal is offline.
+    // Sale units are catalogue config: they live server-side and the pull
+    // brings them back. Pushed after the product so a brand-new product exists
+    // by the time the units point at it.
+    const units = (editing.sale_units ?? [])
+      .map((u) => ({ name: u.name.trim(), factor: parseFloat(u.factor) }))
+      .filter((u) => u.name !== "" && Number.isFinite(u.factor) && u.factor > 0);
+    if (isOil(currentShop) && !(editing as { is_service?: boolean }).is_service) {
+      try {
+        await syncAll();
+        const res = await rpc<{ ok: boolean; error?: string }>("saveProductUnitsAction", productId, units);
+        if (!res.ok) toast.warning(res.error ?? "Sale units could not be saved");
+      } catch {
+        toast.warning("Saved, but the sale units need a connection — reopen this product once online.");
+      }
+    }
+
     const labParams = (editing as { lab_parameters?: { name: string; unit?: string | null; normal_range?: string | null }[] }).lab_parameters;
     if ((editing as { is_lab_test?: boolean }).is_lab_test && labParams) {
       try {
@@ -571,7 +613,7 @@ export default function Products() {
             </Card>
             <Card className="p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Total stock</div>
-              <div className="text-lg sm:text-2xl font-bold tabular-nums mt-1 break-words leading-tight">{totalUnits}</div>
+              <div className="text-lg sm:text-2xl font-bold tabular-nums mt-1 break-words leading-tight">{formatQty(totalUnits)}</div>
             </Card>
             <Card className="p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Inventory value</div>
@@ -649,7 +691,7 @@ export default function Products() {
                       </td>
                       <td className="p-3 text-end font-semibold">{formatMoney(p.price, cur)}</td>
                       <td className={`p-3 text-end font-mono font-semibold ${low ? "text-warning" : ""}`}>
-                        {p.is_service ? <span className="text-muted-foreground font-normal">—</span> : <>{stock} {p.unit}</>}
+                        {p.is_service ? <span className="text-muted-foreground font-normal">—</span> : <>{formatQty(stock)} {p.unit}</>}
                       </td>
                       <td className="p-3 text-end whitespace-nowrap">
                         <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(p)}>
@@ -739,8 +781,8 @@ export default function Products() {
             { label: t("products.sku"), value: details.sku ?? "—" },
             { label: t("products.barcode"), value: details.barcode ?? "—" },
             { label: t("products.sellingPrice"), value: formatMoney(details.price, cur) },
-            { label: t("common.stock"), value: `${totalStock(details)} ${details.unit ?? ""}` },
-            { label: t("products.lowStockAt"), value: `${Number(details.low_stock_threshold)} ${details.unit ?? ""}` },
+            { label: t("common.stock"), value: `${formatQty(totalStock(details))} ${details.unit ?? ""}` },
+            { label: t("products.lowStockAt"), value: `${formatQty(details.low_stock_threshold)} ${details.unit ?? ""}` },
             { label: t("common.status"), value: details.is_active ? t("common.active") : t("common.inactive") },
             ...((details.product_variants ?? []).length > 0
               ? [{
@@ -755,7 +797,7 @@ export default function Products() {
                             {v.sku && <span className="ms-2 font-mono text-muted-foreground">{v.sku}</span>}
                           </span>
                           <span className="tabular-nums shrink-0">
-                            {formatMoney(v.price_override ?? details.price, cur)} · {Number(v.stock)} {details.unit ?? ""}
+                            {formatMoney(v.price_override ?? details.price, cur)} · {formatQty(v.stock)} {details.unit ?? ""}
                           </span>
                         </div>
                       ))}

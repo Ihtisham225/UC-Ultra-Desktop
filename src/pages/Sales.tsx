@@ -21,6 +21,18 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { deleteLocal, notifyChange } from "@/lib/localDb";
 import { ManualSaleDialog, type ManualSaleApi } from "@/components/ManualSaleDialog";
+import { soldAs, formatSoldQuantity } from "@/lib/sale-units";
+
+/**
+ * "Engine Oil 20W-50 ×2 Bottle (4 L)" — how the counter rang it up, not the
+ * eight litres it is stored as. A quantity of one is left off: "Oil Filter"
+ * reads better than "Oil Filter ×1".
+ */
+const lineSummary = (it: Sale["sale_items"][number]) => {
+  const sold = soldAs({ ...it, quantity: Number(it.quantity), unit_price: 0 });
+  if (sold.quantity === 1 && !sold.unit) return it.product_name;
+  return `${it.product_name} \u00d7${formatSoldQuantity(sold)}`;
+};
 
 const PAGE_SIZE_KEY = "pos.pageSize.sales";
 const DEFAULT_PAGE_SIZE = 20;
@@ -35,7 +47,14 @@ interface Sale {
   payments?: { account_name: string; amount: number }[];
   balance_due?: number;
   created_at: string;
-  sale_items: { id: string; product_name: string; quantity: number }[];
+  sale_items: {
+    id: string;
+    product_name: string;
+    quantity: number;
+    /** Set when the line was billed in a unit other than the product's own. */
+    unit_label?: string | null;
+    unit_factor?: number | null;
+  }[];
   returnStatus: ReturnStatus;
 }
 
@@ -81,6 +100,7 @@ export default function Sales() {
 
   const { data: allSalesRaw, loading, refresh: loadSales } = useLocalStore<any>("sales", currentShop?.id);
   const { data: allSaleItems } = useLocalStore<any>("sale_items", currentShop?.id);
+  const { data: allOilChanges } = useLocalStore<any>("oil_changes", currentShop?.id);
   const { data: allReturns } = useLocalStore<any>("sale_returns", currentShop?.id);
   // A cached sale row only has the legacy single payment_method, so the tender
   // lines (and the account names) are joined on from their own tables.
@@ -134,6 +154,10 @@ export default function Sales() {
     const sale = allSales.find((s) => s.id === saleId);
     if (sale) {
       setOpenSale({ ...sale, items: sale.sale_items, customer: null, shop: currentShop });
+      // The vehicle record is its own synced row, so the reprint has to look
+      // it up — it prints the plate and the next-due reading.
+      const oil = allOilChanges.find((o: { sale_id?: string | null }) => o.sale_id === saleId);
+      if (oil) setOpenSale((prev: any) => (prev && prev.id === saleId ? { ...prev, oil_change: oil } : prev));
       // Patient details ride along on the local sale row, but the lab tokens
       // only exist server-side — fetch them so a reprint matches the original.
       if (sale.patient_id && navigator.onLine) {
@@ -280,7 +304,7 @@ export default function Sales() {
                       </div>
                       {s.sale_items.length > 0 && (
                         <div className="text-xs text-foreground/80 mt-0.5 truncate">
-                          {s.sale_items.map((it) => Number(it.quantity) > 1 ? `${it.product_name} ×${Number(it.quantity)}` : it.product_name).join(", ")}
+                          {s.sale_items.map(lineSummary).join(", ")}
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground mt-0.5">

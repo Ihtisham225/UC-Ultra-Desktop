@@ -42,6 +42,12 @@ export const SYNC_TABLES = [
   'suppliers',
   'debts',
   'sale_returns',
+  // Alternate sale units (oil sold by the bottle). Pull-only — edited on the
+  // Products page through an online action, but the till needs them offline.
+  'product_units',
+  // The vehicle register. Two-way: a terminal with no connection still takes
+  // the car's details at the counter and pushes them with the sale.
+  'oil_changes',
 ] as const
 
 export type SyncTable = typeof SYNC_TABLES[number]

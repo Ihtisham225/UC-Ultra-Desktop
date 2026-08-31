@@ -211,9 +211,11 @@ const en = {
     charge: "Charge {{amount}}",
     chargeFinish: "Charge & finish sale",
     outOfStock: "Out of stock",
+    price: "Price",
     noProducts: "No products yet — add some from the Products page.",
     saleComplete: "Sale completed",
     insufficientStock: "Not enough stock for {{name}}",
+    sellingBelowStock: "{{name}} is out of stock — selling anyway, book the purchase to correct it",
   },
   products: {
     title: "Products & Stock",

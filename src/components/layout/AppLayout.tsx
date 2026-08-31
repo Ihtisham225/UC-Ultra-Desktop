@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { Landmark, LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Factory, Scissors, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse } from "lucide-react";
+import { Landmark, LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Factory, Scissors, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse, Car } from "lucide-react";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,6 +23,7 @@ import { InstallPwaButton } from "@/components/InstallPwaButton";
 import { Logo } from "@/components/Logo";
 import { isLabEnabled } from "@/lib/lab";
 import { isHandicraft } from "@/lib/handicraft";
+import { isOil } from "@/lib/oil";
 
 type NavItem = { to: string; label: string; icon: any; show: boolean };
 
@@ -41,6 +42,9 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   // every selling- and product-shaped screen comes off their nav. Nothing is
   // deleted — switching the store type back shows them all again.
   const craft = isHandicraft(currentShop);
+  // Oil shops keep a service register beside the till — the free oil change is
+  // the reason the customer came in, so it gets its own screen.
+  const oil = isOil(currentShop);
 
   const nav: NavItem[] = [
     { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
@@ -52,6 +56,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/lab", label: "Lab", icon: FlaskConical, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
     { to: "/lab-results", label: "Results", icon: ClipboardCheck, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
     { to: "/patients", label: "Patients", icon: HeartPulse, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
+    { to: "/oil-changes", label: "Oil Changes", icon: Car, show: oil },
     { to: "/sales", label: t("nav.sales"), icon: Receipt, show: !craft },
     { to: "/returns", label: t("nav.returns"), icon: Undo2, show: !craft },
     { to: "/customers", label: t("nav.customers"), icon: Users, show: !craft },

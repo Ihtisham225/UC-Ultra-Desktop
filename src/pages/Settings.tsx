@@ -47,6 +47,7 @@ export default function Settings() {
   const [printTerms, setPrintTerms] = useState(true);
   const [showTax, setShowTax] = useState(true);
   const [storeType, setStoreType] = useState("other");
+  const [allowNegative, setAllowNegative] = useState(false);
   const [labTests, setLabTests] = useState(false);
   const [imeiMode, setImeiMode] = useState<"sale" | "product">("sale");
   const [showCustomer, setShowCustomer] = useState(false);
@@ -79,6 +80,7 @@ export default function Settings() {
       setShowTax(currentShop.show_tax_line ?? true);
       setStoreType(currentShop.store_type ?? "other");
       setLabTests(!!currentShop.lab_tests_enabled);
+      setAllowNegative(!!currentShop.allow_negative_stock);
       setImeiMode((currentShop.imei_capture_mode as "sale" | "product") ?? "sale");
       setShowCustomer(currentShop.show_customer_on_receipt ?? false);
       setShowImei(currentShop.show_imei_on_receipt ?? false);
@@ -123,6 +125,7 @@ export default function Settings() {
         address: address || null, phone: phone || null, email: email || null,
         store_type: storeType,
         lab_tests_enabled: labTests,
+        allow_negative_stock: allowNegative,
         imei_capture_mode: imeiMode,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
@@ -326,7 +329,17 @@ export default function Settings() {
             </div>
             <div className="space-y-1.5">
               <Label>Store type</Label>
-              <Select value={storeType} onValueChange={setStoreType} disabled={!canEditShop}>
+              <Select
+                value={storeType}
+                onValueChange={(v) => {
+                  setStoreType(v);
+                  // Selling ahead of the paperwork is the norm in an oil shop,
+                  // so switch it on with the store type. Still a switch — they
+                  // can turn it off again before saving.
+                  if (v === "oil") setAllowNegative(true);
+                }}
+                disabled={!canEditShop}
+              >
                 <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="phone">Phone Shop</SelectItem>
@@ -337,6 +350,7 @@ export default function Settings() {
                   <SelectItem value="wholesale">Whole Sale</SelectItem>
                   <SelectItem value="accessories">Accessories</SelectItem>
                   <SelectItem value="handicraft">Handicraft / Shawls</SelectItem>
+                  <SelectItem value="oil">Oil Change / Lubricants</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
@@ -355,6 +369,35 @@ export default function Settings() {
                 <p>The <b>Processing work</b> tab sets up the work your factories do.</p>
               </div>
             )}
+            {storeType === "oil" && (
+              <div className="rounded-lg border p-3 text-xs text-muted-foreground space-y-1.5">
+                <p className="font-medium text-foreground">What changes for an oil shop</p>
+                <p>
+                  Every car that comes in gets written down — plate, make, odometer and the
+                  reading the oil is good until — on the <b>Oil Changes</b>{" "}
+                  page and, when there&apos;s a bill, straight from the till. Products can also
+                  carry sale units, so oil stocked in litres can be sold by the bottle or the
+                  drum without anyone doing the arithmetic.
+                </p>
+              </div>
+            )}
+            {/*
+              Not oil-only: any shop that takes delivery before the paperwork
+              catches up has this problem. It just defaults on for oil shops,
+              where it's the norm rather than the exception.
+            */}
+            <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+              <div>
+                <Label>Allow selling below stock</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Lets the till sell an item whose stock has run out, instead of blocking the
+                  sale. Use it when goods arrive before the purchase bill is entered — the
+                  stock goes negative and rights itself the moment you book the purchase.
+                  Negative lines are flagged on Products and Inventory so nothing is missed.
+                </p>
+              </div>
+              <Switch checked={allowNegative} onCheckedChange={setAllowNegative} disabled={!canEditShop} />
+            </div>
             {storeType === "pharmacy" && (
               <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
                 <div>

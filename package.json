@@ -1,8 +1,8 @@
 {
   "name": "uc-ultra-desktop",
   "private": true,
-  "version": "1.0.62",
-  "description": "UC-Ultra — Multi-Vendor Point of Sale",
+  "version": "1.0.63",
+  "description": "UC-Ultra \u2014 Multi-Vendor Point of Sale",
   "author": "UCU Team <support@ucultra.com>",
   "homepage": "https://ucultra.com",
   "main": "dist-electron/main.js",
@@ -24,7 +24,7 @@
   "build": {
     "appId": "com.ucultra.desktop",
     "productName": "UC-Ultra",
-    "copyright": "Copyright © 2025 UCU Team",
+    "copyright": "Copyright \u00a9 2025 UCU Team",
     "directories": {
       "output": "release"
     },
