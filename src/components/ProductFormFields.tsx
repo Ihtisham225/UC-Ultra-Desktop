@@ -10,7 +10,9 @@ import { BrandSelect } from "@/components/BrandSelect";
 import { VariantsBuilder, type BuilderVariant } from "@/components/VariantsBuilder";
 import { LabParametersBuilder, type LabParameterDraft } from "@/components/LabParametersBuilder";
 import { BatchesBuilder } from "@/components/BatchesBuilder";
+import { SaleUnitsBuilder, type SaleUnitDraft } from "@/components/SaleUnitsBuilder";
 import { generateSku } from "@/lib/sku";
+import { isOil, OIL_UNIT_SUGGESTIONS } from "@/lib/oil";
 import { isLabEnabled } from "@/lib/lab";
 
 /**
@@ -37,6 +39,8 @@ export interface ProductFormValue {
   is_lab_test?: boolean;
   /** Factors this lab test measures (only for service items in a lab-enabled pharmacy). */
   lab_parameters?: LabParameterDraft[];
+  /** Alternate units this product can be sold in (oil shops). */
+  sale_units?: SaleUnitDraft[];
   hasVariants?: boolean;
   variants?: BuilderVariant[];
 }
@@ -69,6 +73,9 @@ export function ProductFormFields<T extends ProductFormValue>({
   // Accessories in a phone shop have no serial, so POS must not ask for one.
   const tracksImei = value.tracks_imei !== false;
   const isPharmacy = currentShop?.store_type === "pharmacy";
+  // Oil is stocked in litres and sold by the bottle or the drum, so the unit
+  // is a choice at the till rather than a fixed label on the product.
+  const isOilShop = isOil(currentShop);
   // The Service toggle (and lab test factors) only exist once the shop says it
   // runs a lab — other store types keep services for repair labour etc.
   const labEnabled = isLabEnabled(currentShop);
@@ -158,7 +165,16 @@ export function ProductFormFields<T extends ProductFormValue>({
             </div>
             <div className="space-y-1.5">
               <Label>{t("products.unit")}</Label>
-              <Input value={value.unit ?? "pcs"} onChange={(e) => set({ unit: e.target.value })} />
+              <Input
+                value={value.unit ?? "pcs"}
+                list={isOilShop ? "unit-suggestions" : undefined}
+                onChange={(e) => set({ unit: e.target.value })}
+              />
+              {isOilShop && (
+                <datalist id="unit-suggestions">
+                  {OIL_UNIT_SUGGESTIONS.map((u) => <option key={u} value={u} />)}
+                </datalist>
+              )}
             </div>
           </>
         )}
@@ -315,6 +331,16 @@ export function ProductFormFields<T extends ProductFormValue>({
         <LabParametersBuilder
           value={value.lab_parameters ?? []}
           onChange={(lab_parameters) => set({ lab_parameters })}
+        />
+      )}
+
+      {/* Oil shops sell the same litre of oil by the bottle and by the drum. */}
+      {!isService && isOilShop && (
+        <SaleUnitsBuilder
+          baseUnit={value.unit ?? "pcs"}
+          basePrice={Number(value.price) || 0}
+          value={value.sale_units ?? []}
+          onChange={(sale_units) => set({ sale_units })}
         />
       )}
 

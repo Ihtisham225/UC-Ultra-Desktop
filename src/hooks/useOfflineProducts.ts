@@ -5,6 +5,7 @@ import type { CachedProduct, CachedVariant } from '@/lib/offlineDb'
 
 // Raw synced rows (snake_case, from /api/sync/pull) as they land in the local store.
 interface ProductRow { id: string; name: string; barcode: string | null; price: number | string; stock: number | string; shop_id: string; is_active?: boolean }
+interface UnitRow { id: string; product_id: string; name: string; factor: number | string; sort_order?: number }
 interface VariantRow { id: string; product_id: string; name: string; sku: string | null; barcode: string | null; price_override: number | string | null; stock: number | string; is_active?: boolean; sort_order?: number; imei1?: string | null; imei2?: string | null }
 
 /**
@@ -30,10 +31,23 @@ export function useOfflineProducts(shopId: string | undefined) {
 
   const loadFromStore = useCallback(async () => {
     if (!shopId) { setProducts([]); return }
-    const [prods, vars] = await Promise.all([
+    const [prods, vars, unitRows] = await Promise.all([
       getAll<ProductRow>('products', shopId),
       getAll<VariantRow>('product_variants', shopId),
+      getAll<UnitRow>('product_units', shopId),
     ])
+    // Alternate sale units (oil sold by the bottle), so an offline till can
+    // still offer them.
+    const unitsByProduct = new Map<string, { id: string; name: string; factor: number }[]>()
+    for (const u of unitRows) {
+      const arr = unitsByProduct.get(u.product_id) ?? []
+      arr.push({ id: u.id, name: u.name, factor: Number(u.factor) })
+      unitsByProduct.set(u.product_id, arr)
+    }
+    for (const [, arr] of unitsByProduct) {
+      const order = new Map(unitRows.map((u) => [u.id, u.sort_order ?? 0]))
+      arr.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+    }
     const variantsByProduct = new Map<string, CachedVariant[]>()
     for (const v of vars) {
       if (v.is_active === false) continue
@@ -73,6 +87,8 @@ export function useOfflineProducts(shopId: string | undefined) {
         shelf_location: (p as { shelf_location?: string | null }).shelf_location ?? null,
         is_service: (p as { is_service?: boolean }).is_service ?? false,
         is_lab_test: (p as { is_lab_test?: boolean }).is_lab_test ?? false,
+        unit: (p as { unit?: string | null }).unit ?? null,
+        units: unitsByProduct.get(p.id) ?? [],
         variants: variantsByProduct.get(p.id) ?? [],
         _syncedAt: Date.now(),
       }))
@@ -104,7 +120,7 @@ export function useOfflineProducts(shopId: string | undefined) {
   // Re-read when the sync engine (or another screen) writes products/variants.
   useEffect(() => {
     return onLocalChange((table) => {
-      if (table === 'products' || table === 'product_variants') loadFromStore()
+      if (table === 'products' || table === 'product_variants' || table === 'product_units') loadFromStore()
     })
   }, [loadFromStore])
 

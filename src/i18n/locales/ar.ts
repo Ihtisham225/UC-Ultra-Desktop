@@ -214,9 +214,11 @@ const ar: Translations = {
     charge: "تحصيل {{amount}}",
     chargeFinish: "تحصيل وإنهاء البيعة",
     outOfStock: "نفد المخزون",
+    price: "السعر",
     noProducts: "ما في منتجات بعد — أضِفها من صفحة المنتجات.",
     saleComplete: "تمّت البيعة",
     insufficientStock: "الكمية مو كافية لـ {{name}}",
+    sellingBelowStock: "{{name}} نافد من المخزون — تمّ البيع، سجّل الشراء لتصحيح الكمية",
   },
   products: {
     title: "المنتجات والمخزون",

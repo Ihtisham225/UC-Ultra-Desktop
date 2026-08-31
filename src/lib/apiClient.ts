@@ -64,6 +64,8 @@ export interface DeviceShop {
   pro_until: string | null;
   investors_enabled?: boolean;
   lab_tests_enabled?: boolean;
+  /** Oil shops: let the till sell stock the system doesn't know about yet. */
+  allow_negative_stock?: boolean;
   investor_mode?: "individual" | "shared" | "both";
   investor_default_commission?: number;
   investor_deduct_expenses?: boolean;

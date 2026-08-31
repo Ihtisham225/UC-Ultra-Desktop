@@ -16,6 +16,10 @@ export interface CachedProduct {
   shelf_location?: string | null
   is_service?: boolean
   is_lab_test?: boolean
+  /** What stock is counted in — the unit a bare quantity means. */
+  unit?: string | null
+  /** Other units it can be billed in, e.g. a 4-litre bottle of a litre oil. */
+  units?: { id: string; name: string; factor: number }[]
   variants: CachedVariant[]
   _syncedAt: number
 }

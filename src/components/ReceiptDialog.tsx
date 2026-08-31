@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Printer, MessageCircle, Sparkles } from "lucide-react";
 import { formatMoney } from "@/lib/format";
 import { format } from "date-fns";
+import { soldAs, formatSoldQuantity } from "@/lib/sale-units";
 import { rpc } from "@/lib/apiClient";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -39,6 +40,37 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
     ...(sale.patient_phone ? [{ label: "Phone", value: String(sale.patient_phone) }] : []),
   ];
 
+  // An oil shop's slip doubles as the customer's service reminder: the plate
+  // identifies the car and the next reading is when to come back. Printed
+  // whenever the sale has a record, like the patient rows — it is not a
+  // "show customer details" nicety.
+  const oil = sale.oil_change ?? null;
+  const oilRows = oil
+    ? [
+        { label: "Vehicle", value: String(oil.vehicle_number ?? "") },
+        ...(oil.make || oil.model_number
+          ? [{ label: "Make / model", value: [oil.make, oil.model_number].filter(Boolean).join(" ") }]
+          : []),
+        ...(oil.visitor_name ? [{ label: "Name", value: String(oil.visitor_name) }] : []),
+        ...(oil.phone ? [{ label: "Phone", value: String(oil.phone) }] : []),
+        ...(oil.oil_changer ? [{ label: "Oil", value: String(oil.oil_changer) }] : []),
+        ...(oil.current_km != null
+          ? [{ label: "Current KM", value: Number(oil.current_km).toLocaleString() }]
+          : []),
+        ...(oil.next_km != null
+          ? [{ label: "Next change at", value: `${Number(oil.next_km).toLocaleString()} km` }]
+          : []),
+      ]
+    : [];
+
+  const oilHtml = oilRows.length > 0
+    ? `<div class="rule"></div>
+       <div class="center small">OIL CHANGE</div>
+       ${oilRows
+         .map((r) => `<div class="row"><span>${escapeHtml(r.label)}</span><span class="value">${escapeHtml(r.value)}</span></div>`)
+         .join("")}`
+    : "";
+
   const labHtml = labOrders.length > 0
     ? `<div class="rule"></div>
        <div class="center small">LAB TOKEN${labOrders.length > 1 ? "S" : ""}</div>
@@ -56,7 +88,7 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
         <div class="item">
           <div class="item-name">${escapeHtml(item.product_name ?? "")}</div>
           <div class="row small">
-            <span>${escapeHtml(String(item.quantity))} x ${escapeHtml(formatMoney(item.unit_price, currency))}</span>
+            <span>${escapeHtml(formatSoldQuantity(soldAs(item)))} x ${escapeHtml(formatMoney(soldAs(item).unitPrice, currency))}</span>
             <span class="value">${escapeHtml(formatMoney(item.line_total, currency))}</span>
           </div>
           ${imeis}
@@ -224,6 +256,8 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
             .join("")}
         </div>
 
+        ${oilHtml}
+
         ${labHtml}
 
         <div class="rule"></div>
@@ -338,6 +372,31 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
               )}
             </div>
 
+            {sale.oil_change && (
+              <>
+                <div className={dashed} />
+                <div className="text-center text-[11px]">OIL CHANGE</div>
+                <div className="text-[11px] space-y-0.5 mt-0.5">
+                  {[
+                    ["Vehicle", String(sale.oil_change.vehicle_number ?? "")],
+                    ["Make / model", [sale.oil_change.make, sale.oil_change.model_number].filter(Boolean).join(" ")],
+                    ["Name", sale.oil_change.visitor_name ?? ""],
+                    ["Phone", sale.oil_change.phone ?? ""],
+                    ["Oil", sale.oil_change.oil_changer ?? ""],
+                    ["Current KM", sale.oil_change.current_km == null ? "" : Number(sale.oil_change.current_km).toLocaleString()],
+                    ["Next change at", sale.oil_change.next_km == null ? "" : `${Number(sale.oil_change.next_km).toLocaleString()} km`],
+                  ]
+                    .filter(([, v]) => v !== "")
+                    .map(([label, v]) => (
+                      <div key={label} className="flex items-start justify-between gap-2">
+                        <span className="shrink-0">{label}</span>
+                        <span className="min-w-0 max-w-[58%] text-right break-words">{v}</span>
+                      </div>
+                    ))}
+                </div>
+              </>
+            )}
+
             {(sale.lab_orders ?? []).length > 0 && (
               <>
                 <div className={dashed} />
@@ -360,7 +419,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
                 <div key={i} className="space-y-0.5 font-normal">
                   <div className="whitespace-normal break-words [overflow-wrap:anywhere] leading-tight">{it.product_name}</div>
                   <div className="flex items-start justify-between text-[11px] gap-2">
-                    <span className="shrink-0">{it.quantity} x {formatMoney(it.unit_price, cur)}</span>
+                    <span className="shrink-0">{formatSoldQuantity(soldAs(it))} x {formatMoney(soldAs(it).unitPrice, cur)}</span>
                     <span className="tabular-nums text-right break-words">{formatMoney(it.line_total, cur)}</span>
                   </div>
                   {sale.shop?.show_imei_on_receipt && [it.imei1, it.imei2].filter(Boolean).map((v: string, k: number) => (

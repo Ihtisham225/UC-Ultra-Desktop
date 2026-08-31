@@ -39,6 +39,7 @@ const Sales = lazy(() => import("./pages/Sales"));
 const Returns = lazy(() => import("./pages/Returns"));
 const Customers = lazy(() => import("./pages/Customers"));
 const Patients = lazy(() => import("./pages/Patients"));
+const OilChanges = lazy(() => import("./pages/OilChanges"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Staff = lazy(() => import("./pages/Staff"));
 const Purchases = lazy(() => import("./pages/Purchases"));
@@ -192,6 +193,7 @@ const App = () => {
               <Route path="/reports" element={<SubShell><RequireRole roles={["owner", "manager"]}><Reports /></RequireRole></SubShell>} />
               <Route path="/inventory" element={<SubShell><RequireRole roles={["owner", "manager"]}><Inventory /></RequireRole></SubShell>} />
               <Route path="/patients" element={<SubShell><Patients /></SubShell>} />
+              <Route path="/oil-changes" element={<SubShell><OilChanges /></SubShell>} />
               <Route path="/accounts" element={<SubShell><Accounts /></SubShell>} />
               <Route path="/lab" element={<SubShell><Lab /></SubShell>} />
               <Route path="/lab-results" element={<SubShell><LabResults /></SubShell>} />
