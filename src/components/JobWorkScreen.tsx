@@ -22,12 +22,12 @@ import { isMaker, isProcessor, CHALLAN_KIND, type ChallanKindValue } from "@/lib
 import { AttachmentsField, AttachmentsDialog, uploadPendingAttachments } from "@/components/AttachmentsField";
 import { rpc } from "@/lib/apiClient";
 import type {
-  JobProcessDto, PartyOption, ChallanDto, ReceiptDto, PartyPaymentDto,
+  JobProcessDto, ChallanDto, ReceiptDto, PartyOption, PartyPaymentDto,
 } from "@/lib/handicraftTypes";
-import { ReceiveGoodsDialog } from "@/components/ReceiveGoodsDialog";
 import {
   PartyPaymentDialog, emptyPaymentDraft, paymentToDraft, type PaymentDraft,
 } from "@/components/PartyPaymentDialog";
+import { ReceiveGoodsDialog } from "@/components/ReceiveGoodsDialog";
 import { ChallanPrintDialog } from "@/components/ChallanPrintDialog";
 import { RecordDetailsDialog } from "@/components/RecordDetailsDialog";
 import { JobWorkBillPrintDialog } from "@/components/JobWorkBillPrintDialog";
@@ -825,16 +825,20 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                   <Label>Counted by <span className="text-muted-foreground" dir="rtl">کنتی کرنے والا</span></Label>
                   <Input value={draft.counted_by} onChange={(e) => setDraft({ ...draft, counted_by: e.target.value })} />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Total bundles <span className="text-muted-foreground" dir="rtl">ٹوٹل بنڈل</span></Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={draft.total_bundles}
-                    onChange={(e) => setDraft({ ...draft, total_bundles: e.target.value })}
-                    placeholder={draftBundles ? String(draftBundles) : ""}
-                  />
-                </div>
+                {/* Bundles are a finished-goods count; raw material goes out
+                    by the box and is reconciled by weight. */}
+                {!making && (
+                  <div className="space-y-1.5">
+                    <Label>Total bundles <span className="text-muted-foreground" dir="rtl">ٹوٹل بنڈل</span></Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={draft.total_bundles}
+                      onChange={(e) => setDraft({ ...draft, total_bundles: e.target.value })}
+                      placeholder={draftBundles ? String(draftBundles) : ""}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -1151,9 +1155,6 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                 { label: "Book no.", value: viewingBill.book_number },
                 { label: "Against challan", value: `#${viewingBill.challan_number}` },
                 { label: "Received via", value: viewingBill.received_via },
-                ...(making
-                  ? [{ label: "Finished the challan", value: viewingBill.closes_challan ? "Yes" : "No" }]
-                  : []),
                 { label: "Notes", value: viewingBill.notes, full: true },
               ]
             : []

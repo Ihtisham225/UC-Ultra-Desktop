@@ -66,7 +66,6 @@ export function ReceiveGoodsDialog({
   const [paidNow, setPaidNow] = useState("0");
   const [rememberRates, setRememberRates] = useState(true);
   /** Making only: this bill finishes the job, since nothing subtracts. */
-  const [closesChallan, setClosesChallan] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
@@ -136,7 +135,6 @@ export function ReceiveGoodsDialog({
         setNotes(receipt?.notes ?? "");
         setDeduction(String(receipt?.deduction ?? 0));
         setPaidNow(String(receipt?.paid_now ?? 0));
-        setClosesChallan(receipt?.closes_challan ?? false);
         setPendingPhotos([]);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to open the challan");
@@ -245,7 +243,6 @@ export function ReceiveGoodsDialog({
       notes: notes || null,
       deduction: num(deduction),
       paid_now: num(paidNow),
-      closes_challan: making ? closesChallan : false,
       remember_rates: rememberRates,
       items: touched.map((l) => ({
         challan_item_id: l.challan_item_id,
@@ -465,8 +462,8 @@ export function ReceiveGoodsDialog({
                   </span>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Weight of one finished piece × what came back. Some weight is always lost in the
-                  making, so tick below when the job is done rather than waiting for zero.
+                  Weight of one finished piece × what came back. The challan finishes on its own once
+                  the weight is back; close it by hand from the list if some is lost in the making.
                 </p>
               </div>
             )}
@@ -507,18 +504,9 @@ export function ReceiveGoodsDialog({
               </p>
             </div>
 
-            {making ? (
-              <label className="flex items-start gap-2 text-sm rounded-lg border p-3">
-                <Checkbox checked={closesChallan} onCheckedChange={(v) => setClosesChallan(!!v)} className="mt-0.5" />
-                <span>
-                  This bill completes the challan
-                  <span className="block text-[11px] text-muted-foreground">
-                    Tick when the job is finished. Boxes of material go out and pieces come back, so
-                    nothing can work it out — leave it unticked while more is still to come.
-                  </span>
-                </span>
-              </label>
-            ) : (
+            {/* Making is one rate per piece agreed on the bill; there are no
+                per-process rates to remember. */}
+            {!making && (
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox checked={rememberRates} onCheckedChange={(v) => setRememberRates(!!v)} />
                 Remember these rates for {draft.challan.supplier_name}

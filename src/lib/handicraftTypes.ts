@@ -189,7 +189,6 @@ export interface ReceiptDto {
   deduction: number;
   total: number;
   paid_now: number;
-  closes_challan: boolean;
   received_weight: number;
   items: ReceiptItemDto[];
 }

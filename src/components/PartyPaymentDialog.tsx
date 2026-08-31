@@ -70,10 +70,7 @@ export function PartyPaymentDialog({
     if (num(draft.amount) <= 0) return toast.error("Enter the amount paid.");
 
     setBusy(true);
-    const result = await rpc<{ ok: boolean; error?: string; id?: string }>(
-      "savePartyPaymentAction",
-      draft.id,
-      {
+    const result = await rpc<{ ok: boolean; error?: string; id?: string }>("savePartyPaymentAction", draft.id, {
       supplier_id: draft.supplier_id,
       kind,
       date: draft.date,
@@ -81,8 +78,7 @@ export function PartyPaymentDialog({
       method: draft.method.trim() || "Cash",
       reference: draft.reference || null,
       note: draft.note || null,
-      },
-    );
+    });
     if (result.ok && pendingPhotos.length > 0) {
       try {
         await uploadPendingAttachments("party_payment", result.id, pendingPhotos);

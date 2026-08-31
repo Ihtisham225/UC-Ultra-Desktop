@@ -352,7 +352,8 @@ export default function MaterialPurchases() {
             <BookOpen className="size-7 text-primary" /> Purchase register
           </h1>
           <p className="text-muted-foreground mt-1">
-            Material bought and money paid, with the balance running down the page — {partyLabel}.
+            Raw material bought and money paid for it, with the balance running down the page — {partyLabel}.
+            Making and job work keep their own books.
           </p>
         </div>
         {canManage && (
@@ -407,13 +408,12 @@ export default function MaterialPurchases() {
         </div>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: "Opening balance", value: ledger.opening, hint: "سابقہ رقم — carried in" },
           { label: "Purchases", value: ledger.purchase_total, hint: `${purchases.length} bill${purchases.length === 1 ? "" : "s"}` },
-          { label: "Job work", value: ledger.job_work_total, hint: "Billed by the factories" },
           { label: "Paid", value: ledger.credit_total, hint: `${payments.length} payment${payments.length === 1 ? "" : "s"}` },
-          { label: "Balance", value: ledger.closing, hint: "Owed to the parties", strong: true },
+          { label: "Material balance", value: ledger.closing, hint: "Owed for material", strong: true },
         ].map((c) => (
           <Card key={c.label} className={`shadow-card p-4 ${c.strong ? "border-primary/40" : ""}`}>
             <div className="text-xs text-muted-foreground">{c.label}</div>
