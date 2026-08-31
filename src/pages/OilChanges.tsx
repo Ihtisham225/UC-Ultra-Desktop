@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Car, Trash2, Search, Eye, Edit2, Receipt } from "lucide-react";
+import { Car, Trash2, Search, Eye, Edit2, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePagination } from "@/hooks/usePagination";
@@ -18,7 +18,7 @@ import { downloadCsv } from "@/lib/csv";
 import { format } from "date-fns";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import {
-  VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft,
+  VehicleFields, vehicleDraftToInput, type VehicleDraft,
 } from "@/components/VehicleFields";
 import { isOil, normalizePlate, tidyPlate } from "@/lib/oil";
 
@@ -130,44 +130,11 @@ export default function OilChanges() {
     return sorted.filter((r) => normalizePlate(r.vehicle_number) === nq);
   };
 
-  const startNew = () => setEditing({
-    draft: { ...blankVehicle },
-    date: format(new Date(), "yyyy-MM-dd"),
-  });
-
   const startEdit = (r: OilChange) => setEditing({
     id: r.id,
     draft: toDraft(r),
     date: format(new Date(r.serviced_at), "yyyy-MM-dd"),
   });
-
-  /**
-   * A returning car fills its own form from the local register — only blank
-   * fields, never over something just typed — and last visit's target reading
-   * becomes this visit's likely odometer.
-   */
-  const prefillFromHistory = (plate: string) => {
-    if (!editing || editing.id || !plate.trim()) return;
-    const prior = historyFor(plate)[0];
-    if (!prior) return;
-    setEditing((e) => {
-      if (!e) return e;
-      const d = e.draft;
-      const priorNext = n(prior.next_km);
-      return {
-        ...e,
-        draft: {
-          ...d,
-          make: d.make || (prior.make ?? ""),
-          model_number: d.model_number || (prior.model_number ?? ""),
-          visitor_name: d.visitor_name || (prior.visitor_name ?? ""),
-          phone: d.phone || (prior.phone ?? ""),
-          current_km: d.current_km || (priorNext == null ? "" : String(priorNext)),
-        },
-      };
-    });
-    toast.info(`Filled from this vehicle's last visit (${format(new Date(prior.serviced_at), "d MMM yyyy")})`);
-  };
 
   const save = async () => {
     if (!editing || !currentShop) return;
@@ -244,14 +211,12 @@ export default function OilChanges() {
           </h1>
           <p className="text-sm text-muted-foreground">
             {totalItems} record{totalItems === 1 ? "" : "s"}{" "}
-            — every vehicle serviced, and when it&apos;s due back.
+            — every vehicle serviced, and when it&apos;s due back. New ones are
+            taken at the till, on the bill for the oil.
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>Export CSV</Button>
-          <Button onClick={startNew} className="bg-gradient-primary hover:opacity-90 text-primary-foreground">
-            <Plus className="size-4 me-1" /> Record oil change
-          </Button>
         </div>
       </div>
 
@@ -271,7 +236,7 @@ export default function OilChanges() {
         <Card className="p-12 text-center text-muted-foreground">
           {search
             ? "No vehicle matches that."
-            : "No oil changes recorded yet. They're added here, or from the till when oil is sold."}
+            : "No oil changes yet. They're recorded at the till, on the bill for the oil."}
         </Card>
       ) : (
         <Card className="overflow-hidden">
@@ -342,7 +307,7 @@ export default function OilChanges() {
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing?.id ? "Edit oil change" : "Record oil change"}</DialogTitle>
+            <DialogTitle>Edit oil change</DialogTitle>
           </DialogHeader>
           {editing && (
             <div className="space-y-3">
@@ -357,7 +322,6 @@ export default function OilChanges() {
               <VehicleFields
                 value={editing.draft}
                 onChange={(draft) => setEditing({ ...editing, draft })}
-                onPlateBlur={prefillFromHistory}
               />
             </div>
           )}

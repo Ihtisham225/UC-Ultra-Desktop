@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
 import { Card } from "@/components/ui/card";
-import { Plus, Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2 } from "lucide-react";
+import { Plus, Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,7 +20,9 @@ import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { deleteLocal, notifyChange } from "@/lib/localDb";
+import { syncAll } from "@/lib/syncEngine";
 import { ManualSaleDialog, type ManualSaleApi } from "@/components/ManualSaleDialog";
+import { EditSaleDialog, type EditableSale, type EditableProduct } from "@/components/EditSaleDialog";
 import { soldAs, formatSoldQuantity } from "@/lib/sale-units";
 
 /**
@@ -79,6 +81,10 @@ export default function Sales() {
   const { currentShop, role } = useShop();
   const formatMoney = useFormatMoney();
   const canReturn = role === "owner" || role === "manager";
+  // Correcting a mistyped bill is a manager's job, same as voiding a purchase.
+  const canEdit = role === "owner" || role === "manager";
+  const [editSale, setEditSale] = useState<EditableSale | null>(null);
+  const [editProducts, setEditProducts] = useState<EditableProduct[]>([]);
   const canDelete = role === "owner";
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState<number>(() => {
@@ -148,6 +154,46 @@ export default function Sales() {
   }, [totalCount, pageSize, page]);
 
   const cur = currentShop?.currency ?? "USD";
+
+  /**
+   * Editing corrects stock, investor lots and the customer's balance server
+   * side, so it needs a connection — the local row alone can't be trusted to
+   * rebuild any of that.
+   */
+  const openEdit = async (saleId: string) => {
+    if (!currentShop) return;
+    if (!navigator.onLine) {
+      return toast.error("Editing a bill needs a connection — the stock and balance are corrected on the server.");
+    }
+    const sale = allSales.find((x) => x.id === saleId);
+    if (!sale) return;
+    if (editProducts.length === 0) {
+      try {
+        const rows = await rpc<Array<{ id: string; name: string; price: number; unit: string | null; units: { id: string; name: string; factor: number }[]; is_service?: boolean }>>("loadPosProductsAction");
+        setEditProducts(rows.map((p) => ({
+          id: p.id, name: p.name, price: p.price, unit: p.unit, units: p.units ?? [], is_service: p.is_service,
+        })));
+      } catch { /* adding lines just won't offer suggestions */ }
+    }
+    setEditSale({
+      id: sale.id,
+      receipt_number: sale.receipt_number,
+      discount: Number((sale as { discount?: number }).discount ?? 0),
+      amount_paid: Number((sale as { amount_paid?: number }).amount_paid ?? 0),
+      payment_method: String(sale.payment_method ?? "cash"),
+      customer_id: (sale as { customer_id?: string | null }).customer_id ?? null,
+      items: sale.sale_items.map((it) => ({
+        product_id: (it as { product_id?: string | null }).product_id ?? null,
+        variant_id: (it as { variant_id?: string | null }).variant_id ?? null,
+        product_name: it.product_name,
+        quantity: Number(it.quantity),
+        unit_price: Number((it as { unit_price?: number }).unit_price ?? 0),
+        line_total: Number((it as { line_total?: number }).line_total ?? 0),
+        unit_label: it.unit_label ?? null,
+        unit_factor: it.unit_factor ?? null,
+      })),
+    });
+  };
 
   const openReceipt = (saleId: string) => {
     if (!currentShop) return;
@@ -323,6 +369,14 @@ export default function Sales() {
                     <Button variant="ghost" size="icon" title={t("sales.viewReceipt")} onClick={() => openReceipt(s.id)}>
                       <Eye className="size-4" />
                     </Button>
+                    {/* A returned bill can't be edited — the refund was recorded
+                        against these exact lines. Editing needs the server, so
+                        it's hidden while this terminal is offline. */}
+                    {canEdit && s.returnStatus === "none" && (
+                      <Button variant="ghost" size="icon" title="Edit bill" onClick={() => openEdit(s.id)}>
+                        <Pencil className="size-4" />
+                      </Button>
+                    )}
                     {canReturn && s.returnStatus !== "full" && (
                       <Button variant="ghost" size="icon" title={t("sales.processReturn")} onClick={() => setReturnSaleId(s.id)}>
                         <Undo2 className="size-4 text-warning" />
@@ -356,6 +410,16 @@ export default function Sales() {
         saleId={returnSaleId}
         onDone={() => loadSales()}
       />
+      <EditSaleDialog
+        sale={editSale}
+        products={editProducts}
+        onClose={() => setEditSale(null)}
+        // The server rewrote the bill, its stock and the customer's balance —
+        // pull the corrected rows back down so this terminal agrees.
+        onSaved={() => { syncAll().catch(() => {}); }}
+        submit={(id, input) => rpc<{ ok: boolean; error?: string }>("updateSaleAction", id, input)}
+      />
+
       {confirmDialog}
     </div>
   );
