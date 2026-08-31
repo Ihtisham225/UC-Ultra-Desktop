@@ -21,7 +21,8 @@ export interface MaterialPurchaseItemDto {
   colour: string | null;
   act: string | null;
   bags: number;
-  pounds: number;
+  /** In the bill's unit — see MaterialPurchaseDto.weight_unit. */
+  weight: number;
   rate: number;
   amount: number;
 }
@@ -35,6 +36,8 @@ export interface MaterialPurchaseDto {
   supplier_name: string;
   city: string | null;
   bilty_number: string | null;
+  weight_unit: "lb" | "kg";
+  kg_per_bag: number;
   received_by: string | null;
   notes: string | null;
   total: number;
@@ -70,7 +73,8 @@ export interface LedgerRow {
   colour: string | null;
   act: string | null;
   bags: number;
-  pounds: number;
+  weight: number;
+  weight_unit: string | null;
   rate: number;
   debit: number;
   credit: number;
@@ -243,9 +247,9 @@ export interface PurchasesByPartyRow {
   bills: number;
   lines: number;
   bags: number;
-  pounds: number;
+  weight_lb: number;
+  weight_kg: number;
   amount: number;
-  avg_rate: number;
 }
 
 export interface JobWorkByProcessRow {

@@ -94,7 +94,9 @@ export default function CraftReports() {
   const setQuick = (days: number) => setRange({ from: daysAgoISO(days - 1), to: todayISO() });
 
   const purchaseTotal = purchases.reduce((s, r) => s + r.amount, 0);
-  const purchasePounds = purchases.reduce((s, r) => s + r.pounds, 0);
+  const purchaseLb = purchases.reduce((s, r) => s + r.weight_lb, 0);
+  const purchaseKg = purchases.reduce((s, r) => s + r.weight_kg, 0);
+  const round = (n: number) => Math.round(n * 100) / 100;
   const jobWorkTotal = jobWork.reduce((s, r) => s + r.amount, 0);
   const pendingPieces = pending.reduce((s, r) => s + r.pending, 0);
   const owed = balances.reduce((s, r) => s + (r.balance > 0 ? r.balance : 0), 0);
@@ -136,8 +138,8 @@ export default function CraftReports() {
         <TabsContent value="purchases" className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <KPI label="Bought in range" value={formatMoney(purchaseTotal, cur)} sub={`${purchases.length} part${purchases.length === 1 ? "y" : "ies"}`} />
-            <KPI label="Pounds" value={String(Math.round(purchasePounds * 100) / 100)} />
-            <KPI label="Average rate" value={purchasePounds ? formatMoney(purchaseTotal / purchasePounds, cur) : "—"} sub="per pound, across every party" />
+            <KPI label="Pounds" value={purchaseLb ? String(round(purchaseLb)) : "—"} sub="on pound bills" />
+            <KPI label="Kilos" value={purchaseKg ? String(round(purchaseKg)) : "—"} sub="on kilo bills" />
           </div>
           <Toolbar
             title="Purchases by party"
@@ -149,8 +151,8 @@ export default function CraftReports() {
               { header: "Bills", value: (r: PurchasesByPartyRow) => String(r.bills) },
               { header: "Lines", value: (r: PurchasesByPartyRow) => String(r.lines) },
               { header: "Bags", value: (r: PurchasesByPartyRow) => String(r.bags) },
-              { header: "Pounds", value: (r: PurchasesByPartyRow) => String(r.pounds) },
-              { header: "Avg rate", value: (r: PurchasesByPartyRow) => r.avg_rate.toFixed(2) },
+              { header: "Pounds", value: (r: PurchasesByPartyRow) => (r.weight_lb ? String(r.weight_lb) : "") },
+              { header: "Kilos", value: (r: PurchasesByPartyRow) => (r.weight_kg ? String(r.weight_kg) : "") },
               { header: "Amount", value: (r: PurchasesByPartyRow) => String(r.amount) },
             ]}
           />
@@ -161,8 +163,10 @@ export default function CraftReports() {
                   <TableRow>
                     <TableHead>Party</TableHead><TableHead>City</TableHead>
                     <TableHead className="text-end">Bills</TableHead><TableHead className="text-end">Lines</TableHead>
-                    <TableHead className="text-end">Bags</TableHead><TableHead className="text-end">Pounds</TableHead>
-                    <TableHead className="text-end">Avg rate</TableHead><TableHead className="text-end">Amount</TableHead>
+                    <TableHead className="text-end">Bags</TableHead>
+                    <TableHead className="text-end">Pounds</TableHead>
+                    <TableHead className="text-end">Kilos</TableHead>
+                    <TableHead className="text-end">Amount</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -173,8 +177,8 @@ export default function CraftReports() {
                       <TableCell className="text-end">{r.bills}</TableCell>
                       <TableCell className="text-end">{r.lines}</TableCell>
                       <TableCell className="text-end">{r.bags || ""}</TableCell>
-                      <TableCell className="text-end">{r.pounds || ""}</TableCell>
-                      <TableCell className="text-end">{r.avg_rate ? formatMoney(r.avg_rate, cur) : ""}</TableCell>
+                      <TableCell className="text-end">{r.weight_lb || ""}</TableCell>
+                      <TableCell className="text-end">{r.weight_kg || ""}</TableCell>
                       <TableCell className="text-end font-semibold">{formatMoney(r.amount, cur)}</TableCell>
                     </TableRow>
                   ))}

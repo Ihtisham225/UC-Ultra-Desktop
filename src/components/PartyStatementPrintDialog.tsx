@@ -67,7 +67,7 @@ export function PartyStatementPrintDialog({
                 <th className="border border-black p-1">Colour</th>
                 <th className="border border-black p-1">Act</th>
                 <th className="border border-black p-1">Bags</th>
-                <th className="border border-black p-1">Pound</th>
+                <th className="border border-black p-1">Weight</th>
                 <th className="border border-black p-1">Rate</th>
                 <th className="border border-black p-1">Amount</th>
                 <th className="border border-black p-1">Received</th>
@@ -99,7 +99,9 @@ export function PartyStatementPrintDialog({
                       <td className="border border-black p-1">{r.colour ?? ""}</td>
                       <td className="border border-black p-1">{r.act ?? ""}</td>
                       <td className="border border-black p-1 text-end">{r.bags || ""}</td>
-                      <td className="border border-black p-1 text-end">{r.pounds || ""}</td>
+                      <td className="border border-black p-1 text-end">
+                        {r.weight ? `${r.weight}${r.weight_unit === "kg" ? " kg" : ""}` : ""}
+                      </td>
                       <td className="border border-black p-1 text-end">{r.rate || ""}</td>
                     </>
                   ) : (

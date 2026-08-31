@@ -24,7 +24,7 @@ import { RecordDetailsDialog } from "@/components/RecordDetailsDialog";
 import {
   PartyPaymentDialog, emptyPaymentDraft, paymentToDraft, type PaymentDraft,
 } from "@/components/PartyPaymentDialog";
-import { isMaterialSupplier } from "@/lib/handicraft";
+import { isMaterialSupplier, lineAmount, DEFAULT_KG_PER_BAG, type WeightUnit } from "@/lib/handicraft";
 import { rpc } from "@/lib/apiClient";
 import type {
   PartyOption, MaterialPurchaseDto, PartyPaymentDto, LedgerResult,
@@ -36,10 +36,10 @@ type ItemDraft = {
   colour: string;
   act: string;
   bags: string;
-  pounds: string;
+  weight: string;
   rate: string;
   amount: string;
-  /** Typed over by hand, so pounds × rate stops overwriting it. */
+  /** Typed over by hand, so the weight × rate maths stops overwriting it. */
   amountEdited: boolean;
 };
 
@@ -50,12 +50,14 @@ type PurchaseDraft = {
   book_number: string;
   city: string;
   bilty_number: string;
+  weight_unit: WeightUnit;
+  kg_per_bag: string;
   received_by: string;
   notes: string;
   items: ItemDraft[];
 };
 
-const emptyItem = (): ItemDraft => ({ colour: "", act: "", bags: "", pounds: "", rate: "", amount: "", amountEdited: false });
+const emptyItem = (): ItemDraft => ({ colour: "", act: "", bags: "", weight: "", rate: "", amount: "", amountEdited: false });
 
 const num = (s: string) => (s.trim() === "" ? 0 : Number(s)) || 0;
 
@@ -162,6 +164,8 @@ export default function MaterialPurchases() {
       book_number: "",
       city: "",
       bilty_number: "",
+      weight_unit: "lb",
+      kg_per_bag: "45",
       received_by: "",
       notes: "",
       items: [emptyItem()],
@@ -177,6 +181,8 @@ export default function MaterialPurchases() {
       book_number: p.book_number ?? "",
       city: p.city ?? "",
       bilty_number: p.bilty_number ?? "",
+      weight_unit: p.weight_unit,
+      kg_per_bag: String(p.kg_per_bag ?? 45),
       received_by: p.received_by ?? "",
       notes: p.notes ?? "",
       items: p.items.length
@@ -184,7 +190,7 @@ export default function MaterialPurchases() {
             colour: it.colour ?? "",
             act: it.act ?? "",
             bags: String(it.bags || ""),
-            pounds: String(it.pounds || ""),
+            weight: String(it.weight || ""),
             rate: String(it.rate || ""),
             amount: String(it.amount || ""),
             amountEdited: true,
@@ -193,17 +199,23 @@ export default function MaterialPurchases() {
     });
   };
 
-  /** Amount follows pounds × rate until someone types over it. */
+  /** Amount follows the bill's weight maths until someone types over it. */
   const setItem = (index: number, patch: Partial<ItemDraft>) => {
     setPurchaseDraft((d) => {
       if (!d) return d;
       const items = d.items.map((it, i) => {
         if (i !== index) return it;
         const next = { ...it, ...patch };
-        const touchedMaths = patch.pounds !== undefined || patch.rate !== undefined;
+        const touchedMaths = patch.weight !== undefined || patch.rate !== undefined;
         if (patch.amount !== undefined) next.amountEdited = true;
         if (touchedMaths) {
-          next.amount = String(Number((num(next.pounds) * num(next.rate)).toFixed(2)) || "");
+          const computed = lineAmount(
+            num(next.weight),
+            num(next.rate),
+            d.weight_unit,
+            num(d.kg_per_bag) || DEFAULT_KG_PER_BAG,
+          );
+          next.amount = String(computed || "");
           next.amountEdited = false;
         }
         return next;
@@ -219,7 +231,7 @@ export default function MaterialPurchases() {
     if (!purchaseDraft.supplier_id) return toast.error("Choose the party this was bought from.");
     if (!purchaseDraft.date) return toast.error("Pick a date.");
     const items = purchaseDraft.items.filter(
-      (it) => it.colour.trim() || it.act.trim() || num(it.pounds) || num(it.bags) || num(it.amount),
+      (it) => it.colour.trim() || it.act.trim() || num(it.weight) || num(it.bags) || num(it.amount),
     );
     if (items.length === 0) return toast.error("Add at least one goods line.");
 
@@ -233,13 +245,15 @@ export default function MaterialPurchases() {
       book_number: purchaseDraft.book_number || null,
       city: purchaseDraft.city || null,
       bilty_number: purchaseDraft.bilty_number || null,
+      weight_unit: purchaseDraft.weight_unit,
+      kg_per_bag: num(purchaseDraft.kg_per_bag) || 45,
       received_by: purchaseDraft.received_by || null,
       notes: purchaseDraft.notes || null,
       items: items.map((it) => ({
         colour: it.colour || null,
         act: it.act || null,
         bags: num(it.bags),
-        pounds: num(it.pounds),
+        weight: num(it.weight),
         rate: num(it.rate),
         amount: num(it.amount),
       })),
@@ -322,7 +336,9 @@ export default function MaterialPurchases() {
       { header: "Colour", value: (r) => r.item?.colour ?? "" },
       { header: "Act", value: (r) => r.item?.act ?? "" },
       { header: "Bags", value: (r) => (r.item?.bags ? String(r.item.bags) : "") },
-      { header: "Pounds", value: (r) => (r.item?.pounds ? String(r.item.pounds) : "") },
+      { header: "Unit", value: (r) => (r.purchase.weight_unit === "kg" ? "kg" : "lb") },
+      { header: "Weight", value: (r) => (r.item?.weight ? String(r.item.weight) : "") },
+      { header: "Kg per bag", value: (r) => (r.purchase.weight_unit === "kg" ? String(r.purchase.kg_per_bag) : "") },
       { header: "Rate", value: (r) => (r.item?.rate ? String(r.item.rate) : "") },
       { header: "Amount", value: (r) => String(r.item?.amount ?? r.purchase.total) },
     ]);
@@ -609,6 +625,31 @@ export default function MaterialPurchases() {
                   <Input value={purchaseDraft.bilty_number} onChange={(e) => setPurchaseDraft({ ...purchaseDraft, bilty_number: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
+                  <Label>Weight in</Label>
+                  <Select
+                    value={purchaseDraft.weight_unit}
+                    onValueChange={(v) => setPurchaseDraft({ ...purchaseDraft, weight_unit: v as WeightUnit })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="lb">Pounds — rate per pound</SelectItem>
+                      <SelectItem value="kg">Kilos — rate per bag</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {purchaseDraft.weight_unit === "kg" && (
+                  <div className="space-y-1.5">
+                    <Label>Kg in a bag</Label>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={purchaseDraft.kg_per_bag}
+                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, kg_per_bag: e.target.value })}
+                    />
+                    <p className="text-[11px] text-muted-foreground">45 unless this bill says otherwise.</p>
+                  </div>
+                )}
+                <div className="space-y-1.5">
                   <Label>Received by</Label>
                   <Input
                     value={purchaseDraft.received_by}
@@ -652,8 +693,8 @@ export default function MaterialPurchases() {
                           <Input className="h-9" type="number" step="0.01" value={it.bags} onChange={(e) => setItem(i, { bags: e.target.value })} />
                         </div>
                         <div className="w-[100px] space-y-1">
-                          <Label className="text-xs">Pounds</Label>
-                          <Input className="h-9" type="number" step="0.01" value={it.pounds} onChange={(e) => setItem(i, { pounds: e.target.value })} />
+                          <Label className="text-xs">{purchaseDraft.weight_unit === "kg" ? "Kg" : "Pounds"}</Label>
+                          <Input className="h-9" type="number" step="0.01" value={it.weight} onChange={(e) => setItem(i, { weight: e.target.value })} />
                         </div>
                         <div className="w-[100px] space-y-1">
                           <Label className="text-xs">Rate</Label>
@@ -685,8 +726,11 @@ export default function MaterialPurchases() {
                   ))}
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Amount fills in as pounds × rate. Type over it when the paper says something else —
-                  the line turns blue to show it was set by hand.
+                  {purchaseDraft.weight_unit === "kg"
+                    ? `Rate is the price of one ${num(purchaseDraft.kg_per_bag) || 45} kg bag, so amount fills in as kg ÷ ${num(purchaseDraft.kg_per_bag) || 45} × rate.`
+                    : "Amount fills in as pounds × rate."}{" "}
+                  Type over it when the paper says something else — the line turns blue to show it was
+                  set by hand.
                 </p>
               </div>
 
@@ -737,6 +781,13 @@ export default function MaterialPurchases() {
                 { label: "City", value: viewingPurchase.city },
                 { label: "Bilty no.", value: viewingPurchase.bilty_number },
                 { label: "Received by", value: viewingPurchase.received_by },
+                {
+                  label: "Weight in",
+                  value:
+                    viewingPurchase.weight_unit === "kg"
+                      ? `Kilos · rate per ${viewingPurchase.kg_per_bag} kg bag`
+                      : "Pounds · rate per pound",
+                },
                 { label: "Notes", value: viewingPurchase.notes, full: true },
               ]
             : []
@@ -750,7 +801,7 @@ export default function MaterialPurchases() {
                     { header: "Colour" },
                     { header: "Act" },
                     { header: "Bags", align: "end" },
-                    { header: "Pounds", align: "end" },
+                    { header: viewingPurchase.weight_unit === "kg" ? "Kg" : "Pounds", align: "end" },
                     { header: "Rate", align: "end" },
                     { header: "Amount", align: "end" },
                   ],
@@ -758,7 +809,7 @@ export default function MaterialPurchases() {
                     it.colour ?? "—",
                     it.act ?? "—",
                     it.bags || "",
-                    it.pounds || "",
+                    it.weight || "",
                     it.rate ? formatMoney(it.rate, currency) : "",
                     formatMoney(it.amount, currency),
                   ]),
@@ -766,7 +817,7 @@ export default function MaterialPurchases() {
                     "Total",
                     "",
                     viewingPurchase.items.reduce((s, it) => s + it.bags, 0) || "",
-                    viewingPurchase.items.reduce((s, it) => s + it.pounds, 0) || "",
+                    viewingPurchase.items.reduce((s, it) => s + it.weight, 0) || "",
                     "",
                     formatMoney(viewingPurchase.total, currency),
                   ],

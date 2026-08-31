@@ -84,3 +84,30 @@ export const CHALLAN_KIND = {
     blurb: "Goods sent out for bumbul, rangai, dhulai and press — and the bills for the work done.",
   },
 } satisfies Record<ChallanKindValue, Record<string, string>>;
+
+
+/** Which unit a purchase bill's weights are written in. */
+export type WeightUnit = "lb" | "kg";
+
+/**
+ * What a goods line comes to.
+ *
+ * A pound bill is simply weight × rate. A kilo bill quotes the rate as the
+ * price of one bag, so the line is bag-fractions × rate — 500 kg at 225,000
+ * a 45 kg bag is 500 ÷ 45 × 225,000 = 2,500,000.
+ */
+export function lineAmount(
+  weight: number,
+  rate: number,
+  unit: WeightUnit,
+  kgPerBag: number,
+): number {
+  if (unit === "kg") {
+    const perBag = kgPerBag > 0 ? kgPerBag : 45;
+    return Number(((weight / perBag) * rate).toFixed(2));
+  }
+  return Number((weight * rate).toFixed(2));
+}
+
+/** Kilos in a bag when a bill doesn't say otherwise. */
+export const DEFAULT_KG_PER_BAG = 45;
