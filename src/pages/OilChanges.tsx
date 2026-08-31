@@ -28,6 +28,7 @@ interface OilChange {
   shop_id: string;
   sale_id: string | null;
   vehicle_number: string;
+  vehicle_key?: string;
   make: string | null;
   model_number: string | null;
   current_km: number | string | null;
@@ -185,6 +186,8 @@ export default function OilChanges() {
         shop_id: currentShop.id,
         ...input,
         vehicle_number: tidyPlate(input.vehicle_number),
+        // The server's indexed lookup key; NOT NULL, so the push needs it.
+        vehicle_key: normalizePlate(input.vehicle_number),
         serviced_at: editing.date ? new Date(`${editing.date}T12:00:00`).toISOString() : now,
         updated_at: now,
         ...(editing.id ? {} : { sale_id: null, created_at: now }),

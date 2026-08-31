@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatQty } from "@/lib/format";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
@@ -612,7 +613,7 @@ export default function Products() {
             </Card>
             <Card className="p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Total stock</div>
-              <div className="text-lg sm:text-2xl font-bold tabular-nums mt-1 break-words leading-tight">{totalUnits}</div>
+              <div className="text-lg sm:text-2xl font-bold tabular-nums mt-1 break-words leading-tight">{formatQty(totalUnits)}</div>
             </Card>
             <Card className="p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Inventory value</div>
@@ -690,7 +691,7 @@ export default function Products() {
                       </td>
                       <td className="p-3 text-end font-semibold">{formatMoney(p.price, cur)}</td>
                       <td className={`p-3 text-end font-mono font-semibold ${low ? "text-warning" : ""}`}>
-                        {p.is_service ? <span className="text-muted-foreground font-normal">—</span> : <>{stock} {p.unit}</>}
+                        {p.is_service ? <span className="text-muted-foreground font-normal">—</span> : <>{formatQty(stock)} {p.unit}</>}
                       </td>
                       <td className="p-3 text-end whitespace-nowrap">
                         <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(p)}>
@@ -780,8 +781,8 @@ export default function Products() {
             { label: t("products.sku"), value: details.sku ?? "—" },
             { label: t("products.barcode"), value: details.barcode ?? "—" },
             { label: t("products.sellingPrice"), value: formatMoney(details.price, cur) },
-            { label: t("common.stock"), value: `${totalStock(details)} ${details.unit ?? ""}` },
-            { label: t("products.lowStockAt"), value: `${Number(details.low_stock_threshold)} ${details.unit ?? ""}` },
+            { label: t("common.stock"), value: `${formatQty(totalStock(details))} ${details.unit ?? ""}` },
+            { label: t("products.lowStockAt"), value: `${formatQty(details.low_stock_threshold)} ${details.unit ?? ""}` },
             { label: t("common.status"), value: details.is_active ? t("common.active") : t("common.inactive") },
             ...((details.product_variants ?? []).length > 0
               ? [{
@@ -796,7 +797,7 @@ export default function Products() {
                             {v.sku && <span className="ms-2 font-mono text-muted-foreground">{v.sku}</span>}
                           </span>
                           <span className="tabular-nums shrink-0">
-                            {formatMoney(v.price_override ?? details.price, cur)} · {Number(v.stock)} {details.unit ?? ""}
+                            {formatMoney(v.price_override ?? details.price, cur)} · {formatQty(v.stock)} {details.unit ?? ""}
                           </span>
                         </div>
                       ))}

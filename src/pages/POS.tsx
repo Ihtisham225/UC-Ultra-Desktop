@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatQty } from "@/lib/format";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShop } from "@/contexts/ShopContext";
@@ -25,7 +26,7 @@ import { VariantPickerDialog, type VariantOption } from "@/components/VariantPic
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { cn } from "@/lib/utils";
 import { isLabEnabled } from "@/lib/lab";
-import { isOil } from "@/lib/oil";
+import { isOil, normalizePlate, tidyPlate } from "@/lib/oil";
 import { VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft } from "@/components/VehicleFields";
 
 interface Variant {
@@ -507,7 +508,13 @@ export default function POS() {
     // The service record rides the same offline queue as the sale, so a
     // terminal with no connection still captures the vehicle at the counter.
     const oilChangeRow = oilShop && vehicle.vehicle_number.trim()
-      ? { ...vehicleDraftToInput(vehicle), vehicle_number: vehicle.vehicle_number.trim().toUpperCase() }
+      ? {
+          ...vehicleDraftToInput(vehicle),
+          vehicle_number: tidyPlate(vehicle.vehicle_number),
+          // The server's indexed lookup key. NOT NULL with no default, so the
+          // push would be rejected without it.
+          vehicle_key: normalizePlate(vehicle.vehicle_number),
+        }
       : null;
     if (oilChangeRow) {
       await upsertLocal("oil_changes", {
@@ -672,7 +679,7 @@ export default function POS() {
                           !p.is_service && totalStock <= 0 ? "text-amber-600 font-medium" : "text-muted-foreground"
                         }`}
                       >
-                        {p.is_service ? "Service" : `${t("common.stock")}: ${totalStock}`}
+                        {p.is_service ? "Service" : `${t("common.stock")}: ${formatQty(totalStock)}`}
                       </div>
                     )}
                     {imeiOnProduct && !hasVariants && (p.imei1 || p.imei2) && (
@@ -750,7 +757,7 @@ export default function POS() {
                   </div>
                   {c.unit_label && (
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      = {Math.round(c.quantity * c.unit_factor * 10000) / 10000} {c.base_unit || "pcs"} off stock
+                      = {formatQty(c.quantity * c.unit_factor)} {c.base_unit || "pcs"} off stock
                     </p>
                   )}
                   {imeiOnSale && !c.tracks_imei && !c.is_service && !revealImei[c.key] && (

@@ -23,3 +23,18 @@ export const formatNumber = (n: number | string, locale?: string) => {
   const v = typeof n === "string" ? parseFloat(n) : n;
   return new Intl.NumberFormat(locale).format(v || 0);
 };
+
+/**
+ * A quantity as the shopkeeper should read it.
+ *
+ * Stock is a decimal — oil is sold in half litres — so sums land on binary
+ * floating-point noise: 1839.520000000002 where the shelf holds 1839.52.
+ * Rounds to 4 places (finer than anyone counts) and drops trailing zeros, so
+ * whole numbers still read as "132" rather than "132.0000".
+ */
+export const formatQty = (value: unknown): string => {
+  if (value === null || value === undefined || value === "") return "0";
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return String(Math.round(n * 10000) / 10000);
+};
