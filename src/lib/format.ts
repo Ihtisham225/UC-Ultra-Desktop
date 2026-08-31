@@ -38,3 +38,18 @@ export const formatQty = (value: unknown): string => {
   if (!Number.isFinite(n)) return "0";
   return String(Math.round(n * 10000) / 10000);
 };
+
+/**
+ * A money amount with no currency symbol — "2,630.00".
+ *
+ * The receipt's item table is only ~72mm wide and prints one currency
+ * throughout, so repeating "PKR" in every cell just forces the numbers to wrap
+ * mid-column. The counter bill this format follows prints bare numbers in the
+ * table and names the currency once, in the totals.
+ */
+export const formatAmount = (amount: number | string, currency = "USD"): string => {
+  const n = typeof amount === "string" ? parseFloat(amount) : amount;
+  if (!Number.isFinite(n)) return "0";
+  const digits = decimalsFor(currency);
+  return n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+};

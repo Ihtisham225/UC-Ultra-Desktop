@@ -456,7 +456,10 @@ export default function POS() {
       unit_price: c.unit_price / c.unit_factor,
       quantity: c.quantity * c.unit_factor,
       line_total: c.unit_price * c.quantity,
-      unit_label: c.unit_label ?? null,
+      // Always record what the line was measured in — the alternate unit if
+      // one was picked, otherwise the product's own — so the receipt's Unit
+      // column is filled whether or not any conversion happened.
+      unit_label: c.unit_label ?? c.base_unit ?? null,
       unit_factor: c.unit_label ? c.unit_factor : null,
       // IMEI(s) of the specific unit sold, entered at checkout (phone shops).
       imei1: c.imei1?.trim() || null,

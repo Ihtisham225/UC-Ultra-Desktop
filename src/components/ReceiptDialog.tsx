@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Printer, MessageCircle, Sparkles } from "lucide-react";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatAmount } from "@/lib/format";
 import { format } from "date-fns";
-import { soldAs, formatSoldQuantity } from "@/lib/sale-units";
+import { soldAs, formatUnitQty } from "@/lib/sale-units";
 import { rpc } from "@/lib/apiClient";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -79,22 +79,44 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
          .join("")}`
     : "";
 
-  const itemsHtml = sale.items
-    .map((item: any) => {
-      const imeis = showImei
-        ? [item.imei1, item.imei2].filter(Boolean).map((v: string) => `<div class="row small"><span>IMEI</span><span class="value">${escapeHtml(v)}</span></div>`).join("")
-        : "";
-      return `
-        <div class="item">
-          <div class="item-name">${escapeHtml(item.product_name ?? "")}</div>
-          <div class="row small">
-            <span>${escapeHtml(formatSoldQuantity(soldAs(item)))} x ${escapeHtml(formatMoney(soldAs(item).unitPrice, currency))}</span>
-            <span class="value">${escapeHtml(formatMoney(item.line_total, currency))}</span>
-          </div>
-          ${imeis}
-        </div>`;
-    })
-    .join("");
+  // Description / Qty / Unit / @ / Amt, the way a counter bill reads: the unit
+  // has its own column so "4.00 LIT" can't be mistaken for four bottles.
+  // Quantities and prices are what was rung up, not the base units the line is
+  // stored in — the customer is holding bottles.
+  const itemsHtml = `
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="d">Description</th>
+          <th class="q">Qty</th>
+          <th class="u">Unit</th>
+          <th class="r">@</th>
+          <th class="a">Amt</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sale.items
+          .map((item: any) => {
+            const sold = soldAs(item);
+            const imeis = showImei
+              ? [item.imei1, item.imei2]
+                  .filter(Boolean)
+                  .map((v: string) => `<tr class="sub"><td colspan="5">IMEI ${escapeHtml(v)}</td></tr>`)
+                  .join("")
+              : "";
+            return `
+              <tr>
+                <td class="d">${escapeHtml(item.product_name ?? "")}</td>
+                <td class="q">${escapeHtml(formatUnitQty(sold.quantity))}</td>
+                <td class="u">${escapeHtml(sold.unit ?? "")}</td>
+                <td class="r">${escapeHtml(formatAmount(sold.unitPrice, currency))}</td>
+                <td class="a">${escapeHtml(formatAmount(item.line_total, currency))}</td>
+              </tr>
+              ${imeis}`;
+          })
+          .join("")}
+    </tbody>
+    </table>`;
 
   const summaryRows = [
     `<div class="row"><span>Subtotal</span><span class="value">${escapeHtml(formatMoney(sale.subtotal, currency))}</span></div>`,
@@ -196,6 +218,35 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
           text-align: right;
           word-break: break-word;
         }
+        /* The itemised table. Description takes whatever is left after the
+           four numeric columns, which are sized to their widest realistic
+           content so the money columns stay aligned down the slip. */
+        .items {
+          width: 100%;
+          border-collapse: collapse;
+          font-weight: 400;
+          font-size: 12px;
+          table-layout: fixed;
+        }
+        .items th {
+          font-weight: 700;
+          text-align: left;
+          border-bottom: 1px solid #000;
+          padding: 0 0 2px;
+        }
+        .items td {
+          vertical-align: top;
+          padding: 3px 0;
+          word-break: break-word;
+          overflow-wrap: anywhere;
+        }
+        .items .d { width: auto; padding-right: 3px; }
+        .items .q { width: 12%; text-align: right; padding-right: 3px; }
+        .items .u { width: 13%; text-align: left; padding-right: 3px; }
+        .items .r { width: 21%; text-align: right; padding-right: 3px; }
+        .items .a { width: 22%; text-align: right; }
+        .items th.q, .items th.r, .items th.a { text-align: right; }
+        .items tr.sub td { padding: 0 0 3px; font-size: 11px; }
         .item {
           margin-bottom: 6px;
           /* Item lines print in Arial Regular so the bold header, totals and
@@ -414,20 +465,41 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
 
             <div className={dashed} />
 
-            <div className="space-y-1.5">
-              {sale.items.map((it: any, i: number) => (
-                <div key={i} className="space-y-0.5 font-normal">
-                  <div className="whitespace-normal break-words [overflow-wrap:anywhere] leading-tight">{it.product_name}</div>
-                  <div className="flex items-start justify-between text-[11px] gap-2">
-                    <span className="shrink-0">{formatSoldQuantity(soldAs(it))} x {formatMoney(soldAs(it).unitPrice, cur)}</span>
-                    <span className="tabular-nums text-right break-words">{formatMoney(it.line_total, cur)}</span>
-                  </div>
-                  {sale.shop?.show_imei_on_receipt && [it.imei1, it.imei2].filter(Boolean).map((v: string, k: number) => (
-                    <div key={k} className="flex items-start justify-between text-[11px] gap-2"><span className="shrink-0">IMEI</span><span className="tabular-nums text-right break-words">{v}</span></div>
-                  ))}
-                </div>
-              ))}
-            </div>
+            {/* Same Description / Qty / Unit / @ / Amt table the printer gets,
+                so what's on screen is what comes off the roll. */}
+            <table className="w-full table-fixed border-collapse font-normal text-[11px]">
+              <thead>
+                <tr className="border-b border-current">
+                  <th className="text-start font-bold pb-0.5 pe-1">Description</th>
+                  <th className="text-end font-bold pb-0.5 pe-1 w-[12%]">Qty</th>
+                  <th className="text-start font-bold pb-0.5 pe-1 w-[13%]">Unit</th>
+                  <th className="text-end font-bold pb-0.5 pe-1 w-[21%]">@</th>
+                  <th className="text-end font-bold pb-0.5 w-[22%]">Amt</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sale.items.map((it: any, i: number) => {
+                  const sold = soldAs(it);
+                  const imeis = sale.shop?.show_imei_on_receipt
+                    ? [it.imei1, it.imei2].filter(Boolean)
+                    : [];
+                  return (
+                    <Fragment key={i}>
+                      <tr className="align-top">
+                        <td className="py-0.5 pe-1 break-words [overflow-wrap:anywhere]">{it.product_name}</td>
+                        <td className="py-0.5 pe-1 text-end tabular-nums">{formatUnitQty(sold.quantity)}</td>
+                        <td className="py-0.5 pe-1 break-words">{sold.unit ?? ""}</td>
+                        <td className="py-0.5 pe-1 text-end tabular-nums break-words">{formatAmount(sold.unitPrice, cur)}</td>
+                        <td className="py-0.5 text-end tabular-nums break-words">{formatAmount(it.line_total, cur)}</td>
+                      </tr>
+                      {imeis.map((v: string, k: number) => (
+                        <tr key={k}><td colSpan={5} className="pb-0.5 text-[10px]">IMEI {v}</td></tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
 
             <div className={dashed} />
 
