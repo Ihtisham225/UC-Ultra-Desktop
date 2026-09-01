@@ -27,6 +27,13 @@ jobs:
           cache: npm
       - run: npm ci --legacy-peer-deps
 
+      # The tag is what's being released, so it decides the version — see
+      # .github/scripts/version-from-tag.mjs. Must run before the build, since
+      # electron-builder reads package.json when it packages and writes the
+      # update manifests.
+      - name: Take the version from the tag
+        run: node .github/scripts/version-from-tag.mjs
+
       # electron-builder's auto-notarization expects APPLE_API_KEY to be a
       # file path, not raw content — materialize the secret into a file.
       - name: Write App Store Connect API key to file
@@ -74,6 +81,13 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+
+      # The tag is what's being released, so it decides the version — see
+      # .github/scripts/version-from-tag.mjs. Must run before the build, since
+      # electron-builder reads package.json when it packages and writes the
+      # update manifests.
+      - name: Take the version from the tag
+        run: node .github/scripts/version-from-tag.mjs
 
       - name: Build & package (Windows)
         shell: bash
