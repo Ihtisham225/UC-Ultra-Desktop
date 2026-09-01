@@ -21,6 +21,7 @@ import {
   VehicleFields, vehicleDraftToInput, type VehicleDraft,
 } from "@/components/VehicleFields";
 import { isOil, normalizePlate, tidyPlate } from "@/lib/oil";
+import VehiclesTab from "./VehiclesTab";
 
 /** A synced `oil_changes` row as it sits in the local store. */
 interface OilChange {
@@ -89,6 +90,7 @@ export default function OilChanges() {
   const [details, setDetails] = useState<OilChange | null>(null);
   const [busy, setBusy] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const [tab, setTab] = useState<"visits" | "vehicles">("visits");
 
   const canDelete = role === "owner" || role === "manager";
 
@@ -216,10 +218,31 @@ export default function OilChanges() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>Export CSV</Button>
+          {tab === "visits" && (
+            <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>Export CSV</Button>
+          )}
         </div>
       </div>
 
+      <div className="inline-flex rounded-lg border bg-muted/40 p-1 self-start">
+        {(["visits", "vehicles"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              tab === t ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t === "visits" ? "Oil changes" : "Vehicles"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "vehicles" ? (
+        <VehiclesTab onSearchVisits={(plate) => { setTab("visits"); setSearch(plate); }} />
+      ) : (
+      <>
       <div className="relative max-w-md">
         <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <Input
@@ -303,7 +326,9 @@ export default function OilChanges() {
         </Card>
       )}
 
-      {/* Add / edit */}
+      </>
+      )}
+
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>

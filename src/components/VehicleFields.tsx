@@ -39,10 +39,18 @@ interface Props {
   onPlateBlur?: (plate: string) => void;
   /** Tightens the layout for the POS side panel. */
   compact?: boolean;
+  /**
+   * Show the plate / make / model boxes. Off at the till, where the car is
+   * chosen from the register instead — those belong to the vehicle, not to
+   * this visit, and retyping them is how one car ends up registered twice.
+   */
+  showIdentity?: boolean;
   disabled?: boolean;
 }
 
-export function VehicleFields({ value, onChange, onPlateBlur, compact = false, disabled }: Props) {
+export function VehicleFields({
+  value, onChange, onPlateBlur, compact = false, showIdentity = true, disabled,
+}: Props) {
   const set = (patch: Partial<VehicleDraft>) => onChange({ ...value, ...patch });
   const cols = compact ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-2";
 
@@ -55,6 +63,7 @@ export function VehicleFields({ value, onChange, onPlateBlur, compact = false, d
 
   return (
     <div className="space-y-3">
+      {showIdentity && (
       <div className={`grid ${cols} gap-3`}>
         <div className="space-y-1.5">
           <Label>Vehicle number *</Label>
@@ -77,17 +86,20 @@ export function VehicleFields({ value, onChange, onPlateBlur, compact = false, d
           />
         </div>
       </div>
+      )}
 
       <div className={`grid ${cols} gap-3`}>
-        <div className="space-y-1.5">
-          <Label>Model number</Label>
-          <Input
-            value={value.model_number}
-            onChange={(e) => set({ model_number: e.target.value })}
-            placeholder="GLi 1.3 / 2018"
-            disabled={disabled}
-          />
-        </div>
+        {showIdentity && (
+          <div className="space-y-1.5">
+            <Label>Model number</Label>
+            <Input
+              value={value.model_number}
+              onChange={(e) => set({ model_number: e.target.value })}
+              placeholder="GLi 1.3 / 2018"
+              disabled={disabled}
+            />
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label>Oil changer</Label>
           <Input

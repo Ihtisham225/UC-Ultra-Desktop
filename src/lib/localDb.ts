@@ -48,6 +48,9 @@ export const SYNC_TABLES = [
   // The vehicle register. Two-way: a terminal with no connection still takes
   // the car's details at the counter and pushes them with the sale.
   'oil_changes',
+  // The vehicle register. Two-way, so the counter can pick a car — and
+  // register one that just drove in — with no connection.
+  'vehicles',
 ] as const
 
 export type SyncTable = typeof SYNC_TABLES[number]
