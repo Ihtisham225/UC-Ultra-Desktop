@@ -235,7 +235,47 @@ export default function POS() {
     }
   };
 
+  /**
+   * The quantity box's in-flight text, per line. The cart holds a number, but
+   * a half-typed "3." or a momentarily empty box are normal states while
+   * someone types — coercing on every keystroke fights them. Only a valid
+   * positive value reaches the cart; the draft is dropped on blur so the box
+   * snaps back to the canonical figure.
+   */
+  const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({});
+  const clearQtyDraft = (key: string) =>
+    setQtyDraft((d) => {
+      if (!(key in d)) return d;
+      const next = { ...d };
+      delete next[key];
+      return next;
+    });
+
+  const setLineQuantity = (key: string, qty: number) => {
+    setCart((prev) => prev.map((c) => (c.key === key ? { ...c, quantity: qty } : c)));
+  };
+
+  /**
+   * Checked when the box is left rather than on each keystroke: typing "10"
+   * passes through "1", and clamping mid-word is how you end up unable to type
+   * the number you meant.
+   */
+  const commitQuantity = (key: string) => {
+    clearQtyDraft(key);
+    setCart((prev) => prev.map((c) => {
+      if (c.key !== key) return c;
+      if (c.is_service || allowNegativeStock) return c;
+      const max = c.stock / (c.unit_factor || 1);
+      if (c.quantity > max) {
+        toast.error(t("pos.insufficientStock", { name: c.product_name }));
+        return { ...c, quantity: Math.max(0, Math.round(max * 10000) / 10000) };
+      }
+      return c;
+    }).filter((c) => c.quantity > 0));
+  };
+
   const updateQty = (key: string, delta: number) => {
+    clearQtyDraft(key);
     setCart((prev) => prev
       .map((c) => {
         if (c.key !== key) return c;
@@ -249,7 +289,10 @@ export default function POS() {
       .filter((c) => c.quantity > 0));
   };
 
-  const removeItem = (key: string) => setCart((prev) => prev.filter((c) => c.key !== key));
+  const removeItem = (key: string) => {
+    clearQtyDraft(key);
+    setCart((prev) => prev.filter((c) => c.key !== key));
+  };
 
   /**
    * Bill this line in a different unit. The quantity the cashier typed stays
@@ -571,7 +614,7 @@ export default function POS() {
     setVehicle({ ...blankVehicle });
     setPickedVehicle(null);
     setKnownVehicle(null);
-    setCart([]); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
+    setCart([]); setQtyDraft({}); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
     setTendersTouched(false);
     setTenders((prev) => (prev.length > 0 ? [{ ...prev[0], amount: "" }] : prev));
     toast.success("Sale completed!");
@@ -742,7 +785,25 @@ export default function POS() {
                   </div>
                   <div className="flex items-center gap-1 mt-2">
                     <Button size="icon" variant="outline" className="size-7" onClick={() => updateQty(c.key, -1)}><Minus className="size-3" /></Button>
-                    <span className="w-8 text-center font-mono text-sm">{c.quantity}</span>
+                    {/* Typed as well as stepped: oil goes out in 3.7 litres,
+                        which is a lot of clicking on a + button. */}
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0"
+                      inputMode="decimal"
+                      aria-label={`Quantity of ${c.product_name}`}
+                      value={qtyDraft[c.key] ?? formatQty(c.quantity)}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setQtyDraft((d) => ({ ...d, [c.key]: raw }));
+                        const n = parseFloat(raw);
+                        if (Number.isFinite(n) && n > 0) setLineQuantity(c.key, n);
+                      }}
+                      onBlur={() => commitQuantity(c.key)}
+                      onFocus={(e) => e.currentTarget.select()}
+                      className="h-7 w-16 text-center text-sm px-1 tabular-nums"
+                    />
                     <Button size="icon" variant="outline" className="size-7" onClick={() => updateQty(c.key, 1)}><Plus className="size-3" /></Button>
                     {(c.units?.length ?? 0) > 0 ? (
                       <Select
