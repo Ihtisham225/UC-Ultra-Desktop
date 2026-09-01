@@ -145,6 +145,12 @@ export default function Purchases() {
   const [reference, setReference] = useState("");
   const [purchaseAccountId, setPurchaseAccountId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "mobile" | "other">("cash");
+  /**
+   * What the shop handed over. Empty means paid in full, which is how every
+   * purchase behaved before this existed — anything short goes on the
+   * supplier's khata.
+   */
+  const [amountPaid, setAmountPaid] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [invoiceImageUrl, setInvoiceImageUrl] = useState<string | null>(null);
@@ -264,6 +270,13 @@ export default function Purchases() {
     setSupplierId((data as any).supplier_id ?? "");
     setReference((data as any).reference_number ?? "");
     setPaymentMethod(((data as any).payment_method as any) ?? "cash");
+    // Blank when it was settled in full, so reopening a paid purchase doesn't
+    // look like a partial payment.
+    setAmountPaid(
+      Number((data as any).paid_amount) < Number((data as any).total)
+        ? String(Number((data as any).paid_amount))
+        : "",
+    );
     setNotes((data as any).notes ?? "");
     setInvestorId((data as any).investor_id ?? "");
     setInvoiceImageUrl((data as any).invoice_image_url ?? null);
@@ -341,6 +354,14 @@ export default function Purchases() {
 
   const subtotal = useMemo(() => lines.reduce((a, l) => a + (l.unit_cost ?? 0) * (l.quantity ?? 0), 0), [lines]);
   const expensesTotal = useMemo(() => lines.reduce((a, l) => a + (l.expense_amount ?? 0), 0), [lines]);
+  const purchaseTotal = subtotal + expensesTotal;
+  // Blank means paid in full, so nothing is owed.
+  const purchaseOwed = (() => {
+    if (amountPaid.trim() === "") return 0;
+    const paid = parseFloat(amountPaid);
+    if (!Number.isFinite(paid)) return 0;
+    return Math.max(0, Math.round((purchaseTotal - paid) * 100) / 100);
+  })();
   const [sharedExpense, setSharedExpense] = useState<string>("");
 
   /**
@@ -522,6 +543,7 @@ export default function Purchases() {
   const reset = () => {
     setEditingId(null);
     setSupplierId(""); setInvestorId(""); setReference(generateReference()); setPaymentMethod("cash"); setNotes(""); setLines([]);
+    setAmountPaid("");
     setSharedExpense("");
     setInvoiceImageUrl(null);
     setSourceType("supplier");
@@ -573,6 +595,7 @@ export default function Purchases() {
       investor_id: investorsEnabled ? investorId || null : null,
       reference_number: reference || null,
       payment_method: paymentMethod,
+      amount_paid: amountPaid.trim() === "" ? null : (parseFloat(amountPaid) || 0),
       account_id: purchaseAccountId,
       notes: notes || null,
       invoice_image_url: invoiceImageUrl,
@@ -1122,9 +1145,46 @@ export default function Purchases() {
                     </div>
                     <div className="flex justify-between gap-4 text-lg font-bold text-primary pt-0.5 border-t">
                       <span>{t("common.total")}</span>
-                      <span className="tabular-nums">{formatMoney(subtotal + expensesTotal, cur)}</span>
+                      <span className="tabular-nums">{formatMoney(purchaseTotal, cur)}</span>
                     </div>
+                    {purchaseOwed > 0 && (
+                      <div className="flex justify-between gap-4 text-warning font-medium">
+                        <span>{t("purchases.balanceOwed", { defaultValue: "Balance owed" })}</span>
+                        <span className="tabular-nums">{formatMoney(purchaseOwed, cur)}</span>
+                      </div>
+                    )}
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>{t("purchases.amountPaid", { defaultValue: "Amount paid" })}</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      inputMode="decimal"
+                      placeholder={formatMoney(purchaseTotal, cur)}
+                      value={amountPaid}
+                      onChange={(e) => setAmountPaid(e.target.value)}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Leave blank if you paid in full. Anything less goes on the
+                      supplier&apos;s khata as money you owe.
+                    </p>
+                  </div>
+                  {purchaseOwed > 0 && (
+                    <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-xs self-start">
+                      <p className="font-medium text-foreground">
+                        {formatMoney(purchaseOwed, cur)} will be owed
+                      </p>
+                      <p className="text-muted-foreground mt-0.5">
+                        {sourceType === "walkin"
+                          ? "Recorded against the seller's name."
+                          : "Added to this supplier's khata, where you can settle it later."}
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label>{t("common.notes")}</Label>
