@@ -50,6 +50,8 @@ interface AdminUser {
   shop_count: number;
   is_blocked: boolean;
   shop_roles: string | null;
+  /** Which stores this person belongs to, and as what. */
+  shops: { shop_id: string; name: string; role: string }[];
 }
 
 interface AdminShop {
@@ -64,6 +66,9 @@ interface AdminShop {
   member_count: number;
   sales_count: number;
   sales_total: number;
+  is_blocked: boolean;
+  /** Who works in this store, so staff can be traced to a shop. */
+  members: { user_id: string; email: string; name: string | null; role: string }[];
 }
 
 
@@ -77,6 +82,7 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("overview");
   const [blockTarget, setBlockTarget] = useState<AdminUser | null>(null);
+  const [blockShopTarget, setBlockShopTarget] = useState<AdminShop | null>(null);
   const [proTarget, setProTarget] = useState<AdminShop | null>(null);
   const [proMode, setProMode] = useState<"grant" | "deactivate">("grant");
   const [proDays, setProDays] = useState<number>(30);
@@ -110,6 +116,23 @@ export default function AdminDashboard() {
     if (u.is_super_admin) { toast.error(t("admin.users.cantBlockSuper")); return; }
     setBlockTarget(u);
   };
+  const confirmToggleShopBlock = async () => {
+    if (!blockShopTarget) return;
+    setBusy(true);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>(
+        "adminSetShopBlockedAction", blockShopTarget.shop_id, !blockShopTarget.is_blocked);
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+    toast.success(blockShopTarget.is_blocked ? "Store unblocked" : "Store blocked");
+    setBlockShopTarget(null);
+    load();
+  };
+
   const confirmToggleBlock = async () => {
     if (!blockTarget) return;
     setBusy(true);
@@ -284,7 +307,7 @@ export default function AdminDashboard() {
                 <tr>
                   <th className="text-start p-3">{t("admin.users.email")}</th>
                   <th className="text-start p-3">{t("admin.users.name")}</th>
-                  <th className="text-end p-3">{t("admin.users.shopsCount")}</th>
+                  <th className="text-start p-3">Stores</th>
                   <th className="text-start p-3">{t("admin.users.joined")}</th>
                   <th className="text-start p-3">{t("admin.users.lastSignIn")}</th>
                   <th className="text-start p-3">{t("admin.users.role")}</th>
@@ -299,7 +322,24 @@ export default function AdminDashboard() {
                       {u.is_blocked && <span className="ms-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-destructive/15 text-destructive">{t("admin.users.blocked")}</span>}
                     </td>
                     <td className="p-3 text-muted-foreground">{u.display_name ?? "—"}</td>
-                    <td className="p-3 text-end">{u.shop_count}</td>
+                    <td className="p-3">
+                      {u.shops.length === 0 ? (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {u.shops.map((sh) => (
+                            <span
+                              key={sh.shop_id}
+                              className="text-[11px] px-1.5 py-0.5 rounded bg-muted whitespace-nowrap"
+                              title={sh.role}
+                            >
+                              {sh.name}
+                              <span className="text-muted-foreground"> · {sh.role}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3 text-muted-foreground text-xs">{format(new Date(u.created_at), "PP")}</td>
                     <td className="p-3 text-muted-foreground text-xs">{u.last_sign_in_at ? format(new Date(u.last_sign_in_at), "PPp") : "—"}</td>
                     <td className="p-3">
@@ -377,8 +417,29 @@ export default function AdminDashboard() {
                 {filteredShops.map((s) => {
                   const active = s.is_pro && (!s.pro_until || new Date(s.pro_until) > new Date());
                   return (
-                    <tr key={s.shop_id} className="border-t hover:bg-muted/20">
-                      <td className="p-3 font-medium">{s.name} <span className="text-xs text-muted-foreground">({s.currency})</span></td>
+                    <tr key={s.shop_id} className={cn("border-t hover:bg-muted/20", s.is_blocked && "opacity-60")}>
+                      <td className="p-3 font-medium">
+                        {s.name} <span className="text-xs text-muted-foreground">({s.currency})</span>
+                        {s.is_blocked && (
+                          <span className="ms-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-destructive/15 text-destructive">
+                            BLOCKED
+                          </span>
+                        )}
+                        {s.members.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {s.members.map((m) => (
+                              <span
+                                key={m.user_id}
+                                className="text-[11px] px-1.5 py-0.5 rounded bg-muted whitespace-nowrap"
+                                title={m.email}
+                              >
+                                {m.name || m.email}
+                                <span className="text-muted-foreground"> · {m.role}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
                       <td className="p-3 text-muted-foreground text-xs">{s.owner_email ?? "—"}</td>
                       <td className="p-3"><ProTag is_pro={s.is_pro} pro_until={s.pro_until} trial_ends_at={s.trial_ends_at} /></td>
                       <td className="p-3 text-end">{s.member_count}</td>
@@ -405,6 +466,19 @@ export default function AdminDashboard() {
                               <ArrowDownCircle className="size-3.5 mr-1" /> {t("admin.shops.deactivate")}
                             </Button>
                           )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setBlockShopTarget(s)}
+                            className={cn(
+                              "h-7 px-2 text-xs",
+                              s.is_blocked
+                                ? "border-success/40 text-success hover:bg-success/10"
+                                : "border-destructive/40 text-destructive hover:bg-destructive/10",
+                            )}
+                          >
+                            <Ban className="size-3.5 mr-1" /> {s.is_blocked ? "Unblock" : "Block"}
+                          </Button>
                           <Button
                             size="sm"
                             variant="ghost"
@@ -439,6 +513,42 @@ export default function AdminDashboard() {
           <SiteSettingsCard />
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={!!blockShopTarget} onOpenChange={(o) => !o && setBlockShopTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-center">
+              {blockShopTarget?.is_blocked ? "Unblock this store?" : "Block this store?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-center">
+              {blockShopTarget?.is_blocked
+                ? "Everyone in the store can sign in and work as normal again."
+                : "Nobody will be able to open the store until it's unblocked. Nothing is deleted — every purchase, challan and payment stays exactly as it is."}
+              <div className="mt-3 rounded-md border bg-muted/40 p-3 text-start text-xs">
+                <div className="font-medium text-foreground">{blockShopTarget?.name}</div>
+                {blockShopTarget?.owner_email && <div className="text-muted-foreground">{blockShopTarget.owner_email}</div>}
+                <div className="text-muted-foreground">
+                  {blockShopTarget?.member_count ?? 0} member{(blockShopTarget?.member_count ?? 0) === 1 ? "" : "s"} affected
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              onClick={(e) => { e.preventDefault(); confirmToggleShopBlock(); }}
+              className={cn(
+                blockShopTarget?.is_blocked
+                  ? "bg-success text-white hover:bg-success/90"
+                  : "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+              )}
+            >
+              {blockShopTarget?.is_blocked ? "Unblock store" : "Block store"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!blockTarget} onOpenChange={(o) => !o && setBlockTarget(null)}>
         <AlertDialogContent>

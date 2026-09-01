@@ -6,6 +6,7 @@ import { formatMoney, formatAmount } from "@/lib/format";
 import { format } from "date-fns";
 import { soldAs, formatUnitQty } from "@/lib/sale-units";
 import { rpc } from "@/lib/apiClient";
+import { buildReceiptMessage, buildReceiptWaUrl } from "@/lib/whatsapp-receipt";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { useShop } from "@/contexts/ShopContext";
@@ -341,7 +342,6 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
   const cur = sale.shop?.currency ?? "USD";
   const { currentShop } = useShop();
   const isPro = !!currentShop?.is_pro && (!currentShop?.pro_until || new Date(currentShop.pro_until) > new Date());
-  const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [customer, setCustomer] = useState<{ name: string; phone: string | null } | null>(
     sale.customer ?? null
@@ -362,19 +362,41 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
       .catch((e) => toast.error(e instanceof Error ? e.message : "Could not print"));
   };
 
-  const sendWhatsApp = async () => {
+  /**
+   * Opens the shopkeeper's own WhatsApp — desktop app or web — with the
+   * receipt already written out, exactly like the debt reminders. They press
+   * send, so it goes from their number.
+   */
+  const sendWhatsApp = () => {
     if (!customer?.phone) return toast.error("Customer has no phone number");
-    setSending(true);
-    try {
-      const res = await rpc<{ ok: boolean; error?: string }>("sendWhatsAppReceiptAction", sale.id);
-      if (!res.ok) return toast.error(res.error ?? "Failed to send");
-      setSent(true);
-      toast.success("Receipt sent on WhatsApp");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to send");
-    } finally {
-      setSending(false);
-    }
+
+    const message = buildReceiptMessage({
+      shopName: sale.shop?.name ?? "",
+      receiptNumber: sale.receipt_number ?? sale.id.slice(0, 8),
+      date: format(new Date(sale.created_at), "dd/MM/yyyy h:mm a"),
+      customerName: customer.name,
+      lines: (sale.items ?? []).map((it: any) => ({
+        name: it.product_name,
+        quantity: Number(it.quantity),
+        unit_label: it.unit_label,
+        line_total: Number(it.line_total),
+      })),
+      subtotal: Number(sale.subtotal ?? 0),
+      discount: Number(sale.discount ?? 0),
+      tax: sale.shop?.show_tax_line === false ? 0 : Number(sale.tax ?? 0),
+      total: Number(sale.total),
+      paid: Number(sale.amount_paid ?? 0),
+      due: Number(sale.balance_due ?? 0),
+      currency: cur,
+      footer: sale.shop?.receipt_footer ?? null,
+      formatMoney,
+    });
+
+    const url = buildReceiptWaUrl(customer.phone, message);
+    if (!url) return toast.error("That phone number doesn't look like a WhatsApp number");
+
+    window.open(url, "_blank", "noopener,noreferrer");
+    setSent(true);
   };
 
   // Solid rules print crisper than dashed on a thermal head; the preview
@@ -577,9 +599,9 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
         <DialogFooter className={`p-4 pt-3 print:hidden flex-col sm:flex-row gap-2 bg-white shrink-0 ${terms ? "" : "border-t border-gray-200"}`}>
           {customer?.phone && (
             isPro ? (
-              <Button variant="outline" onClick={sendWhatsApp} disabled={sending || sent} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
+              <Button variant="outline" onClick={sendWhatsApp} disabled={sent} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
                 <MessageCircle className="size-4 mr-2" />
-                {sent ? "Sent" : sending ? "Sending…" : "WhatsApp"}
+                {sent ? "Opened" : "WhatsApp"}
               </Button>
             ) : (
               <Button asChild variant="outline" className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
