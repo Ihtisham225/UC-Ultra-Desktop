@@ -29,6 +29,8 @@ import { isLabEnabled } from "@/lib/lab";
 import { isOil, normalizePlate, tidyPlate } from "@/lib/oil";
 import { format } from "date-fns";
 import { VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft } from "@/components/VehicleFields";
+import { VehiclePicker, type VehicleLite } from "@/components/VehiclePicker";
+import { useLocalStore } from "@/hooks/useLocalStore";
 
 interface Variant {
   id: string;
@@ -161,8 +163,15 @@ export default function POS() {
   // every bill is a service — someone buying a filter has no odometer to give.
   const oilShop = isOil(currentShop);
   const [vehicle, setVehicle] = useState<VehicleDraft>({ ...blankVehicle });
-  /** The last visit for the plate on screen, when this car has been in before. */
+  /** The car chosen from the register; null until one is picked. */
+  const [pickedVehicle, setPickedVehicle] = useState<VehicleLite | null>(null);
+  /** Its last visit, so the counter sees when it was in and what it was due at. */
   const [knownVehicle, setKnownVehicle] = useState<{ serviced_at: string; next_km: number | null } | null>(null);
+  // Past visits, synced like everything else, so the lookup works offline.
+  const { data: oilChangeRows } = useLocalStore<{
+    id: string; vehicle_id?: string | null; serviced_at: string;
+    next_km?: number | string | null; visitor_name?: string | null; phone?: string | null;
+  }>("oil_changes", currentShop?.id);
   const isPhone = currentShop?.store_type === "phone";
   const imeiOnProduct = isPhone && currentShop?.imei_capture_mode === "product";
   const imeiOnSale = isPhone && currentShop?.imei_capture_mode !== "product";
@@ -265,44 +274,37 @@ export default function POS() {
   };
 
   /**
-   * A returning car fills its own form. Only blank fields are touched — never
-   * overwrite what the cashier has already typed — and the last visit's target
-   * reading becomes this visit's likely odometer. Online-only: the register
-   * lives on the server, so an offline terminal just types it fresh.
+   * Picking a car brings its own history forward: who usually brings it in,
+   * their number, and last visit's target reading as this visit's likely
+   * odometer. Only blank boxes are filled — never overwrite what was typed.
+   *
+   * The register and its visits are both synced, so this works with no
+   * connection, like the rest of the till.
    */
-  const prefillVehicle = useCallback(async (plate: string, announce = false) => {
-    if (!plate.trim() || !navigator.onLine) { setKnownVehicle(null); return; }
-    let prior: { make: string | null; model_number: string | null; visitor_name: string | null; phone: string | null; next_km: number | null; serviced_at: string } | null = null;
-    try {
-      prior = await rpc("lastVisitAction", plate);
-    } catch {
+  const chooseVehicle = (v: VehicleLite | null) => {
+    setPickedVehicle(v);
+    if (!v) {
+      setVehicle({ ...blankVehicle });
+      setKnownVehicle(null);
       return;
     }
-    if (!prior) { setKnownVehicle(null); return; }
-    const p = prior;
-    setKnownVehicle({ serviced_at: p.serviced_at, next_km: p.next_km });
-    setVehicle((v) => ({
-      ...v,
-      make: v.make || (p.make ?? ""),
-      model_number: v.model_number || (p.model_number ?? ""),
-      visitor_name: v.visitor_name || (p.visitor_name ?? ""),
-      phone: v.phone || (p.phone ?? ""),
-      current_km: v.current_km || (p.next_km == null ? "" : String(p.next_km)),
+    const last = oilChangeRows
+      .filter((o) => o.vehicle_id === v.id)
+      .sort((a, b) => (b.serviced_at ?? "").localeCompare(a.serviced_at ?? ""))[0];
+    const raw = last?.next_km;
+    const nextKm = raw === null || raw === undefined || raw === "" ? null : Number(raw);
+    const dueAt = nextKm !== null && Number.isFinite(nextKm) ? nextKm : null;
+    setKnownVehicle(last ? { serviced_at: last.serviced_at, next_km: dueAt } : null);
+    setVehicle((prev) => ({
+      ...prev,
+      vehicle_number: v.vehicle_number,
+      make: v.make ?? "",
+      model_number: v.model_number ?? "",
+      visitor_name: prev.visitor_name || (last?.visitor_name ?? ""),
+      phone: prev.phone || (last?.phone ?? ""),
+      current_km: prev.current_km || (dueAt == null ? "" : String(dueAt)),
     }));
-    if (announce) toast.info("Filled from this vehicle's last visit");
-  }, []);
-
-  // Look the car up as the plate is typed, so its details are on screen before
-  // the counter reaches the next box. Debounced: one lookup per plate, not one
-  // per keystroke. The lookup is an exact match on the normalized plate, so a
-  // half-typed registration finds nothing rather than the wrong car.
-  useEffect(() => {
-    if (!oilShop) return;
-    const plate = vehicle.vehicle_number.trim();
-    if (plate.length < 4) { setKnownVehicle(null); return; }
-    const id = setTimeout(() => { prefillVehicle(plate); }, 400);
-    return () => clearTimeout(id);
-  }, [oilShop, vehicle.vehicle_number, prefillVehicle]);
+  };
 
   const handleScanned = (code: string) => {
     // 1) Variant barcode wins
@@ -526,9 +528,10 @@ export default function POS() {
 
     // The service record rides the same offline queue as the sale, so a
     // terminal with no connection still captures the vehicle at the counter.
-    const oilChangeRow = oilShop && vehicle.vehicle_number.trim()
+    const oilChangeRow = oilShop && pickedVehicle
       ? {
           ...vehicleDraftToInput(vehicle),
+          vehicle_id: pickedVehicle.id,
           vehicle_number: tidyPlate(vehicle.vehicle_number),
           // The server's indexed lookup key. NOT NULL with no default, so the
           // push would be rejected without it.
@@ -566,6 +569,7 @@ export default function POS() {
       oil_change: oilChangeRow,
     });
     setVehicle({ ...blankVehicle });
+    setPickedVehicle(null);
     setKnownVehicle(null);
     setCart([]); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
     setTendersTouched(false);
@@ -827,39 +831,24 @@ export default function POS() {
                 <span className="text-sm font-medium">Oil change</span>
                 <span className="text-[11px] text-muted-foreground ms-auto">Optional</span>
               </div>
-              {/* Only the plate until there is one — a customer buying a filter
-                  shouldn't have to scroll past eight empty boxes to pay. */}
-              {vehicle.vehicle_number.trim() === "" ? (
-                <Input
-                  value={vehicle.vehicle_number}
-                  onChange={(e) => setVehicle({ ...vehicle, vehicle_number: e.target.value })}
-                  onBlur={() => prefillVehicle(vehicle.vehicle_number, true)}
-                  placeholder="Vehicle number"
-                  className="uppercase h-9"
-                />
-              ) : (
+
+              <VehiclePicker value={pickedVehicle} onChange={chooseVehicle} />
+
+              {/* The rest of the form only matters once there's a car. */}
+              {pickedVehicle && (
                 <>
-                  <VehicleFields
-                    value={vehicle}
-                    onChange={setVehicle}
-                    onPlateBlur={(plate) => prefillVehicle(plate, true)}
-                    compact
-                  />
-                  {/* Tells the counter this car is on the book, and what it was
-                      last told to come back at. */}
                   {knownVehicle && (
                     <p className="text-[11px] text-primary">
-                      Seen before · last in {format(new Date(knownVehicle.serviced_at), "d MMM yyyy")}
+                      Last in {format(new Date(knownVehicle.serviced_at), "d MMM yyyy")}
                       {knownVehicle.next_km != null && ` · was due at ${knownVehicle.next_km.toLocaleString()} km`}
                     </p>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setVehicle({ ...blankVehicle })}
-                    className="text-[11px] text-muted-foreground hover:text-destructive underline underline-offset-2"
-                  >
-                    Clear vehicle
-                  </button>
+                  <VehicleFields
+                    value={vehicle}
+                    onChange={setVehicle}
+                    compact
+                    showIdentity={false}
+                  />
                 </>
               )}
             </div>
