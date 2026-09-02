@@ -324,10 +324,19 @@ export default function Debts() {
     // touched.
     const now = new Date().toISOString();
     try {
+      // ⚠️ paid_amount, status and settled_at are DERIVED on the server and
+      // must never travel from here. `debts` is last-write-wins, so pushing
+      // the figure shown on screen would overwrite the server's — and this
+      // terminal may not have pulled every settlement yet, which would book a
+      // balance that is quietly too low.
+      const { paid_amount: _p, status: _s, settled_at: _st, ...editable } = (editing ?? {}) as Debt & {
+        settled_at?: string | null;
+      };
+      void _p; void _s; void _st;
       await upsertLocal(
         "debts",
         editing
-          ? { ...editing, ...payload, updated_at: now }
+          ? { ...editable, ...payload, updated_at: now }
           : {
               id: uuid(),
               shop_id: currentShop.id,
