@@ -15,12 +15,27 @@ export function isHandicraft(
 }
 
 /**
+ * The processes a shop starts with. English names for the app's own screens,
+ * Urdu for the challan print, which is what the factory reads. Seeded once
+ * when the store type is set; the shop can rename, re-rate or archive them
+ * afterwards, and add their own.
+ */
+export const DEFAULT_JOB_PROCESSES: { name: string; nameLocal: string }[] = [
+  { name: "Bumbul", nameLocal: "بمبل" },
+  { name: "Rangai (dyeing)", nameLocal: "رنگائی" },
+  { name: "Dhulai (washing)", nameLocal: "دھلائی" },
+  { name: "Press", nameLocal: "پریس" },
+];
+
+/**
  * What a party does for the shop. A party can do more than one of these — a
  * karigar who also presses, a yarn dealer who also dyes — so they're flags,
  * not one value.
  */
 export interface PartyRoles {
   is_supplier?: boolean | null;
+  /** Buys from the shop. Independent of the rest — a party can be both. */
+  is_customer?: boolean | null;
   is_maker?: boolean | null;
   is_processor?: boolean | null;
 }
@@ -30,6 +45,11 @@ export const PARTY_ROLE_FIELDS = [
     key: "is_supplier" as const,
     label: "Supplier",
     hint: "Sells you yarn and other material",
+  },
+  {
+    key: "is_customer" as const,
+    label: "Customer",
+    hint: "Buys from you — also appears under Customers",
   },
   {
     key: "is_maker" as const,
@@ -55,7 +75,13 @@ export const isProcessor = (p?: PartyRoles | null) => !!p?.is_processor;
 /** Short label for a party row: "Supplier · Maker". */
 export function partyRoleLabel(p?: PartyRoles | null): string {
   const parts = PARTY_ROLE_FIELDS.filter((f) => p?.[f.key]).map((f) =>
-    f.key === "is_maker" ? "Maker" : f.key === "is_processor" ? "Processing" : "Supplier",
+    f.key === "is_maker"
+      ? "Maker"
+      : f.key === "is_processor"
+        ? "Processing"
+        : f.key === "is_customer"
+          ? "Customer"
+          : "Supplier",
   );
   return parts.length ? parts.join(" · ") : "No role set";
 }

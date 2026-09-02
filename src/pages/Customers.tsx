@@ -20,7 +20,7 @@ import { BulkActionBar } from "@/components/BulkActionBar";
 import { downloadCsv } from "@/lib/csv";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
-interface Customer { id: string; name: string; phone: string | null; email: string | null; notes: string | null; }
+interface Customer { id: string; name: string; phone: string | null; email: string | null; notes: string | null; is_supplier?: boolean; }
 
 export default function Customers() {
   usePageMeta({ title: "Customers — UCU", description: "Manage customer profiles, contact details and purchase history.", path: "/customers" });
@@ -99,6 +99,7 @@ export default function Customers() {
       phone: editing.phone || null,
       email: editing.email || null,
       notes: editing.notes || null,
+      is_supplier: !!editing.is_supplier,
     };
     try {
       const res = editing.id
@@ -250,6 +251,22 @@ export default function Customers() {
               <div className="space-y-1.5"><Label>{t("common.phone")}</Label><Input value={editing.phone ?? ""} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></div>
               <div className="space-y-1.5"><Label>{t("common.email")}</Label><Input type="email" value={editing.email ?? ""} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /></div>
               <div className="space-y-1.5"><Label>{t("common.notes")}</Label><Input value={editing.notes ?? ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
+              {/* One party record, two lists — ticking this puts the same
+                  person in the supplier picker without a second record, so
+                  their ledger nets both directions instead of splitting. */}
+              <label className={`flex items-start gap-2 rounded-lg border p-2.5 cursor-pointer transition-colors ${editing.is_supplier ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}>
+                <Checkbox
+                  checked={!!editing.is_supplier}
+                  onCheckedChange={(v) => setEditing({ ...editing, is_supplier: !!v })}
+                  className="mt-0.5"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">Also a supplier</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    You buy from them too. They appear under Suppliers as well, sharing one ledger.
+                  </span>
+                </span>
+              </label>
             </div>
           )}
           <DialogFooter>
