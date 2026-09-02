@@ -122,12 +122,28 @@ function Empty({ msg }: { msg: string }) {
   return <div className="text-sm text-muted-foreground py-8 text-center">{msg}</div>;
 }
 
+/**
+ * A date the range can actually be built from.
+ *
+ * `<input type="date">` reports every intermediate value as the year is typed
+ * — "" and things like "0002-01-01" — and `new Date("")` is an Invalid Date
+ * whose `toISOString()` THROWS. That took the whole reports page down mid
+ * keystroke, which is why the crash looked intermittent and only happened
+ * while filling the second box.
+ */
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const usableDay = (value: string, fallback: string): string => {
+  if (!ISO_DAY.test(value)) return fallback;
+  const d = new Date(`${value}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? fallback : value;
+};
+
 function useRange(range: Rng) {
   return useMemo(() => ({
-    fromISO: startOfDay(new Date(range.from)).toISOString(),
-    toISO: endOfDay(new Date(range.to)).toISOString(),
-    fromDate: range.from,
-    toDate: range.to,
+    fromISO: startOfDay(new Date(`${usableDay(range.from, daysAgoISO(29))}T00:00:00`)).toISOString(),
+    toISO: endOfDay(new Date(`${usableDay(range.to, todayISO())}T00:00:00`)).toISOString(),
+    fromDate: usableDay(range.from, daysAgoISO(29)),
+    toDate: usableDay(range.to, todayISO()),
   }), [range]);
 }
 
