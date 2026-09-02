@@ -217,7 +217,7 @@ export default function Expenses() {
     if (!name) return;
     setCatBusy(true);
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("createExpenseCategoryAction", [{ name, color: "#6366f1" }]);
+      const res = await rpc<{ ok: boolean; error?: string }>("createExpenseCategoryAction", { name, color: "#6366f1" });
       if (!res.ok) return toast.error(res.error ?? "Failed");
       setNewCat("");
       await loadCategories();
@@ -235,7 +235,7 @@ export default function Expenses() {
     if (!name) return;
     setCatBusy(true);
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("updateExpenseCategoryAction", [catEditId, { name, color: "#6366f1" }]);
+      const res = await rpc<{ ok: boolean; error?: string }>("updateExpenseCategoryAction", catEditId, { name, color: "#6366f1" });
       if (!res.ok) return toast.error(res.error ?? "Failed");
       setCatEditId(null);
       setCatEditName("");
@@ -257,7 +257,7 @@ export default function Expenses() {
     });
     if (!ok) return;
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("deleteExpenseCategoryAction", [c.id]);
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteExpenseCategoryAction", c.id);
       if (!res.ok) return toast.error(res.error ?? "Failed");
       await loadCategories();
       toast.success(t("common.deleted"));

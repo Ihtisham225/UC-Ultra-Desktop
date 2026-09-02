@@ -144,7 +144,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
       id: string; vehicle_number: string; make: string | null; model_number: string | null;
       current_km: number | null; next_km: number | null; oil_changer: string | null;
       visitor_name: string | null; phone: string | null; notes: string | null;
-    } | null>("oilChangeForSaleAction", [sale.id])
+    } | null>("oilChangeForSaleAction", sale.id)
       .then((rec) => {
         if (!live) return;
         if (rec) {
@@ -258,11 +258,11 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
       // corrected oil change behind it. A failure here is reported but does
       // not undo the bill — the counter is told which half needs another go.
       if (oilShop && oil.vehicle_number.trim()) {
-        const res = await rpc<{ ok: boolean; error?: string }>("saveOilChangeAction", [{
+        const res = await rpc<{ ok: boolean; error?: string }>("saveOilChangeAction", {
           ...vehicleDraftToInput(oil),
           ...(oilId ? { id: oilId } : {}),
           sale_id: sale.id,
-        }]);
+        });
         if (!res.ok) {
           toast.error(`Bill saved, but the oil change was not: ${res.error ?? "please try again"}`);
           onSaved();
