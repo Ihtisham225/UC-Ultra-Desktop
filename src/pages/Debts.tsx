@@ -226,7 +226,13 @@ export default function Debts() {
     setEditing(d);
     setPerson(
       d.party_id
-        ? { id: d.party_id, name: d.person_name, phone: d.phone, source: "party", role_label: "Party" }
+        ? {
+            id: d.party_id, name: d.person_name, phone: d.phone,
+            source: "party" as const, role_label: "Party",
+            // Only what the row itself remembers; the picker replaces this
+            // with the real flags the moment another person is chosen.
+            is_customer: false, is_supplier: false, is_maker: false, is_processor: false,
+          }
         : null,
     );
     setForm({

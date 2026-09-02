@@ -5,7 +5,7 @@ import { useShop } from "@/contexts/ShopContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ScanBarcode, Package, Receipt, AlertTriangle, TrendingUp, DollarSign, Users, PackageOpen, Wallet, BarChart3 } from "lucide-react";
+import { ScanBarcode, Package, Receipt, AlertTriangle, TrendingUp, DollarSign, Users, PackageOpen, Wallet, BarChart3, NotebookPen } from "lucide-react";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { PageTip } from "@/components/PageTip";
@@ -48,6 +48,8 @@ export default function Dashboard() {
   const { data: allExpenses } = useLocalStore<any>("expenses", currentShop?.id);
   const { data: allPurchases } = useLocalStore<any>("purchases", currentShop?.id);
   const { data: allPurchaseItems } = useLocalStore<any>("purchase_items", currentShop?.id);
+  // The khata, for the credit tile. Synced locally, so it reads offline too.
+  const { data: allDebts } = useLocalStore<any>("debts", currentShop?.id);
 
   const loading = salesLoading || productsLoading;
 
@@ -113,6 +115,24 @@ export default function Dashboard() {
         return a + Number(si.quantity ?? 0) * avg;
       }, 0);
 
+    // Credit given today: billed less what was actually handed over. Clamped
+    // at zero — settling an older account on today's bill would otherwise read
+    // as negative credit.
+    const todayPaid = allSales
+      .filter((s: any) => s.created_at && new Date(s.created_at) >= startOfDay)
+      .reduce((a: number, s: any) => a + Number(s.amount_paid ?? 0), 0);
+    const todayCredit = Math.max(Math.round((todaySales - todayPaid) * 100) / 100, 0);
+
+    // Still owed to the shop across the whole ledger. Clamped per row, not on
+    // the sum: one overpaid account would otherwise quietly cancel out what
+    // somebody else still owes.
+    const totalOwedToMe = allDebts
+      .filter((d: any) => d.direction === "owed_to_me")
+      .reduce(
+        (a: number, d: any) => a + Math.max(Number(d.amount ?? 0) - Number(d.paid_amount ?? 0), 0),
+        0,
+      );
+
     return {
       todaySales,
       todayCount,
@@ -121,8 +141,10 @@ export default function Dashboard() {
       todayExpenses,
       todayPurchases,
       todayGrossProfit: Math.round((todaySales - todayCogs) * 100) / 100,
+      todayCredit,
+      totalOwedToMe,
     };
-  }, [allSales, allProducts, allSaleItems, allExpenses, allPurchases, allPurchaseItems]);
+  }, [allSales, allProducts, allSaleItems, allExpenses, allPurchases, allPurchaseItems, allDebts]);
 
   const cur = currentShop?.currency ?? "USD";
 
@@ -186,6 +208,15 @@ export default function Dashboard() {
           value={formatMoney(safeStats.todayExpenses, cur)}
           tone="default"
         />
+        {/* What went on the khata today rather than into the drawer. The
+            running total underneath is the figure the shop actually chases. */}
+        <StatCard
+          icon={NotebookPen}
+          label={t("dashboard.todayCredit", { defaultValue: "Credit given today" })}
+          value={formatMoney(safeStats.todayCredit, cur)}
+          tone={safeStats.todayCredit > 0 ? "warning" : "default"}
+          hint={`${formatMoney(safeStats.totalOwedToMe, cur)} owed in total`}
+        />
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -238,7 +269,7 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, tone }: { icon: any; label: string; value: string; tone: "primary" | "accent" | "warning" | "default" }) {
+function StatCard({ icon: Icon, label, value, tone, hint }: { icon: any; label: string; value: string; tone: "primary" | "accent" | "warning" | "default"; hint?: string }) {
   const tones = {
     primary: "bg-primary/10 text-primary",
     accent: "bg-accent/10 text-accent-foreground",
