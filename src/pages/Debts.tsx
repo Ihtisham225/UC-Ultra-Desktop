@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { rpc } from "@/lib/apiClient";
+import { useLocalStore } from "@/hooks/useLocalStore";
+import { derivePaidAmount } from "@/lib/ledger";
+import { syncNow } from "@/lib/syncEngine";
+import { v4 as uuid } from "uuid";
+import { upsertLocal, deleteLocal, notifyChange } from "@/lib/localDb";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -102,8 +106,32 @@ export default function Debts() {
   const formatMoney = useFormatMoney();
   const canManage = perms.canManageExpenses; // owner/manager
 
-  const [items, setItems] = useState<Debt[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rawDebts, loading: debtsLoading } = useLocalStore<Debt>("debts", currentShop?.id);
+  const { data: allPayments } = useLocalStore<DebtPayment>("debt_payments", currentShop?.id);
+
+  /**
+   * ⚠️ paid_amount is DERIVED, not read. The stored column is the server's
+   * figure and lags any settlement taken offline, so it is recomputed here
+   * with the server's own rule — cash plus written-off discount, kind
+   * "payment" only — and the two therefore always agree once the push lands.
+   */
+  const items: Debt[] = useMemo(() => {
+    const byDebt = new Map<string, DebtPayment[]>();
+    for (const p of allPayments) {
+      const arr = byDebt.get(p.debt_id) ?? [];
+      arr.push(p);
+      byDebt.set(p.debt_id, arr);
+    }
+    return [...rawDebts]
+      .map((d) => ({
+        ...d,
+        paid_amount: derivePaidAmount(byDebt.get(d.id) ?? []),
+      }))
+      .sort(
+        (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime(),
+      );
+  }, [rawDebts, allPayments]);
+  const loading = debtsLoading;
   const [tab, setTab] = useState<"all" | "open" | "settled">("open");
   const [filter, setFilter] = useState<"all" | Direction>("all");
   const [search, setSearch] = useState("");
@@ -117,8 +145,18 @@ export default function Debts() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const [paymentsOpen, setPaymentsOpen] = useState(false);
-  const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
-  const [payments, setPayments] = useState<DebtPayment[]>([]);
+  // Held by id, not by value: the open dialog's balance has to follow the
+  // derived list, so recording a payment updates it without a refetch.
+  const [selectedDebtId, setSelectedDebtId] = useState<string | null>(null);
+  const payments: DebtPayment[] = useMemo(
+    () =>
+      allPayments
+        .filter((p) => p.debt_id === selectedDebtId)
+        .sort((a, b) =>
+          String(a.payment_date ?? "").localeCompare(String(b.payment_date ?? "")),
+        ),
+    [allPayments, selectedDebtId],
+  );
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [paymentForm, setPaymentForm] = useState({ ...emptyPayment });
@@ -146,33 +184,22 @@ export default function Debts() {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  /**
+   * The khata reads from the local store, so it works with no connection.
+   *
+   * ⚠️ `paid_amount` on the row is the SERVER's figure and lags a settlement
+   * taken offline, so it is recomputed here from the local payments using the
+   * server's own rule — cash plus written-off discount, kind "payment" only.
+   * Trusting the stored column would show a balance that ignores money the
+   * shop just took.
+   */
   const load = async () => {
-    if (!currentShop) return [] as Debt[];
-    setLoading(true);
-    try {
-      const rows = await rpc<Debt[]>("listDebtsAction");
-      setItems(rows ?? []);
-      return rows ?? [];
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load");
-      return [] as Debt[];
-    } finally {
-      setLoading(false);
-    }
+    return items;
   };
 
   const loadPayments = async (debtId: string) => {
-    setPaymentsLoading(true);
-    try {
-      const rows = await rpc<DebtPayment[]>("listDebtPaymentsAction", debtId);
-      setPayments(rows ?? []);
-      return rows ?? [];
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load");
-      return [] as DebtPayment[];
-    } finally {
-      setPaymentsLoading(false);
-    }
+    setPaymentsLoading(false);
+    return allPayments.filter((p: DebtPayment) => p.debt_id === debtId);
   };
 
   useEffect(() => {
@@ -214,6 +241,10 @@ export default function Debts() {
     resetDeps: [tab, filter, search],
   });
 
+  const selectedDebt = useMemo(
+    () => items.find((d) => d.id === selectedDebtId) ?? null,
+    [items, selectedDebtId],
+  );
   const selectedDebtRemaining = selectedDebt ? getRemainingAmount(selectedDebt) : 0;
 
   const startCreate = () => {
@@ -247,7 +278,7 @@ export default function Debts() {
   };
 
   const openPaymentsDialog = async (debt: Debt) => {
-    setSelectedDebt(debt);
+    setSelectedDebtId(debt.id);
     setPaymentsOpen(true);
     setPaymentForm({
       ...emptyPayment,
@@ -260,7 +291,7 @@ export default function Debts() {
     const nextItems = await load();
     if (!debtId) return;
     const nextDebt = nextItems.find((item) => item.id === debtId) ?? null;
-    setSelectedDebt(nextDebt);
+    setSelectedDebtId(nextDebt?.id ?? null);
     if (nextDebt) {
       await loadPayments(nextDebt.id);
     }
@@ -286,17 +317,47 @@ export default function Debts() {
       due_date: form.due_date || null,
       notes: form.notes.trim() || null,
     };
+    // Written locally and queued: the khata has to work with no line. `debts`
+    // is last-write-wins on the server, so an edit made offline lands cleanly.
+    // ⚠️ paid_amount is never written from here — the server derives it from
+    // the settlements, and sending a stale figure would move a balance nobody
+    // touched.
+    const now = new Date().toISOString();
     try {
-      const res = editing
-        ? await rpc<{ ok: boolean; error?: string }>("updateDebtAction", editing.id, payload)
-        : await rpc<{ ok: boolean; error?: string }>("createDebtAction", payload);
-      if (!res.ok) return toast.error(res.error || "Failed");
+      // ⚠️ paid_amount, status and settled_at are DERIVED on the server and
+      // must never travel from here. `debts` is last-write-wins, so pushing
+      // the figure shown on screen would overwrite the server's — and this
+      // terminal may not have pulled every settlement yet, which would book a
+      // balance that is quietly too low.
+      const { paid_amount: _p, status: _s, settled_at: _st, ...editable } = (editing ?? {}) as Debt & {
+        settled_at?: string | null;
+      };
+      void _p; void _s; void _st;
+      await upsertLocal(
+        "debts",
+        editing
+          ? { ...editable, ...payload, updated_at: now }
+          : {
+              id: uuid(),
+              shop_id: currentShop.id,
+              created_by: user.id,
+              ...payload,
+              currency: currentShop.currency ?? null,
+              status: "open",
+              paid_amount: 0,
+              created_at: now,
+              updated_at: now,
+            },
+        true,
+      );
+      notifyChange("debts");
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
       setSaving(false);
     }
-    toast.success(editing ? "Debt updated" : "Debt added");
+    void syncNow().catch(() => {});
+    toast.success(editing ? "Ledger entry updated" : "Ledger entry added");
     setOpen(false);
     await load();
   };
@@ -321,22 +382,44 @@ export default function Debts() {
     }
 
     setPaymentSaving(true);
+    // The money account and the recalculated balance are the server's job when
+    // this row is pushed; the terminal only records that the money came in, so
+    // the counter can take payment with no connection.
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("createDebtPaymentAction", {
-        debt_id: selectedDebt.id,
-        kind: paymentForm.kind,
-        amount,
-        discount,
-        payment_date: paymentForm.payment_date,
-      account_id: payAccountId,
-        notes: paymentForm.notes.trim() || null,
-      });
-      if (!res.ok) return toast.error(res.error || "Failed");
+      await upsertLocal(
+        "debt_payments",
+        {
+          id: uuid(),
+          shop_id: currentShop.id,
+          debt_id: selectedDebt.id,
+          created_by: user.id,
+          kind: paymentForm.kind,
+          amount,
+          discount,
+          payment_date: paymentForm.payment_date,
+          account_id: payAccountId || null,
+          notes: paymentForm.notes.trim() || null,
+          created_at: new Date().toISOString(),
+        },
+        true,
+      );
+      notifyChange("debt_payments");
+      // An 'increase' raises the principal; mirror it locally so the balance
+      // on screen is right before the push confirms it.
+      if (paymentForm.kind === "increase" && amount > 0) {
+        await upsertLocal(
+          "debts",
+          { ...selectedDebt, amount: Number(selectedDebt.amount) + amount, updated_at: new Date().toISOString() },
+          false,
+        );
+        notifyChange("debts");
+      }
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
       setPaymentSaving(false);
     }
+    void syncNow().catch(() => {});
 
     toast.success(paymentForm.kind === "payment" ? "Payment recorded" : "Debt increased");
     setPaymentForm({ ...emptyPayment });
@@ -345,27 +428,34 @@ export default function Debts() {
 
   const remove = async (id: string) => {
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("deleteDebtAction", id);
-      if (!res.ok) return toast.error(res.error || "Failed");
+      // The settlements go with it: the server cascades on delete, and locally
+      // they would otherwise be orphaned rows still counted into a balance.
+      for (const pay of allPayments.filter((p) => p.debt_id === id)) {
+        await deleteLocal("debt_payments", pay.id, false);
+      }
+      await deleteLocal("debts", id, true);
+      notifyChange("debts");
+      notifyChange("debt_payments");
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : "Failed");
     }
-    toast.success("Debt deleted");
+    void syncNow().catch(() => {});
+    toast.success("Ledger entry deleted");
     setConfirmId(null);
-    await load();
   };
 
   const removePayment = async (id: string) => {
-    const debtId = selectedDebt?.id;
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("deleteDebtPaymentAction", id);
-      if (!res.ok) return toast.error(res.error || "Failed");
+      // The khata's paid figure is recomputed on the server once this delete
+      // is pushed; locally it falls out of the derived sum straight away.
+      await deleteLocal("debt_payments", id, true);
+      notifyChange("debt_payments");
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : "Failed");
     }
+    void syncNow().catch(() => {});
     toast.success("Payment deleted");
     setConfirmPaymentDeleteId(null);
-    if (debtId) await refreshDebtState(debtId);
   };
 
   /**
@@ -375,21 +465,33 @@ export default function Debts() {
    */
   const printStatements = async (ids?: string[]) => {
     if (!currentShop) return;
-    let ledgers;
-    try {
-      // rpc() is variadic: the action's own parameter is a string[], so it is
-      // passed as ONE argument, and omitted entirely to mean "every account".
-      ledgers = ids
-        ? await rpc<Parameters<typeof buildLedgerStatementHtml>[0]["ledgers"]>(
-            "listLedgersForStatementAction", ids,
+    // Built from the local store rather than fetched: every figure on the
+    // sheet is already here, and a shop settling up with someone at the
+    // counter should not need the line to be up to hand them their statement.
+    const wanted = ids ? items.filter((d) => ids.includes(d.id)) : items;
+    const ledgers = [...wanted]
+      .sort((a, b) => a.person_name.localeCompare(b.person_name))
+      .map((d) => ({
+        person_name: d.person_name,
+        phone: d.phone,
+        direction: d.direction,
+        amount: Number(d.amount ?? 0),
+        paid_amount: Number(d.paid_amount ?? 0),
+        notes: d.notes,
+        payments: allPayments
+          .filter((pay) => pay.debt_id === d.id)
+          .sort((a, b) =>
+            String(a.payment_date ?? "").localeCompare(String(b.payment_date ?? "")),
           )
-        : await rpc<Parameters<typeof buildLedgerStatementHtml>[0]["ledgers"]>(
-            "listLedgersForStatementAction",
-          );
-    } catch (e) {
-      return toast.error(e instanceof Error ? e.message : "Could not build the statement");
-    }
-    if (!ledgers || ledgers.length === 0) return toast.error("Nothing to print.");
+          .map((pay) => ({
+            payment_date: String(pay.payment_date ?? "").slice(0, 10),
+            amount: Number(pay.amount ?? 0),
+            discount: Number(pay.discount ?? 0),
+            kind: String(pay.kind ?? "payment"),
+            notes: pay.notes ?? null,
+          })),
+      }));
+    if (ledgers.length === 0) return toast.error("Nothing to print.");
 
     const html = buildLedgerStatementHtml({
       shop: { name: currentShop.name, phone: currentShop.phone, address: currentShop.address },
@@ -684,8 +786,7 @@ export default function Debts() {
         onOpenChange={(nextOpen) => {
           setPaymentsOpen(nextOpen);
           if (!nextOpen) {
-            setSelectedDebt(null);
-            setPayments([]);
+            setSelectedDebtId(null);
             setPaymentForm({ ...emptyPayment });
           }
         }}
