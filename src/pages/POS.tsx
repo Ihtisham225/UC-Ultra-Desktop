@@ -15,6 +15,9 @@ import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { toast } from "sonner";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
 import { PatientPicker, type PatientLite } from "@/components/PatientPicker";
 import { LabTokenDialog, type LabTokenOrder } from "@/components/LabTokenDialog";
@@ -150,6 +153,23 @@ export default function POS() {
   const [search, setSearch] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // The charge sheet. Money is settled here, not in the till panel.
+  const [chargeOpen, setChargeOpen] = useState(false);
+
+  /**
+   * Opening the sheet seeds the single tender with the full amount, so the
+   * ordinary sale — one account, paid in full — is Charge then Confirm and
+   * nothing typed. Only a split or a part payment needs the boxes touched.
+   */
+  const openCharge = () => {
+    if (cart.length === 0) return;
+    if (!tendersTouched) {
+      setTenders((prev) =>
+        prev.length > 0 ? [{ ...prev[0], amount: total > 0 ? String(total) : "" }] : prev,
+      );
+    }
+    setChargeOpen(true);
+  };
   // Accessories can still take a serial on request without cluttering every line.
   const [revealImei, setRevealImei] = useState<Record<string, boolean>>({});
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "mobile" | "other">("cash");
@@ -661,6 +681,9 @@ export default function POS() {
     }
 
     setBusy(false);
+    // The sheet has done its job — close it before the receipt appears, or
+    // the slip opens behind it.
+    setChargeOpen(false);
     setCompletedSale({
       ...saleRecord, items: itemRows, shop: currentShop, customer,
       receipt_number: issuedNumber,
@@ -960,126 +983,179 @@ export default function POS() {
             ? <PatientPicker value={patient} onChange={setPatient} />
             : <CustomerPicker value={customer} onChange={setCustomer} />}
 
-          <div className="flex items-center gap-2">
-            <Tag className="size-4 text-muted-foreground shrink-0" />
-            <div className="relative flex-1 min-w-0">
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                inputMode="decimal"
-                placeholder="Discount"
-                value={discountValue}
-                onChange={(e) => setDiscountValue(e.target.value)}
-                className="pe-16 h-9"
-              />
-              {discountValue && rawDiscount > subtotal && (
-                <span className="absolute -bottom-4 left-0 text-[10px] text-warning">capped at subtotal</span>
-              )}
-            </div>
-            <Select value={discountType} onValueChange={(v) => setDiscountType(v as any)}>
-              <SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="amount">{cur}</SelectItem>
-                <SelectItem value="percent">%</SelectItem>
-              </SelectContent>
-            </Select>
-            {discountValue && (
-              <Button variant="ghost" size="icon" className="size-9 shrink-0" onClick={() => setDiscountValue("")} title="Clear discount">
-                <X className="size-4" />
-              </Button>
-            )}
-          </div>
-
+          {/* Just the number the counter reads out. Everything about how the
+              money is taken lives in the charge sheet, so the till screen
+              stays scannable while a bill is being built. */}
           <div className="space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">{t("common.subtotal")}</span><span className="tabular-nums">{formatMoney(subtotal, cur)}</span></div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t("common.subtotal")}</span>
+              <span className="tabular-nums">{formatMoney(subtotal, cur)}</span>
+            </div>
             {discount > 0 && (
               <div className="flex justify-between text-success">
-                <span>Discount{discountType === "percent" && discountInput > 0 ? ` (${discountInput}%)` : ""}</span>
+                <span>Discount</span>
                 <span className="tabular-nums">−{formatMoney(discount, cur)}</span>
               </div>
             )}
-            {taxRate > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{t("common.tax")} ({taxRate}%)</span><span className="tabular-nums">{formatMoney(tax, cur)}</span></div>}
-            <div className="flex justify-between text-lg font-bold pt-1 border-t"><span>{t("common.total")}</span><span className="tabular-nums text-primary">{formatMoney(total, cur)}</span></div>
-          </div>
-
-
-          {/* Tender lines: the bill can be settled across several accounts,
-              and whatever is left over becomes the customer's balance. */}
-          <div className="space-y-2">
-            {tenders.map((tRow, idx) => (
-              <div key={tRow.key} className="flex items-center gap-2">
-                <Select value={tRow.account_id} onValueChange={(v) => setTender(tRow.key, { account_id: v })}>
-                  <SelectTrigger className="flex-1"><SelectValue placeholder="Account" /></SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.type === "cash" ? "\u{1F4B5}" : a.type === "wallet" ? "\u{1F4F1}" : "\u{1F3E6}"} {a.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="number" step="0.01" inputMode="decimal" placeholder="0.00"
-                  className="w-28 tabular-nums"
-                  value={tRow.amount}
-                  onChange={(e) => setTender(tRow.key, { amount: e.target.value })}
-                />
-                {tenders.length > 1 && (
-                  <Button size="icon" variant="ghost" className="size-8 shrink-0" onClick={() => removeTender(tRow.key)}>
-                    <X className="size-3.5" />
-                  </Button>
-                )}
-                {tenders.length === 1 && idx === 0 && <span className="w-8 shrink-0" />}
+            {taxRate > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{t("common.tax")} ({taxRate}%)</span>
+                <span className="tabular-nums">{formatMoney(tax, cur)}</span>
               </div>
-            ))}
-            {accounts.length > 1 && (
-              <Button variant="outline" size="sm" className="w-full" onClick={addTender}>
-                <Plus className="size-3.5 me-1" /> Split across another account
-              </Button>
             )}
-            {accounts.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                No payment accounts yet \u2014 add one under Accounts.
-              </p>
-            )}
-          </div>
-
-          <div className="text-sm flex justify-between px-3 py-2 rounded-lg bg-muted/50">
-            <span className="text-muted-foreground">Paying now</span>
-            <span className="tabular-nums font-medium">{formatMoney(effectivePaid, cur)}</span>
-          </div>
-
-          {owed > 0 && (
-            <div className="text-sm flex justify-between bg-warning/10 text-warning px-3 py-2 rounded-lg font-medium">
-              <span>To be paid later</span>
-              <span className="tabular-nums">{formatMoney(owed, cur)}</span>
+            <div className="flex justify-between text-lg font-bold pt-1 border-t">
+              <span>{t("common.total")}</span>
+              <span className="tabular-nums text-primary">{formatMoney(total, cur)}</span>
             </div>
-          )}
-
-          {change > 0 && (
-            <div className="text-sm flex justify-between bg-success/10 text-success px-3 py-2 rounded-lg font-medium">
-              <span>{t("pos.changeDue")}</span>
-              <span className="tabular-nums">{formatMoney(change, cur)}</span>
-            </div>
-          )}
+          </div>
 
           </div>
 
           <div className="p-4 pt-3 shrink-0 border-t bg-card">
           <Button
             disabled={cart.length === 0 || busy}
-            onClick={completeSale}
+            onClick={openCharge}
             size="lg"
             className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground h-14 text-base font-semibold shadow-glow"
           >
-            {busy ? t("common.processing") : owed > 0
-              ? `Take ${formatMoney(effectivePaid, cur)} · ${formatMoney(owed, cur)} later`
-              : t("pos.charge", { amount: formatMoney(total, cur) })}
+            {busy ? t("common.processing") : t("pos.charge", { amount: formatMoney(total, cur) })}
           </Button>
           </div>
         </div>
       </Card>
+
+      {/* The charge sheet. Splitting a bill, discounting it and counting out
+          change all need room, and none of it matters while the counter is
+          still scanning — so it opens on Charge rather than sitting in the
+          till panel taking space from the product grid. */}
+      <Dialog open={chargeOpen} onOpenChange={(o) => { if (!busy) setChargeOpen(o); }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("common.total")} {formatMoney(total, cur)}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Tag className="size-4 text-muted-foreground shrink-0" />
+              <div className="relative flex-1 min-w-0">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  placeholder="Discount"
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
+                  className="pe-16 h-9"
+                />
+                {discountValue && rawDiscount > subtotal && (
+                  <span className="absolute -bottom-4 left-0 text-[10px] text-warning">capped at subtotal</span>
+                )}
+              </div>
+              <Select value={discountType} onValueChange={(v) => setDiscountType(v as any)}>
+                <SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="amount">{cur}</SelectItem>
+                  <SelectItem value="percent">%</SelectItem>
+                </SelectContent>
+              </Select>
+              {discountValue && (
+                <Button variant="ghost" size="icon" className="size-9 shrink-0" onClick={() => setDiscountValue("")} title="Clear discount">
+                  <X className="size-4" />
+                </Button>
+              )}
+            </div>
+
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">{t("common.subtotal")}</span><span className="tabular-nums">{formatMoney(subtotal, cur)}</span></div>
+              {discount > 0 && (
+                <div className="flex justify-between text-success">
+                  <span>Discount{discountType === "percent" && discountInput > 0 ? ` (${discountInput}%)` : ""}</span>
+                  <span className="tabular-nums">−{formatMoney(discount, cur)}</span>
+                </div>
+              )}
+              {taxRate > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{t("common.tax")} ({taxRate}%)</span><span className="tabular-nums">{formatMoney(tax, cur)}</span></div>}
+              <div className="flex justify-between text-lg font-bold pt-1 border-t"><span>{t("common.total")}</span><span className="tabular-nums text-primary">{formatMoney(total, cur)}</span></div>
+            </div>
+
+
+            {/* Tender lines: the bill can be settled across several accounts,
+                and whatever is left over becomes the customer's balance. */}
+            <div className="space-y-2">
+              {tenders.map((tRow, idx) => (
+                <div key={tRow.key} className="flex items-center gap-2">
+                  <Select value={tRow.account_id} onValueChange={(v) => setTender(tRow.key, { account_id: v })}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Account" /></SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.type === "cash" ? "\u{1F4B5}" : a.type === "wallet" ? "\u{1F4F1}" : "\u{1F3E6}"} {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number" step="0.01" inputMode="decimal" placeholder="0.00"
+                    className="w-28 tabular-nums"
+                    value={tRow.amount}
+                    onChange={(e) => setTender(tRow.key, { amount: e.target.value })}
+                  />
+                  {tenders.length > 1 && (
+                    <Button size="icon" variant="ghost" className="size-8 shrink-0" onClick={() => removeTender(tRow.key)}>
+                      <X className="size-3.5" />
+                    </Button>
+                  )}
+                  {tenders.length === 1 && idx === 0 && <span className="w-8 shrink-0" />}
+                </div>
+              ))}
+              {accounts.length > 1 && (
+                <Button variant="outline" size="sm" className="w-full" onClick={addTender}>
+                  <Plus className="size-3.5 me-1" /> Split across another account
+                </Button>
+              )}
+              {accounts.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No payment accounts yet \u2014 add one under Accounts.
+                </p>
+              )}
+            </div>
+
+            <div className="text-sm flex justify-between px-3 py-2 rounded-lg bg-muted/50">
+              <span className="text-muted-foreground">Paying now</span>
+              <span className="tabular-nums font-medium">{formatMoney(effectivePaid, cur)}</span>
+            </div>
+
+            {owed > 0 && (
+              <div className="text-sm flex justify-between bg-warning/10 text-warning px-3 py-2 rounded-lg font-medium">
+                <span>To be paid later</span>
+                <span className="tabular-nums">{formatMoney(owed, cur)}</span>
+              </div>
+            )}
+
+            {change > 0 && (
+              <div className="text-sm flex justify-between bg-success/10 text-success px-3 py-2 rounded-lg font-medium">
+                <span>{t("pos.changeDue")}</span>
+                <span className="tabular-nums">{formatMoney(change, cur)}</span>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setChargeOpen(false)} disabled={busy}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={completeSale}
+              className="bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold"
+            >
+              {busy ? t("common.processing") : owed > 0
+                ? `Take ${formatMoney(effectivePaid, cur)} · ${formatMoney(owed, cur)} later`
+                : t("pos.charge", { amount: formatMoney(total, cur) })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onDetected={handleScanned} />
       {variantPicker && (
