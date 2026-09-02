@@ -1121,17 +1121,11 @@ export default function Purchases() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* The account already says how it was paid — cash drawer,
+                      bank, wallet — so a separate method box asked the same
+                      question twice. The stored paymentMethod stays on its
+                      default; nothing downstream reads it for purchases. */}
                   <div className="space-y-1.5">
-                    <Label>{t("purchases.paymentMethod")}</Label>
-                    <Select value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">{t("pos.cash")}</SelectItem>
-                        <SelectItem value="card">{t("pos.card")}</SelectItem>
-                        <SelectItem value="mobile">{t("pos.mobile")}</SelectItem>
-                        <SelectItem value="other">{t("pos.other")}</SelectItem>
-                      </SelectContent>
-                    </Select>
                     <AccountPicker value={purchaseAccountId} onChange={setPurchaseAccountId} label="Paid from" />
                   </div>
                   <div className="space-y-0.5 text-sm px-1">

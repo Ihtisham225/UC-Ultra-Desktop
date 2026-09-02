@@ -66,6 +66,11 @@ export interface DeviceShop {
   lab_tests_enabled?: boolean;
   /** Oil shops: let the till sell stock the system doesn't know about yet. */
   allow_negative_stock?: boolean;
+  /** Put each product's average landed cost on the POS card. Off by default. */
+  show_cost_in_pos?: boolean;
+  /** Custom order numbering: an optional prefix and the next number to issue. */
+  receipt_prefix?: string | null;
+  receipt_next_number?: number | null;
   investor_mode?: "individual" | "shared" | "both";
   investor_default_commission?: number;
   investor_deduct_expenses?: boolean;

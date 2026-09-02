@@ -48,6 +48,11 @@ export default function Settings() {
   const [showTax, setShowTax] = useState(true);
   const [storeType, setStoreType] = useState("other");
   const [allowNegative, setAllowNegative] = useState(false);
+  const [showCostInPos, setShowCostInPos] = useState(false);
+  // Custom order numbering. A blank next-number keeps the automatic code, so
+  // shops that never configure this are untouched.
+  const [receiptPrefix, setReceiptPrefix] = useState("");
+  const [receiptNext, setReceiptNext] = useState("");
   const [labTests, setLabTests] = useState(false);
   const [imeiMode, setImeiMode] = useState<"sale" | "product">("sale");
   const [showCustomer, setShowCustomer] = useState(false);
@@ -81,6 +86,9 @@ export default function Settings() {
       setStoreType(currentShop.store_type ?? "other");
       setLabTests(!!currentShop.lab_tests_enabled);
       setAllowNegative(!!currentShop.allow_negative_stock);
+      setShowCostInPos(!!currentShop.show_cost_in_pos);
+      setReceiptPrefix(currentShop.receipt_prefix ?? "");
+      setReceiptNext(currentShop.receipt_next_number == null ? "" : String(currentShop.receipt_next_number));
       setImeiMode((currentShop.imei_capture_mode as "sale" | "product") ?? "sale");
       setShowCustomer(currentShop.show_customer_on_receipt ?? false);
       setShowImei(currentShop.show_imei_on_receipt ?? false);
@@ -126,6 +134,9 @@ export default function Settings() {
         store_type: storeType,
         lab_tests_enabled: labTests,
         allow_negative_stock: allowNegative,
+        show_cost_in_pos: showCostInPos,
+        receipt_prefix: receiptPrefix.trim() || null,
+        receipt_next_number: receiptNext.trim() === "" ? null : (parseInt(receiptNext, 10) || null),
         imei_capture_mode: imeiMode,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
@@ -397,6 +408,60 @@ export default function Settings() {
                 </p>
               </div>
               <Switch checked={allowNegative} onCheckedChange={setAllowNegative} disabled={!canEditShop} />
+            </div>
+            <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+              <div>
+                <Label>Show purchase price in POS</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Puts each product&apos;s average purchase cost on its card at the till, so
+                  whoever is selling can see the margin. Off by default — leave it off if
+                  counter staff should not see what the shop paid.
+                </p>
+              </div>
+              <Switch checked={showCostInPos} onCheckedChange={setShowCostInPos} disabled={!canEditShop} />
+            </div>
+            <div className="rounded-lg border p-3 space-y-3">
+              <div>
+                <Label>Order numbers</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Leave the number blank to keep the automatic code. Set one and
+                  bills count up from there — the prefix is optional, so leaving it
+                  empty gives plain numbers like 200, 201, 202.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 max-w-md">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Prefix (optional)</Label>
+                  <Input
+                    value={receiptPrefix}
+                    onChange={(e) => setReceiptPrefix(e.target.value)}
+                    placeholder="none"
+                    disabled={!canEditShop}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Next number</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputMode="numeric"
+                    value={receiptNext}
+                    onChange={(e) => setReceiptNext(e.target.value)}
+                    placeholder="automatic"
+                    disabled={!canEditShop}
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Next bill will be{" "}
+                <b>
+                  {receiptNext.trim() === ""
+                    ? "an automatic code"
+                    : `${receiptPrefix.trim()}${parseInt(receiptNext, 10) || 1}`}
+                </b>
+                .
+              </p>
             </div>
             {storeType === "pharmacy" && (
               <div className="flex items-center justify-between gap-4 rounded-lg border p-3">

@@ -42,6 +42,12 @@ export default function Dashboard() {
 
   const { data: allSales, loading: salesLoading } = useLocalStore<any>("sales", currentShop?.id);
   const { data: allProducts, loading: productsLoading } = useProductsWithVariants<any>(currentShop?.id);
+  // Today's spending, buying and margin. All three come from the offline store
+  // so the tiles still read correctly on a till with no connection.
+  const { data: allSaleItems } = useLocalStore<any>("sale_items", currentShop?.id);
+  const { data: allExpenses } = useLocalStore<any>("expenses", currentShop?.id);
+  const { data: allPurchases } = useLocalStore<any>("purchases", currentShop?.id);
+  const { data: allPurchaseItems } = useLocalStore<any>("purchase_items", currentShop?.id);
 
   const loading = salesLoading || productsLoading;
 
@@ -70,8 +76,53 @@ export default function Dashboard() {
       }
     }
     lowStock.sort((a, b) => a.stock - b.stock);
-    return { todaySales, todayCount, productCount: activeProducts.length, lowStock: lowStock.slice(0, 5) };
-  }, [allSales, allProducts]);
+
+    // expense_date is a plain date, so compare on the day rather than the
+    // instant — an instant comparison drops everything dated today.
+    const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const todayKey = dayKey(startOfDay);
+    const todayExpenses = allExpenses
+      .filter((e: any) => String(e.expense_date ?? "").slice(0, 10) === todayKey)
+      .reduce((a: number, e: any) => a + Number(e.amount ?? 0), 0);
+
+    const todayPurchases = allPurchases
+      .filter((p: any) => p.created_at && new Date(p.created_at) >= startOfDay)
+      .reduce((a: number, p: any) => a + Number(p.total ?? 0), 0);
+
+    // Average landed cost per product, on the same basis the P&L report uses,
+    // so the tile and the report can never disagree. A product never purchased
+    // through the app contributes no cost and so flatters the margin — the
+    // same assumption the report makes.
+    const costQty = new Map<string, { cost: number; qty: number }>();
+    for (const pi of allPurchaseItems) {
+      const key = pi.product_id;
+      if (!key) continue;
+      const acc = costQty.get(key) ?? { cost: 0, qty: 0 };
+      acc.cost += Number(pi.quantity ?? 0) * Number(pi.unit_cost ?? 0) + Number(pi.expense_amount ?? 0);
+      acc.qty += Number(pi.quantity ?? 0);
+      costQty.set(key, acc);
+    }
+    const todaySaleIds = new Set(
+      allSales.filter((s: any) => s.created_at && new Date(s.created_at) >= startOfDay).map((s: any) => s.id),
+    );
+    const todayCogs = allSaleItems
+      .filter((si: any) => todaySaleIds.has(si.sale_id))
+      .reduce((a: number, si: any) => {
+        const c = costQty.get(si.product_id);
+        const avg = c && c.qty > 0 ? c.cost / c.qty : 0;
+        return a + Number(si.quantity ?? 0) * avg;
+      }, 0);
+
+    return {
+      todaySales,
+      todayCount,
+      productCount: activeProducts.length,
+      lowStock: lowStock.slice(0, 5),
+      todayExpenses,
+      todayPurchases,
+      todayGrossProfit: Math.round((todaySales - todayCogs) * 100) / 100,
+    };
+  }, [allSales, allProducts, allSaleItems, allExpenses, allPurchases, allPurchaseItems]);
 
   const cur = currentShop?.currency ?? "USD";
 
@@ -117,6 +168,24 @@ export default function Dashboard() {
         <StatCard icon={Receipt} label={t("dashboard.todaySales")} value={String(safeStats.todayCount)} tone="accent" />
         <StatCard icon={Package} label={t("dashboard.activeProducts")} value={String(safeStats.productCount)} tone="default" />
         <StatCard icon={AlertTriangle} label={t("dashboard.lowStock")} value={String(safeStats.lowStock.length)} tone="warning" />
+        <StatCard
+          icon={TrendingUp}
+          label={t("dashboard.todayGrossProfit", { defaultValue: "Today's gross profit" })}
+          value={formatMoney(safeStats.todayGrossProfit, cur)}
+          tone={safeStats.todayGrossProfit < 0 ? "warning" : "primary"}
+        />
+        <StatCard
+          icon={PackageOpen}
+          label={t("dashboard.todayPurchases", { defaultValue: "Today's purchases" })}
+          value={formatMoney(safeStats.todayPurchases, cur)}
+          tone="default"
+        />
+        <StatCard
+          icon={Wallet}
+          label={t("dashboard.todayExpenses", { defaultValue: "Today's expenses" })}
+          value={formatMoney(safeStats.todayExpenses, cur)}
+          tone="default"
+        />
       </div>
 
       <div className="flex flex-wrap gap-2">

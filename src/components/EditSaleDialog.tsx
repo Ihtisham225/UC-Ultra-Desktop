@@ -9,6 +9,11 @@ import { toast } from "sonner";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useShop } from "@/contexts/ShopContext";
 import { soldAs, formatUnitQty } from "@/lib/sale-units";
+import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
+import { AccountPicker } from "@/components/AccountPicker";
+import { VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft } from "@/components/VehicleFields";
+import { isOil } from "@/lib/oil";
+import { rpc } from "@/lib/apiClient";
 
 export interface EditableProduct {
   id: string;
@@ -47,6 +52,9 @@ export interface EditableSale {
   amount_paid: number;
   payment_method: string;
   customer_id: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  account_id?: string | null;
   notes?: string | null;
   items: Array<{
     product_id: string | null;
@@ -79,9 +87,22 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
   const [lines, setLines] = useState<Line[]>([]);
   const [discount, setDiscount] = useState("0");
   const [paid, setPaid] = useState("0");
+  // The account picker already says how the money moved, so the sale edit no
+  // longer asks for a method as well — the sale's stored value rides along
+  // unchanged rather than being reset to a guess.
   const [method, setMethod] = useState("cash");
+  // Who the bill is for and where the money went — both editable, because a
+  // mistyped order usually means the wrong one of these too.
+  const [customer, setCustomer] = useState<CustomerLite | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
+  // The free oil change is why the car came in, so correcting the bill has to
+  // be able to correct the visit recorded beside it.
+  const oilShop = isOil(currentShop);
+  const [oil, setOil] = useState<VehicleDraft>(blankVehicle);
+  const [oilId, setOilId] = useState<string | null>(null);
+  const [oilLoaded, setOilLoaded] = useState(false);
 
   useEffect(() => {
     if (!sale) return;
@@ -106,8 +127,45 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
     setDiscount(String(sale.discount ?? 0));
     setPaid(String(sale.amount_paid ?? 0));
     setMethod(sale.payment_method || "cash");
+    setCustomer(
+      sale.customer_id
+        ? { id: sale.customer_id, name: sale.customer_name ?? "Customer", phone: sale.customer_phone ?? null }
+        : null,
+    );
+    setAccountId(sale.account_id ?? null);
     setSearch("");
-  }, [sale]);
+
+    setOil(blankVehicle);
+    setOilId(null);
+    setOilLoaded(false);
+    if (!oilShop) return;
+    let live = true;
+    void rpc<{
+      id: string; vehicle_number: string; make: string | null; model_number: string | null;
+      current_km: number | null; next_km: number | null; oil_changer: string | null;
+      visitor_name: string | null; phone: string | null; notes: string | null;
+    } | null>("oilChangeForSaleAction", [sale.id])
+      .then((rec) => {
+        if (!live) return;
+        if (rec) {
+          setOilId(rec.id);
+          setOil({
+            vehicle_number: rec.vehicle_number ?? "",
+            make: rec.make ?? "",
+            model_number: rec.model_number ?? "",
+            current_km: rec.current_km == null ? "" : String(rec.current_km),
+            next_km: rec.next_km == null ? "" : String(rec.next_km),
+            oil_changer: rec.oil_changer ?? "",
+            visitor_name: rec.visitor_name ?? "",
+            phone: rec.phone ?? "",
+            notes: rec.notes ?? "",
+          });
+        }
+        setOilLoaded(true);
+      })
+      .catch(() => { if (live) setOilLoaded(true); });
+    return () => { live = false; };
+  }, [sale, oilShop]);
 
   const num = (s: string) => {
     const n = parseFloat(s);
@@ -190,10 +248,29 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
         discount: discountValue,
         amount_paid: Math.min(round2(num(paid)), total),
         payment_method: method,
-        customer_id: sale.customer_id,
+        customer_id: customer?.id ?? null,
+        account_id: accountId,
         notes: sale.notes ?? null,
       });
       if (!result.ok) return toast.error(result.error ?? "Could not update this bill");
+
+      // The visit is saved after the bill, so a rejected bill never leaves a
+      // corrected oil change behind it. A failure here is reported but does
+      // not undo the bill — the counter is told which half needs another go.
+      if (oilShop && oil.vehicle_number.trim()) {
+        const res = await rpc<{ ok: boolean; error?: string }>("saveOilChangeAction", [{
+          ...vehicleDraftToInput(oil),
+          ...(oilId ? { id: oilId } : {}),
+          sale_id: sale.id,
+        }]);
+        if (!res.ok) {
+          toast.error(`Bill saved, but the oil change was not: ${res.error ?? "please try again"}`);
+          onSaved();
+          onClose();
+          return;
+        }
+      }
+
       toast.success("Bill updated");
       onSaved();
       onClose();
@@ -319,7 +396,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label className="text-xs">Discount</Label>
             <Input
@@ -334,19 +411,31 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
               value={paid} onChange={(e) => setPaid(e.target.value)}
             />
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label className="text-xs">Method</Label>
-            <Select value={method} onValueChange={setMethod}>
-              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="card">Card</SelectItem>
-                <SelectItem value="mobile">Mobile</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className="text-xs">Customer</Label>
+            <CustomerPicker value={customer} onChange={setCustomer} />
+          </div>
+          <div className="space-y-1">
+            <AccountPicker value={accountId} onChange={setAccountId} label="Paid into" />
           </div>
         </div>
+
+        {oilShop && oilLoaded && (
+          <div className="rounded-lg border p-3 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-xs font-semibold">Oil change</Label>
+              {!oilId && (
+                <span className="text-[11px] text-muted-foreground">
+                  No visit recorded against this bill — fill the plate in to add one.
+                </span>
+              )}
+            </div>
+            <VehicleFields value={oil} onChange={setOil} compact />
+          </div>
+        )}
 
         <div className="rounded-lg border p-3 space-y-1 text-sm">
           <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">{formatMoney(subtotal, cur)}</span></div>

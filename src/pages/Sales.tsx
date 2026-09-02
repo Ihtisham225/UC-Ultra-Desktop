@@ -44,6 +44,7 @@ type ReturnStatus = "none" | "partial" | "full";
 interface Sale {
   id: string;
   receipt_number: string | null;
+  customer_name?: string | null;
   total: number;
   payment_method: string;
   payments?: { account_name: string; amount: number }[];
@@ -112,6 +113,11 @@ export default function Sales() {
   // lines (and the account names) are joined on from their own tables.
   const { data: allPayments } = useLocalStore<any>("sale_payments", currentShop?.id);
   const { data: allAccounts } = useLocalStore<any>("money_accounts", currentShop?.id);
+  // Who the bill was for. Parties live in `suppliers` since customers and
+  // suppliers became one record, but the legacy `customers` table is still
+  // synced for shops that have not been migrated, so both are consulted.
+  const { data: allParties } = useLocalStore<any>("suppliers", currentShop?.id);
+  const { data: allLegacyCustomers } = useLocalStore<any>("customers", currentShop?.id);
 
   // Sort and paginate locally
   const allSales = useMemo(() => {
@@ -134,9 +140,14 @@ export default function Sales() {
         0,
         Math.round((Number(s.total ?? 0) - Number(s.amount_paid ?? 0)) * 100) / 100,
       );
-      return { ...s, sale_items: items, returnStatus, payments, balance_due };
+      const customer_name =
+        (s.customer_id
+          ? allParties.find((c: any) => c.id === s.customer_id)?.name ??
+            allLegacyCustomers.find((c: any) => c.id === s.customer_id)?.name
+          : null) ?? null;
+      return { ...s, sale_items: items, returnStatus, payments, balance_due, customer_name };
     });
-  }, [allSalesRaw, allSaleItems, allReturns, allPayments, allAccounts]);
+  }, [allSalesRaw, allSaleItems, allReturns, allPayments, allAccounts, allParties, allLegacyCustomers]);
 
   const totalCount = allSales.length;
   const grandTotal = allSalesRaw.reduce((a: number, s: any) => a + Number(s.total ?? 0), 0);
@@ -182,6 +193,11 @@ export default function Sales() {
       amount_paid: Number((sale as { amount_paid?: number }).amount_paid ?? 0),
       payment_method: String(sale.payment_method ?? "cash"),
       customer_id: (sale as { customer_id?: string | null }).customer_id ?? null,
+      customer_name: sale.customer_name ?? null,
+      customer_phone:
+        (allParties.find((c: any) => c.id === (sale as any).customer_id)?.phone ??
+          allLegacyCustomers.find((c: any) => c.id === (sale as any).customer_id)?.phone) ?? null,
+      account_id: (sale as { account_id?: string | null }).account_id ?? null,
       items: sale.sale_items.map((it) => ({
         product_id: (it as { product_id?: string | null }).product_id ?? null,
         variant_id: (it as { variant_id?: string | null }).variant_id ?? null,
@@ -254,6 +270,7 @@ export default function Sales() {
     if (rows.length === 0) return toast.error(t("bulk.nothingExported"));
     downloadCsv(`sales-${new Date().toISOString().slice(0, 10)}`, rows, [
       { header: "Receipt", value: (r) => r.receipt_number ?? "" },
+      { header: "Customer", value: (r) => r.customer_name ?? "" },
       { header: "Date", value: (r) => format(new Date(r.created_at), "yyyy-MM-dd HH:mm") },
       { header: "Items", value: (r) => r.sale_items.length },
       { header: "Payment", value: (r) => (r.payments?.length ? r.payments.map((p) => `${p.account_name} ${p.amount}`).join(" | ") : r.payment_method) },
@@ -354,6 +371,11 @@ export default function Sales() {
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground mt-0.5">
+                        {/* Who the bill was for — the shop looks a sale up by
+                            the person as often as by the receipt number. */}
+                        {s.customer_name && (
+                          <span className="text-foreground/80 font-medium">{s.customer_name} · </span>
+                        )}
                         {format(new Date(s.created_at), "PPp")} · {t("sales.itemsCount", { count: s.sale_items.length })} ·{" "}
                         {s.payments?.length
                           ? s.payments.map((p) => `${p.account_name} ${formatMoney(p.amount, cur)}`).join(" · ")
