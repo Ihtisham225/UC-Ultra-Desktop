@@ -21,18 +21,30 @@ export const CustomerPicker = ({
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "" });
   const [busy, setBusy] = useState(false);
-  // Offline-first: customers come from the local sync store so the picker works
-  // during a sale with no connection. New customers are queued for push.
-  const { data: list, save } = useLocalStore<CustomerLite & { name: string }>(
-    "customers",
+  // Offline-first: parties come from the local sync store so the picker works
+  // during a sale with no connection. New ones are queued for push.
+  //
+  // Customers and suppliers are one party table now, so this filters by the
+  // role rather than reading a customers-only table — that is what lets a
+  // supplier who also buys appear here without a second record.
+  const { data: parties, save } = useLocalStore<CustomerLite & { name: string; is_customer?: boolean }>(
+    "suppliers",
     currentShop?.id,
   );
+  const list = parties.filter((p) => p.is_customer);
 
   const create = async () => {
     if (!currentShop || !form.name.trim()) return toast.error("Name is required");
     setBusy(true);
     try {
-      const c = await save({ name: form.name.trim(), phone: form.phone || null });
+      // is_supplier defaults true server-side, so say it explicitly or every
+      // customer added at the till turns up in the supplier picker too.
+      const c = await save({
+        name: form.name.trim(),
+        phone: form.phone || null,
+        is_customer: true,
+        is_supplier: false,
+      } as Parameters<typeof save>[0]);
       toast.success("Customer added");
       onChange({ id: c.id, name: c.name, phone: c.phone ?? null });
       setForm({ name: "", phone: "" });

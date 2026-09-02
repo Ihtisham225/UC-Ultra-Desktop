@@ -34,8 +34,10 @@ interface Supplier {
   phone: string | null;
   email: string | null;
   notes: string | null;
-  /** Handicraft shops only: what this party does. */
+  /** What this party does. A party can be more than one of these. */
   is_supplier?: boolean;
+  /** Also buys from the shop — the same record appears under Customers. */
+  is_customer?: boolean;
   is_maker?: boolean;
   is_processor?: boolean;
   city?: string | null;
@@ -138,6 +140,7 @@ export default function Suppliers() {
       ...(craft
         ? {
             is_supplier: !!editing.is_supplier,
+            is_customer: !!editing.is_customer,
             is_maker: !!editing.is_maker,
             is_processor: !!editing.is_processor,
             city: editing.city || null,
@@ -339,6 +342,23 @@ export default function Suppliers() {
                 <div className="space-y-1.5"><Label>{t("common.phone")}</Label><Input value={editing.phone ?? ""} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></div>
                 <div className="space-y-1.5"><Label>{t("common.email")}</Label><Input type="email" value={editing.email ?? ""} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /></div>
               </div>
+              {/* Non-craft shops get the one toggle that matters to them;
+                  craft shops pick from the full role grid below. */}
+              {!craft && (
+                <label className={`flex items-start gap-2 rounded-lg border p-2.5 cursor-pointer transition-colors ${editing.is_customer ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}>
+                  <Checkbox
+                    checked={!!editing.is_customer}
+                    onCheckedChange={(v) => setEditing({ ...editing, is_customer: !!v })}
+                    className="mt-0.5"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Also a customer</span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      You sell to them too. They appear under Customers as well, sharing one ledger.
+                    </span>
+                  </span>
+                </label>
+              )}
               {craft && (
                 <>
                   <div className="space-y-1.5">
