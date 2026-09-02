@@ -31,6 +31,7 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { syncNow } from "@/lib/syncEngine";
+import { useLocalStore } from "@/hooks/useLocalStore";
 import { upsertLocal, notifyChange } from "@/lib/localDb";
 import { generateSku, generateBarcode } from "@/lib/sku";
 import { v4 as uuid } from "uuid";
@@ -56,6 +57,7 @@ interface Purchase {
   supplier_id: string | null;
   seller_name?: string | null;
   total: number;
+  paid_amount?: number | null;
   payment_method: string;
   created_at: string;
   invoice_image_url?: string | null;
@@ -91,8 +93,19 @@ export default function Purchases() {
   const { currentShop, role } = useShop();
   const canDelete = role === "owner";
   const formatMoney = useFormatMoney();
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const { data: allPurchases, loading: purchasesLoading } = useLocalStore<Purchase>("purchases", currentShop?.id);
+  // Parties the shop actually buys from. Mirrors the server's filter — the
+  // one party table holds customers too, so an unfiltered list would offer
+  // every customer as a seller.
+  const { data: allParties } = useLocalStore<Supplier & {
+    is_supplier?: boolean; is_maker?: boolean; is_processor?: boolean;
+  }>("suppliers", currentShop?.id);
+  const suppliers = useMemo(
+    () => allParties
+      .filter((p) => p.is_supplier || p.is_maker || p.is_processor)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [allParties],
+  );
   // Product picker feeds from the local offline store, not the server — a
   // just-added product must appear instantly, before background sync runs.
   const { data: localProducts } = useProductsWithVariants<{
@@ -121,16 +134,27 @@ export default function Purchases() {
         .sort((a, b) => a.name.localeCompare(b.name)),
     [localProducts],
   );
-  const [loading, setLoading] = useState(true);
-  const [totalCount, setTotalCount] = useState(0);
-  const [grandTotal, setGrandTotal] = useState(0);
-  const [grandPaid, setGrandPaid] = useState(0);
+  const loading = purchasesLoading;
+  const sortedPurchases = useMemo(
+    () => [...allPurchases].sort(
+      (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime(),
+    ),
+    [allPurchases],
+  );
+  const totalCount = sortedPurchases.length;
+  const grandTotal = sortedPurchases.reduce((a, p) => a + Number(p.total ?? 0), 0);
+  const grandPaid = sortedPurchases.reduce((a, p) => a + Number(p.paid_amount ?? 0), 0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeState] = useState<number>(() => {
     const raw = typeof window !== "undefined" ? localStorage.getItem(PAGE_SIZE_KEY) : null;
     const n = raw ? parseInt(raw, 10) : NaN;
     return Number.isFinite(n) && n > 0 ? n : DEFAULT_PAGE_SIZE;
   });
+
+  const purchases = useMemo(
+    () => sortedPurchases.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
+    [sortedPurchases, page, pageSize],
+  );
   const setPageSize = (n: number) => {
     setPageSizeState(n);
     setPage(1);
@@ -321,29 +345,26 @@ export default function Purchases() {
 
   useEffect(() => { document.title = "UCU"; }, []);
 
+  /**
+   * The register reads from the local store, so a shop with no line can still
+   * look up what it bought and enter today's stock. Investors and the pool
+   * stay online-only — they are a funding decision, not something the counter
+   * needs mid-entry, and they simply come back empty offline.
+   */
   const load = useCallback(async () => {
     if (!currentShop) return;
-    setLoading(true);
+    if (!investorsEnabled) return;
     try {
-      const [list, formData, investorList, poolState] = await Promise.all([
-        rpc<{ rows: Purchase[]; count: number; grandTotal: number; grandPaid: number }>("listPurchasesAction", page, pageSize),
-        rpc<{ suppliers: Supplier[]; products: Product[] }>("loadPurchaseFormDataAction"),
-        investorsEnabled ? rpc<Investor[]>("listInvestorsAction") : Promise.resolve([] as Investor[]),
-        investorsEnabled ? rpc<PoolLite | null>("getPoolAction") : Promise.resolve(null),
+      const [investorList, poolState] = await Promise.all([
+        rpc<Investor[]>("listInvestorsAction"),
+        rpc<PoolLite | null>("getPoolAction"),
       ]);
-      setPurchases(list.rows ?? []);
-      setTotalCount(list.count ?? 0);
-      setGrandTotal(list.grandTotal ?? 0);
-      setGrandPaid(list.grandPaid ?? 0);
-      setSuppliers(formData.suppliers ?? []);
       setInvestors(investorList ?? []);
       setPool(poolState ?? null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("purchases.failed"));
-    } finally {
-      setLoading(false);
+    } catch {
+      /* offline: funding options are simply unavailable until the line is back */
     }
-  }, [currentShop, page, pageSize, t, investorsEnabled]);
+  }, [currentShop, investorsEnabled]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -614,14 +635,74 @@ export default function Purchases() {
         expense_amount: l.expense_amount ?? 0,
       })),
     };
+    // Editing rebuilds stock, the supplier's khata and any investor holding
+    // server-side, so it needs a connection — the same rule as editing a bill.
+    if (editingId && !navigator.onLine) {
+      setBusy(false);
+      return toast.error("Editing a purchase needs a connection — the stock and balances are rebuilt on the server.");
+    }
+
     try {
-      // Push any locally-created products first so the server can move their
-      // stock — the picker feeds from the offline store, which may be ahead.
-      try { await syncNow(); } catch { /* offline: server sync will catch up */ }
-      const res = editingId
-        ? await rpc<{ ok: boolean; error?: string }>("updatePurchaseAction", editingId, input)
-        : await rpc<{ ok: boolean; id?: string; error?: string }>("createPurchaseAction", input);
-      if (!res.ok) return toast.error(res.error ?? t("purchases.failed"));
+      if (navigator.onLine) {
+        // Push any locally-created products first so the server can move their
+        // stock — the picker feeds from the offline store, which may be ahead.
+        try { await syncNow(); } catch { /* offline: server sync will catch up */ }
+        const res = editingId
+          ? await rpc<{ ok: boolean; error?: string }>("updatePurchaseAction", editingId, input)
+          : await rpc<{ ok: boolean; id?: string; error?: string }>("createPurchaseAction", input);
+        if (!res.ok) return toast.error(res.error ?? t("purchases.failed"));
+      } else {
+        // Offline: write the bill and its lines locally and queue them. Stock
+        // moves when the lines are pushed, and the push route finishes the
+        // rest — the supplier's khata, the cash out of the account, investor
+        // funding — exactly as createPurchaseAction would have.
+        if (!currentShop || !user) return;
+        const purchaseId = uuid();
+        const now = new Date().toISOString();
+        const goods = input.items.reduce((a, l) => a + l.unit_cost * (l.quantity ?? 0), 0);
+        const expenses = input.items.reduce((a, l) => a + (l.expense_amount ?? 0), 0);
+        const grand = goods + expenses;
+        const paidNow = input.amount_paid == null ? grand : Math.min(Math.max(input.amount_paid, 0), grand);
+
+        await upsertLocal("purchases", {
+          id: purchaseId,
+          shop_id: currentShop.id,
+          created_by: user.id,
+          supplier_id: input.supplier_id,
+          investor_id: input.investor_id ?? null,
+          reference_number: input.reference_number,
+          subtotal: goods,
+          tax: 0,
+          expenses_total: expenses,
+          total: grand,
+          paid_amount: paidNow,
+          payment_method: input.payment_method,
+          account_id: input.account_id,
+          notes: input.notes,
+          invoice_image_url: input.invoice_image_url,
+          seller_name: input.seller_name,
+          seller_phone: input.seller_phone,
+          seller_cnic: input.seller_cnic,
+          created_at: now,
+        }, true);
+        for (const l of input.items) {
+          await upsertLocal("purchase_items", {
+            id: uuid(),
+            purchase_id: purchaseId,
+            product_id: l.product_id,
+            variant_id: l.variant_id,
+            product_name: l.product_name,
+            unit_cost: l.unit_cost,
+            quantity: l.quantity,
+            expense_amount: l.expense_amount ?? 0,
+            line_total: l.unit_cost * (l.quantity ?? 0),
+            created_at: now,
+          }, true);
+        }
+        notifyChange("purchases");
+        notifyChange("purchase_items");
+        toast.info("Saved on this terminal — stock and balances update when it syncs.");
+      }
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : t("purchases.failed"));
     } finally {
@@ -685,7 +766,8 @@ export default function Purchases() {
     toast.success(t("purchases.supplierAdded"));
     setNewSupplier({ name: "", phone: "", email: "", notes: "" });
     setSupplierOpen(false);
-    setSuppliers((prev) => [...prev, supplier]);
+    // The party list is derived from the local store, which the create action
+    // refreshes through sync; nothing to append by hand.
     setSupplierId(supplier.id);
   };
 
