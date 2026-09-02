@@ -949,43 +949,11 @@ export default function POS() {
             sits outside the scroller and stays put. */}
         <div className="border-t bg-card flex flex-col min-h-0">
           <div className="p-4 space-y-3 overflow-y-auto min-h-0 flex-1">
-          {oilShop && (
-            <div className="rounded-lg border p-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <Car className="size-4 text-primary shrink-0" />
-                <span className="text-sm font-medium">Oil change</span>
-                <span className="text-[11px] text-muted-foreground ms-auto">Optional</span>
-              </div>
-
-              <VehiclePicker value={pickedVehicle} onChange={chooseVehicle} />
-
-              {/* The rest of the form only matters once there's a car. */}
-              {pickedVehicle && (
-                <>
-                  {knownVehicle && (
-                    <p className="text-[11px] text-primary">
-                      Last in {format(new Date(knownVehicle.serviced_at), "d MMM yyyy")}
-                      {knownVehicle.next_km != null && ` · was due at ${knownVehicle.next_km.toLocaleString()} km`}
-                    </p>
-                  )}
-                  <VehicleFields
-                    value={vehicle}
-                    onChange={setVehicle}
-                    compact
-                    showIdentity={false}
-                  />
-                </>
-              )}
-            </div>
-          )}
-
-          {hasLabTests
-            ? <PatientPicker value={patient} onChange={setPatient} />
-            : <CustomerPicker value={customer} onChange={setCustomer} />}
-
-          {/* Just the number the counter reads out. Everything about how the
-              money is taken lives in the charge sheet, so the till screen
-              stays scannable while a bill is being built. */}
+          {/* Only what is being sold and what it comes to. Who the bill is
+              for, the car it belongs to and every decision about the money
+              live in the checkout modal — none of it matters while the
+              counter is still scanning, and all of it was taking space from
+              the product grid. */}
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("common.subtotal")}</span>
@@ -1018,7 +986,9 @@ export default function POS() {
             size="lg"
             className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground h-14 text-base font-semibold shadow-glow"
           >
-            {busy ? t("common.processing") : t("pos.charge", { amount: formatMoney(total, cur) })}
+            {/* The total sits directly above in a larger font, so the button
+                does not repeat it. */}
+            {busy ? t("common.processing") : t("pos.checkout", { defaultValue: "Checkout" })}
           </Button>
           </div>
         </div>
@@ -1029,12 +999,59 @@ export default function POS() {
           still scanning — so it opens on Charge rather than sitting in the
           till panel taking space from the product grid. */}
       <Dialog open={chargeOpen} onOpenChange={(o) => { if (!busy) setChargeOpen(o); }}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        {/* Wide, because everything the counter needs to finish a sale is in
+            here: who it is for, the car on an oil shop, and the money. An oil
+            shop fills a whole column with the vehicle, so it gets two columns;
+            anywhere else the left side is just a picker, and a second column
+            would only leave it stranded beside the money. */}
+        <DialogContent
+          className={`max-h-[92vh] overflow-y-auto ${oilShop ? "sm:max-w-4xl" : "sm:max-w-2xl"}`}
+        >
           <DialogHeader>
-            <DialogTitle>{t("common.total")} {formatMoney(total, cur)}</DialogTitle>
+            <DialogTitle className="flex items-baseline justify-between gap-4 pe-6">
+              <span>{t("pos.checkout", { defaultValue: "Checkout" })}</span>
+              <span className="tabular-nums text-primary">{formatMoney(total, cur)}</span>
+            </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className={`grid grid-cols-1 gap-x-6 gap-y-3 items-start ${oilShop ? "md:grid-cols-2" : ""}`}>
+            <div className="space-y-3 min-w-0">
+                {oilShop && (
+                  <div className="rounded-lg border p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Car className="size-4 text-primary shrink-0" />
+                      <span className="text-sm font-medium">Oil change</span>
+                      <span className="text-[11px] text-muted-foreground ms-auto">Optional</span>
+                    </div>
+
+                    <VehiclePicker value={pickedVehicle} onChange={chooseVehicle} />
+
+                    {/* The rest of the form only matters once there's a car. */}
+                    {pickedVehicle && (
+                      <>
+                        {knownVehicle && (
+                          <p className="text-[11px] text-primary">
+                            Last in {format(new Date(knownVehicle.serviced_at), "d MMM yyyy")}
+                            {knownVehicle.next_km != null && ` · was due at ${knownVehicle.next_km.toLocaleString()} km`}
+                          </p>
+                        )}
+                        <VehicleFields
+                          value={vehicle}
+                          onChange={setVehicle}
+                          compact
+                          showIdentity={false}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {hasLabTests
+                  ? <PatientPicker value={patient} onChange={setPatient} />
+                  : <CustomerPicker value={customer} onChange={setCustomer} />}
+            </div>
+
+            <div className="space-y-3 min-w-0">
             <div className="flex items-center gap-2">
               <Tag className="size-4 text-muted-foreground shrink-0" />
               <div className="relative flex-1 min-w-0">
@@ -1138,6 +1155,7 @@ export default function POS() {
                 <span className="tabular-nums">{formatMoney(change, cur)}</span>
               </div>
             )}
+            </div>
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
