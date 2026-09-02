@@ -30,7 +30,7 @@ import { toast } from "sonner";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
-import { syncAll } from "@/lib/syncEngine";
+import { syncNow } from "@/lib/syncEngine";
 import { upsertLocal, notifyChange } from "@/lib/localDb";
 import { generateSku, generateBarcode } from "@/lib/sku";
 import { v4 as uuid } from "uuid";
@@ -617,7 +617,7 @@ export default function Purchases() {
     try {
       // Push any locally-created products first so the server can move their
       // stock — the picker feeds from the offline store, which may be ahead.
-      try { await syncAll(); } catch { /* offline: server sync will catch up */ }
+      try { await syncNow(); } catch { /* offline: server sync will catch up */ }
       const res = editingId
         ? await rpc<{ ok: boolean; error?: string }>("updatePurchaseAction", editingId, input)
         : await rpc<{ ok: boolean; id?: string; error?: string }>("createPurchaseAction", input);

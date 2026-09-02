@@ -76,19 +76,48 @@ export async function pushAll() {
 
 // ─── Full sync ───────────────────────────────────────────────────────────────
 
-let syncing = false
+/** The sync currently in flight, so callers can wait on it instead of racing. */
+let current: Promise<void> | null = null
 
-export async function syncAll() {
-  if (syncing || !navigator.onLine || !getToken()) return
-  syncing = true
-  try {
-    await pushAll()
-    await pullAll()
-  } catch (e) {
-    console.warn('[sync] syncAll failed:', e)
-  } finally {
-    syncing = false
-  }
+function startSync(): Promise<void> {
+  const run = (async () => {
+    try {
+      await pushAll()
+      await pullAll()
+    } catch (e) {
+      console.warn('[sync] syncAll failed:', e)
+    }
+  })()
+  current = run
+  void run.finally(() => { if (current === run) current = null })
+  return run
+}
+
+/**
+ * Best-effort sync. Skips outright when one is already running — right for the
+ * background loop, which only cares that a sync happens soon.
+ */
+export async function syncAll(): Promise<void> {
+  if (current || !navigator.onLine || !getToken()) return
+  return startSync()
+}
+
+/**
+ * Wait for whatever is in flight, then run a sync guaranteed to include
+ * everything queued up to this moment.
+ *
+ * Anything whose next step depends on the server having its rows must use this
+ * and not syncAll(). syncAll() returns instantly while the 30s background loop
+ * is mid-sync, so the caller would carry on against rows that had never been
+ * pushed — which is how a till asking for its server-issued order number got
+ * told the sale did not exist, and kept the provisional code on the slip.
+ * Waiting on the in-flight run alone is not enough either: it may have
+ * snapshotted the queue before these rows were written.
+ */
+export async function syncNow(): Promise<void> {
+  if (!navigator.onLine || !getToken()) return
+  if (current) await current.catch(() => {})
+  return startSync()
 }
 
 // ─── Background sync loop ───────────────────────────────────────────────────

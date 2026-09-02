@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { deleteLocal, notifyChange } from "@/lib/localDb";
-import { syncAll } from "@/lib/syncEngine";
+import { syncNow } from "@/lib/syncEngine";
 import { ManualSaleDialog, type ManualSaleApi } from "@/components/ManualSaleDialog";
 import { EditSaleDialog, type EditableSale, type EditableProduct } from "@/components/EditSaleDialog";
 import { soldAs, formatSoldQuantity } from "@/lib/sale-units";
@@ -508,7 +508,7 @@ export default function Sales() {
         onClose={() => setEditSale(null)}
         // The server rewrote the bill, its stock and the customer's balance —
         // pull the corrected rows back down so this terminal agrees.
-        onSaved={() => { syncAll().catch(() => {}); }}
+        onSaved={() => { syncNow().catch(() => {}); }}
         submit={(id, input) => rpc<{ ok: boolean; error?: string }>("updateSaleAction", id, input)}
       />
 

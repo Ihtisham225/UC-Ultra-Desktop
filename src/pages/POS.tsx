@@ -19,7 +19,7 @@ import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
 import { PatientPicker, type PatientLite } from "@/components/PatientPicker";
 import { LabTokenDialog, type LabTokenOrder } from "@/components/LabTokenDialog";
 import { rpc } from "@/lib/apiClient";
-import { syncAll } from "@/lib/syncEngine";
+import { syncNow } from "@/lib/syncEngine";
 import type { LabOrderDto } from "@/lib/labTypes";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { VariantPickerDialog, type VariantOption } from "@/components/VariantPickerDialog";
@@ -640,7 +640,7 @@ export default function POS() {
     let labOrders: LabOrderDto[] = [];
     if (needsServer) {
       try {
-        await syncAll();
+        await syncNow();
         if (numbersFromServer) {
           const issued = await rpc<{ receipt_number: string | null } | null>(
             "getSaleReceiptAction", saleId,

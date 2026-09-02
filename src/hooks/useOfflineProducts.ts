@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getAll, onLocalChange } from '@/lib/localDb'
-import { syncAll } from '@/lib/syncEngine'
+import { syncNow } from '@/lib/syncEngine'
 import type { CachedProduct, CachedVariant } from '@/lib/offlineDb'
 
 // Raw synced rows (snake_case, from /api/sync/pull) as they land in the local store.
@@ -102,7 +102,7 @@ export function useOfflineProducts(shopId: string | undefined) {
     syncingRef.current = true
     try {
       if (navigator.onLine) {
-        await syncAll()
+        await syncNow()
         setLastSynced(new Date())
       }
       await loadFromStore()
