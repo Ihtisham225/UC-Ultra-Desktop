@@ -18,6 +18,11 @@ export interface LedgerPerson {
   phone: string | null;
   source: "customer" | "party";
   role_label: string;
+  /** The raw flags, so the picker can group by what a party actually is. */
+  is_customer: boolean;
+  is_supplier: boolean;
+  is_maker: boolean;
+  is_processor: boolean;
 }
 import { LEDGER_PERSON_TYPES, type LedgerPersonType as PersonType } from "@/lib/handicraft";
 
@@ -56,12 +61,24 @@ export function LedgerPersonPicker({
   }, [currentShop, createOpen]);
 
   const groups = useMemo(() => {
-    const customers = people.filter((p) => p.source === "customer");
-    const parties = people.filter((p) => p.source === "party");
-    return [
-      { heading: "Customers", items: customers },
-      { heading: "Parties", items: parties },
-    ].filter((g) => g.items.length > 0);
+    // Grouped by what someone actually is, not by which table they came from —
+    // "Customers" and "Parties" stopped meaning anything once the two books
+    // merged, and a handicraft shop needs its makers and processing companies
+    // visible as their own headings rather than buried in one long list.
+    // Each person lands in exactly one group (first match wins) so nobody is
+    // listed twice; the full role label still shows on the row.
+    const buckets: { heading: string; items: LedgerPerson[] }[] = [
+      { heading: "Makers", items: [] },
+      { heading: "Processing", items: [] },
+      { heading: "Suppliers", items: [] },
+      { heading: "Customers", items: [] },
+      { heading: "No role set", items: [] },
+    ];
+    for (const p of people) {
+      const i = p.is_maker ? 0 : p.is_processor ? 1 : p.is_supplier ? 2 : p.is_customer ? 3 : 4;
+      buckets[i].items.push(p);
+    }
+    return buckets.filter((g) => g.items.length > 0);
   }, [people]);
 
   /** Open the create dialog with whatever they'd already typed. */
