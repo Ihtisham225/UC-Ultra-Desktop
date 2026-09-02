@@ -41,6 +41,10 @@ export const SYNC_TABLES = [
   'purchase_items',
   'suppliers',
   'debts',
+  // Settlements against a khata. Two-way, so the counter can take money with
+  // no line. Insert-once on the server, which recomputes the khata's paid
+  // figure from these — never write paid_amount from here.
+  'debt_payments',
   'sale_returns',
   // Alternate sale units (oil sold by the bottle). Pull-only — edited on the
   // Products page through an online action, but the till needs them offline.
