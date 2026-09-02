@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Trash2, Wallet, Eye, Edit2 } from "lucide-react";
+import { Plus, Trash2, Wallet, Eye, Edit2, Tags } from "lucide-react";
 import { toast } from "sonner";
 import { DetailsDialog } from "@/components/DetailsDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -45,6 +45,13 @@ export default function Expenses() {
   const { currentShop } = useShop();
   const formatMoney = useFormatMoney();
   const [categories, setCategories] = useState<Category[]>([]);
+  // Managing the list of headings the shop spends under. Seeded on onboarding
+  // and by the import, but every trade has its own, so it has to be editable.
+  const [catsOpen, setCatsOpen] = useState(false);
+  const [newCat, setNewCat] = useState("");
+  const [catEditId, setCatEditId] = useState<string | null>(null);
+  const [catEditName, setCatEditName] = useState("");
+  const [catBusy, setCatBusy] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
@@ -205,6 +212,60 @@ export default function Expenses() {
     load();
   };
 
+  const addCategory = async () => {
+    const name = newCat.trim();
+    if (!name) return;
+    setCatBusy(true);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("createExpenseCategoryAction", { name, color: "#6366f1" });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+      setNewCat("");
+      await loadCategories();
+      toast.success(t("common.saved"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setCatBusy(false);
+    }
+  };
+
+  const saveCategoryEdit = async () => {
+    if (!catEditId) return;
+    const name = catEditName.trim();
+    if (!name) return;
+    setCatBusy(true);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("updateExpenseCategoryAction", catEditId, { name, color: "#6366f1" });
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+      setCatEditId(null);
+      setCatEditName("");
+      await loadCategories();
+      await load();
+      toast.success(t("common.saved"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setCatBusy(false);
+    }
+  };
+
+  const removeCategory = async (c: Category) => {
+    const ok = await confirm({
+      title: `Delete "${c.name}"?`,
+      description: "Only categories nothing is filed under can be removed.",
+      variant: "destructive",
+    });
+    if (!ok) return;
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteExpenseCategoryAction", c.id);
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+      await loadCategories();
+      toast.success(t("common.deleted"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -214,6 +275,67 @@ export default function Expenses() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">{t("expenses.subtitle")}</p>
         </div>
+        <div className="flex items-center gap-2">
+        <Dialog open={catsOpen} onOpenChange={(o) => { setCatsOpen(o); if (!o) { setCatEditId(null); setNewCat(""); } }}>
+          <DialogTrigger asChild>
+            <Button variant="outline"><Tags className="size-4 mr-2" /> Categories</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Expense categories</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              The headings your spending is filed under. A category that already has
+              expenses against it can be renamed, but not removed.
+            </p>
+            <div className="flex items-center gap-2 py-1">
+              <Input
+                value={newCat}
+                placeholder="New category name"
+                onChange={(e) => setNewCat(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addCategory(); } }}
+              />
+              <Button onClick={() => void addCategory()} disabled={catBusy || !newCat.trim()}>
+                <Plus className="size-4 mr-1" /> Add
+              </Button>
+            </div>
+            <div className="max-h-72 overflow-y-auto divide-y rounded-md border">
+              {categories.length === 0 ? (
+                <p className="p-3 text-sm text-muted-foreground">No categories yet.</p>
+              ) : categories.map((c) => (
+                <div key={c.id} className="flex items-center gap-2 p-2">
+                  {catEditId === c.id ? (
+                    <>
+                      <Input
+                        value={catEditName}
+                        onChange={(e) => setCatEditName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveCategoryEdit(); } }}
+                        autoFocus
+                      />
+                      <Button size="sm" onClick={() => void saveCategoryEdit()} disabled={catBusy}>
+                        {t("common.save")}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setCatEditId(null)}>
+                        {t("common.cancel")}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 truncate text-sm">{c.name}</span>
+                      <Button
+                        size="icon" variant="ghost"
+                        onClick={() => { setCatEditId(c.id); setCatEditName(c.name); }}
+                      >
+                        <Edit2 className="size-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" onClick={() => void removeCategory(c)}>
+                        <Trash2 className="size-4 text-destructive" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
           <DialogTrigger asChild>
             <Button onClick={resetForm}><Plus className="size-4 mr-2" /> {t("expenses.addNew")}</Button>
@@ -272,6 +394,7 @@ export default function Expenses() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card className="p-4">

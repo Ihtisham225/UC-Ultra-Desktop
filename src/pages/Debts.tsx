@@ -14,7 +14,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowDownLeft, ArrowUpRight, Pencil, Plus, Trash2, Wallet, Eye, TrendingUp, TrendingDown, MessageCircle, Upload } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Pencil, Plus, Trash2, Wallet, Eye, TrendingUp, TrendingDown, MessageCircle, Upload, Printer } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { buildLedgerStatementHtml } from "@/lib/ledger-statement";
 import { ImportDebtsDialog } from "@/components/ImportDebtsDialog";
 import { buildDebtReminderMessage, buildWaReminderUrl } from "@/lib/debt-reminder";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -54,6 +58,8 @@ interface DebtPayment {
   debt_id: string;
   shop_id: string;
   amount: number;
+  /** Written off alongside the cash — clears balance but was never collected. */
+  discount?: number;
   payment_date: string;
   notes: string | null;
   created_by: string;
@@ -73,6 +79,10 @@ const empty = {
 const emptyPayment = {
   kind: "payment" as EntryKind,
   amount: "",
+  // Written off at the same time — the customer asks for something off to
+  // settle and the shop agrees. It clears the balance exactly as cash does,
+  // so it is recorded apart from the amount rather than folded into it.
+  discount: "",
   payment_date: new Date().toISOString().slice(0, 10),
   notes: "",
 };
@@ -276,11 +286,21 @@ export default function Debts() {
 
   const savePayment = async () => {
     if (!currentShop || !user || !selectedDebt) return;
-    const amount = Number(paymentForm.amount);
+    const amount = Number(paymentForm.amount || 0);
+    const discount = paymentForm.kind === "payment" ? Number(paymentForm.discount || 0) : 0;
     const remaining = getRemainingAmount(selectedDebt);
-    if (!Number.isFinite(amount) || amount <= 0) return toast.error("Amount must be greater than 0");
-    if (paymentForm.kind === "payment" && amount > remaining) {
-      return toast.error("Payment cannot be more than the remaining balance");
+    if (!Number.isFinite(amount) || amount < 0) return toast.error("Amount can't be negative");
+    if (!Number.isFinite(discount) || discount < 0) return toast.error("Discount can't be negative");
+    if (paymentForm.kind === "increase" && amount <= 0) {
+      return toast.error("Amount must be greater than 0");
+    }
+    // A settlement can be all cash, all discount, or a mix — what matters is
+    // that the two together clear something and never more than is owed.
+    if (paymentForm.kind === "payment" && amount + discount <= 0) {
+      return toast.error("Enter an amount, a discount, or both");
+    }
+    if (paymentForm.kind === "payment" && amount + discount > remaining + 0.001) {
+      return toast.error("Payment and discount together can't be more than the remaining balance");
     }
 
     setPaymentSaving(true);
@@ -289,6 +309,7 @@ export default function Debts() {
         debt_id: selectedDebt.id,
         kind: paymentForm.kind,
         amount,
+        discount,
         payment_date: paymentForm.payment_date,
       account_id: payAccountId,
         notes: paymentForm.notes.trim() || null,
@@ -330,15 +351,81 @@ export default function Debts() {
     if (debtId) await refreshDebtState(debtId);
   };
 
+  /**
+   * Print an A4 statement — one account, or every account. Goes through a
+   * hidden iframe so the sheet is the document, without the app's chrome
+   * around it; the browser's print dialog is also how it becomes a PDF.
+   */
+  const printStatements = async (ids?: string[]) => {
+    if (!currentShop) return;
+    let ledgers;
+    try {
+      // rpc() is variadic: the action's own parameter is a string[], so it is
+      // passed as ONE argument, and omitted entirely to mean "every account".
+      ledgers = ids
+        ? await rpc<Parameters<typeof buildLedgerStatementHtml>[0]["ledgers"]>(
+            "listLedgersForStatementAction", ids,
+          )
+        : await rpc<Parameters<typeof buildLedgerStatementHtml>[0]["ledgers"]>(
+            "listLedgersForStatementAction",
+          );
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Could not build the statement");
+    }
+    if (!ledgers || ledgers.length === 0) return toast.error("Nothing to print.");
+
+    const html = buildLedgerStatementHtml({
+      shop: { name: currentShop.name, phone: currentShop.phone, address: currentShop.address },
+      ledgers,
+      currency: cur,
+      subtitle: ids && ids.length === 1 ? undefined : `${ledgers.length} accounts`,
+    });
+
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    // Parked off-screen at a real A4 width rather than 0x0: a zero-sized frame
+    // lays its document out in a zero-width viewport, which on some browsers
+    // clips a multi-sheet print down to the first page.
+    iframe.style.cssText =
+      "position:fixed;left:-10000px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      iframe.remove();
+      return toast.error("Could not open the print view.");
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    setTimeout(() => iframe.remove(), 60_000);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Debts (Khata)</h1>
+          <h1 className="text-2xl font-semibold">Ledger (Khata)</h1>
           <p className="text-sm text-muted-foreground">Track money you will receive and money you need to pay.</p>
         </div>
         {canManage && (
           <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Printer className="size-4 mr-2" /> Print
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {/* Printing "all" from the filtered list would silently drop
+                    the settled accounts, since the list opens on Open. */}
+                <DropdownMenuItem onClick={() => void printStatements()}>
+                  Every account ({items.length})
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void printStatements(filtered.map((d) => d.id))}>
+                  Just this list ({filtered.length})
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="size-4 mr-2" /> Import
             </Button>
@@ -652,6 +739,23 @@ export default function Debts() {
                         onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                       />
                     </div>
+                    {/* Settling often comes with "take something off" — that
+                        clears the balance like cash but was never collected,
+                        so it is recorded apart from the amount. */}
+                    {paymentForm.kind === "payment" && (
+                      <div className="space-y-1.5">
+                        <Label>Discount given</Label>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={paymentForm.discount}
+                          onChange={(e) => setPaymentForm({ ...paymentForm, discount: e.target.value })}
+                        />
+                      </div>
+                    )}
                     <div className="space-y-1.5">
                       <Label>Date</Label>
                       <Input
@@ -685,6 +789,7 @@ export default function Debts() {
                       <TableHead>Date</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Notes</TableHead>
+                      <TableHead className="text-right">Discount</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -692,11 +797,11 @@ export default function Debts() {
                   <TableBody>
                     {paymentsLoading ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">Loading entries…</TableCell>
+                        <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Loading entries…</TableCell>
                       </TableRow>
                     ) : payments.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No entries recorded yet.</TableCell>
+                        <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No entries recorded yet.</TableCell>
                       </TableRow>
                     ) : payments.map((payment) => {
                       const isIncrease = payment.kind === "increase";
@@ -715,6 +820,9 @@ export default function Debts() {
                             )}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">{payment.notes ?? "—"}</TableCell>
+                          <TableCell className="text-right tabular-nums text-warning">
+                            {Number(payment.discount ?? 0) > 0 ? formatMoney(Number(payment.discount), cur) : "—"}
+                          </TableCell>
                           <TableCell className={"text-right tabular-nums font-medium " + (isIncrease ? "text-destructive" : "text-success")}>
                             {isIncrease ? "+" : "−"}{formatMoney(payment.amount, selectedDebt.currency ?? cur)}
                           </TableCell>

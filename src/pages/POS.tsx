@@ -127,6 +127,25 @@ export default function POS() {
   });
   const formatMoney = useFormatMoney();
   const { products, isOnline, lastSynced, refresh } = useOfflineProducts(currentShop?.id);
+  // Average landed cost per product, on the same basis the P&L report and the
+  // dashboard tile use. Computed from the offline store so the figure is there
+  // on a till with no connection, and only when the shop has switched it on.
+  const showCost = !!currentShop?.show_cost_in_pos;
+  const { data: purchaseItemRows } = useLocalStore<any>("purchase_items", showCost ? currentShop?.id : undefined);
+  const costByProduct = useMemo(() => {
+    const acc = new Map<string, { cost: number; qty: number }>();
+    if (!showCost) return new Map<string, number>();
+    for (const pi of purchaseItemRows) {
+      if (!pi.product_id) continue;
+      const cur = acc.get(pi.product_id) ?? { cost: 0, qty: 0 };
+      cur.cost += Number(pi.quantity ?? 0) * Number(pi.unit_cost ?? 0) + Number(pi.expense_amount ?? 0);
+      cur.qty += Number(pi.quantity ?? 0);
+      acc.set(pi.product_id, cur);
+    }
+    const out = new Map<string, number>();
+    for (const [id, v] of acc) if (v.qty > 0) out.set(id, v.cost / v.qty);
+    return out;
+  }, [purchaseItemRows, showCost]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -747,6 +766,12 @@ export default function POS() {
                         }`}
                       >
                         {p.is_service ? "Service" : `${t("common.stock")}: ${formatQty(totalStock)}`}
+                      </div>
+                    )}
+                    {/* Only present when the shop has switched it on. */}
+                    {costByProduct.get(p.id) != null && (
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        Cost {formatMoney(costByProduct.get(p.id) as number, cur)}
                       </div>
                     )}
                     {imeiOnProduct && !hasVariants && (p.imei1 || p.imei2) && (

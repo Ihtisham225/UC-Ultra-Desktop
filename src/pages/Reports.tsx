@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent } from "lucide-react";
+import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins } from "lucide-react";
 import { downloadCsv, CsvColumn } from "@/lib/csv";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { isHandicraft } from "@/lib/handicraft";
@@ -72,6 +72,7 @@ export default function Reports() {
           <TabsTrigger value="pnl"><TrendingUp className="size-3.5 mr-1.5" />Profit & Loss</TabsTrigger>
           <TabsTrigger value="expenses"><Wallet className="size-3.5 mr-1.5" />Expenses</TabsTrigger>
           <TabsTrigger value="customers"><Users className="size-3.5 mr-1.5" />Customers & Debts</TabsTrigger>
+          <TabsTrigger value="ledger"><HandCoins className="size-3.5 mr-1.5" />Ledger</TabsTrigger>
           <TabsTrigger value="tax"><Percent className="size-3.5 mr-1.5" />Tax</TabsTrigger>
         </TabsList>
 
@@ -87,6 +88,7 @@ export default function Reports() {
           <TabsContent value="pnl"><PnlReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="expenses"><ExpensesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="customers"><CustomersReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          <TabsContent value="ledger"><LedgerReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="tax"><TaxReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
         </div>
       </Tabs>
@@ -812,6 +814,154 @@ function TaxReport({ shopId, range, formatMoney, cur }: ReportProps) {
                     <TableCell className="text-right tabular-nums">{formatMoney(m.taxable, cur)}</TableCell>
                     <TableCell className="text-right tabular-nums font-semibold">{formatMoney(m.tax, cur)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatMoney(m.gross, cur)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* ---------- Ledger ---------- */
+/**
+ * Two questions that need different windows, kept apart on purpose:
+ * what is outstanding right now (a balance has no date range), and what
+ * actually moved during the period. Mixing them is how a ledger report ends
+ * up telling the owner something untrue.
+ */
+function LedgerReport({ shopId, range, formatMoney, cur }: ReportProps) {
+  const { fromDate, toDate } = useRange(range);
+  const [outstanding, setOutstanding] = useState<any[]>([]);
+  const [movements, setMovements] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const r = await rpc<{ outstanding: any[]; movements: any[] }>("ledgerReportAction", fromDate, toDate)
+        .catch(() => ({ outstanding: [], movements: [] }));
+      setOutstanding(r.outstanding ?? []);
+      setMovements(r.movements ?? []);
+      setLoading(false);
+    })();
+  }, [shopId, fromDate, toDate]);
+
+  if (loading) return <div className="p-8 text-center text-muted-foreground">Loading…</div>;
+
+  const receivable = outstanding.filter((d) => d.direction === "owed_to_me");
+  const payable = outstanding.filter((d) => d.direction === "i_owe");
+  const sum = (rows: any[]) => rows.reduce((a, d) => a + Number(d.remaining), 0);
+
+  const settlements = movements.filter((m) => m.kind === "payment");
+  const collected = settlements.filter((m) => m.direction === "owed_to_me").reduce((a, m) => a + m.amount, 0);
+  const paidOut = settlements.filter((m) => m.direction === "i_owe").reduce((a, m) => a + m.amount, 0);
+  const discountGiven = settlements.reduce((a, m) => a + m.discount, 0);
+
+  // How long money has been sitting out. The shop chases the right column
+  // first, which is the whole reason to age it rather than list a total.
+  const buckets = [
+    { label: "0–30 days", min: 0, max: 30 },
+    { label: "31–60 days", min: 31, max: 60 },
+    { label: "61–90 days", min: 61, max: 90 },
+    { label: "Over 90 days", min: 91, max: Infinity },
+  ].map((b) => ({
+    ...b,
+    rows: receivable.filter((d) => d.age_days >= b.min && d.age_days <= b.max),
+  }));
+
+  const outCols: CsvColumn<any>[] = [
+    { header: "Party", value: (r) => r.person_name },
+    { header: "Phone", value: (r) => r.phone ?? "" },
+    { header: "Direction", value: (r) => (r.direction === "owed_to_me" ? "Owes us" : "We owe") },
+    { header: "Billed", value: (r) => Number(r.amount).toFixed(2) },
+    { header: "Settled", value: (r) => Number(r.paid_amount).toFixed(2) },
+    { header: "Outstanding", value: (r) => Number(r.remaining).toFixed(2) },
+    { header: "Age (days)", value: (r) => r.age_days },
+    { header: "Due", value: (r) => r.due_date ?? "" },
+  ];
+  const moveCols: CsvColumn<any>[] = [
+    { header: "Date", value: (r) => r.date },
+    { header: "Party", value: (r) => r.person_name },
+    { header: "Type", value: (r) => (r.kind === "increase" ? "Added to account" : r.direction === "owed_to_me" ? "Collected" : "Paid out") },
+    { header: "Amount", value: (r) => Number(r.amount).toFixed(2) },
+    { header: "Discount", value: (r) => Number(r.discount).toFixed(2) },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KPI label="Outstanding to receive" value={formatMoney(sum(receivable), cur)} sub={`${receivable.length} parties`} />
+        <KPI label="Outstanding to pay" value={formatMoney(sum(payable), cur)} sub={`${payable.length} parties`} />
+        <KPI label="Collected in period" value={formatMoney(collected, cur)} sub={`Paid out ${formatMoney(paidOut, cur)}`} />
+        <KPI label="Discount given" value={formatMoney(discountGiven, cur)} sub="Written off to settle" />
+      </div>
+
+      <Card className="shadow-card p-4">
+        <div className="text-sm font-semibold">How old the money owed is</div>
+        <p className="text-xs text-muted-foreground">Balances only — ageing ignores the date filter, because what&apos;s unpaid is unpaid today.</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+          {buckets.map((b) => (
+            <div key={b.label} className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">{b.label}</div>
+              <div className="text-lg font-bold tabular-nums">{formatMoney(sum(b.rows), cur)}</div>
+              <div className="text-[11px] text-muted-foreground">{b.rows.length} {b.rows.length === 1 ? "party" : "parties"}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="shadow-card p-4">
+        <ReportToolbar title="Outstanding by party" rows={outstanding} columns={outCols} filename={`ledger_outstanding_${range.from}_${range.to}`} />
+        {outstanding.length === 0 ? <Empty msg="Nothing outstanding." /> : (
+          <div className="mt-3 overflow-x-auto">
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>Party</TableHead><TableHead>Direction</TableHead>
+                <TableHead className="text-right">Billed</TableHead><TableHead className="text-right">Settled</TableHead>
+                <TableHead className="text-right">Outstanding</TableHead><TableHead className="text-right">Age</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {[...outstanding].sort((a, b) => b.remaining - a.remaining).map((d) => (
+                  <TableRow key={d.id}>
+                    <TableCell className="font-medium">
+                      {d.person_name}
+                      {d.phone && <div className="text-xs text-muted-foreground">{d.phone}</div>}
+                    </TableCell>
+                    <TableCell className="text-xs">{d.direction === "owed_to_me" ? "Owes us" : "We owe"}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatMoney(d.amount, cur)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatMoney(d.paid_amount, cur)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{formatMoney(d.remaining, cur)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{d.age_days}d</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </Card>
+
+      <Card className="shadow-card p-4">
+        <ReportToolbar title="Payments in this period" rows={movements} columns={moveCols} filename={`ledger_payments_${range.from}_${range.to}`} />
+        {movements.length === 0 ? <Empty msg="No ledger activity in this range." /> : (
+          <div className="mt-3 overflow-x-auto">
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>Date</TableHead><TableHead>Party</TableHead><TableHead>Type</TableHead>
+                <TableHead className="text-right">Amount</TableHead><TableHead className="text-right">Discount</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {movements.map((m, i) => (
+                  <TableRow key={i}>
+                    <TableCell>{m.date}</TableCell>
+                    <TableCell className="font-medium">{m.person_name}</TableCell>
+                    <TableCell className="text-xs">
+                      {m.kind === "increase" ? "Added to account" : m.direction === "owed_to_me" ? "Collected" : "Paid out"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatMoney(m.amount, cur)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{m.discount > 0 ? formatMoney(m.discount, cur) : "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

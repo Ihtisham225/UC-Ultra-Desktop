@@ -137,10 +137,13 @@ export default function Suppliers() {
       phone: editing.phone || null,
       email: editing.email || null,
       notes: editing.notes || null,
+      // Every shop can mark a party as also being a customer — the toggle for
+      // it is rendered for non-craft shops too, so the flag has to travel with
+      // the save or ticking it silently does nothing.
+      is_customer: !!editing.is_customer,
       ...(craft
         ? {
             is_supplier: !!editing.is_supplier,
-            is_customer: !!editing.is_customer,
             is_maker: !!editing.is_maker,
             is_processor: !!editing.is_processor,
             city: editing.city || null,
