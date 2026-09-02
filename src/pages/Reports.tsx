@@ -71,7 +71,7 @@ export default function Reports() {
           <TabsTrigger value="inventory"><Boxes className="size-3.5 mr-1.5" />Inventory</TabsTrigger>
           <TabsTrigger value="pnl"><TrendingUp className="size-3.5 mr-1.5" />Profit & Loss</TabsTrigger>
           <TabsTrigger value="expenses"><Wallet className="size-3.5 mr-1.5" />Expenses</TabsTrigger>
-          <TabsTrigger value="customers"><Users className="size-3.5 mr-1.5" />Customers & Debts</TabsTrigger>
+          <TabsTrigger value="customers"><Users className="size-3.5 mr-1.5" />Customers</TabsTrigger>
           <TabsTrigger value="ledger"><HandCoins className="size-3.5 mr-1.5" />Ledger</TabsTrigger>
           <TabsTrigger value="tax"><Percent className="size-3.5 mr-1.5" />Tax</TabsTrigger>
         </TabsList>

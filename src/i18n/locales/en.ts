@@ -136,7 +136,7 @@ const en = {
     purchases: "Purchases",
     suppliers: "Suppliers",
     expenses: "Expenses",
-    debts: "Debts",
+    debts: "Ledger",
     investors: "Investors",
     payroll: "Payroll",
     staff: "Staff",

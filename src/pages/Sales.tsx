@@ -4,6 +4,8 @@ import { useShop } from "@/contexts/ShopContext";
 import { Card } from "@/components/ui/card";
 import { Plus, Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
@@ -37,6 +39,21 @@ const lineSummary = (it: Sale["sale_items"][number]) => {
 };
 
 const PAGE_SIZE_KEY = "pos.pageSize.sales";
+/** yyyy-MM-dd for a local day. */
+const isoDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const dayRange = (daysAgo: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return { from: isoDay(d), to: isoDay(d) };
+};
+const lastDays = (n: number) => {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - (n - 1));
+  return { from: isoDay(from), to: isoDay(to) };
+};
+
 const DEFAULT_PAGE_SIZE = 20;
 
 type ReturnStatus = "none" | "partial" | "full";
@@ -149,14 +166,35 @@ export default function Sales() {
     });
   }, [allSalesRaw, allSaleItems, allReturns, allPayments, allAccounts, allParties, allLegacyCustomers]);
 
-  const totalCount = allSales.length;
-  const grandTotal = allSalesRaw.reduce((a: number, s: any) => a + Number(s.total ?? 0), 0);
-  const grandRefunded = allReturns.reduce((a: number, r: any) => a + Number(r.total_refund ?? 0), 0);
+  // The list opens on today. A shop that has been trading a while has
+  // thousands of bills and the counter almost always wants the current day;
+  // anything older is one date change away.
+  const [range, setRange] = useState(() => dayRange(0));
+
+  const inRange = useMemo(() => {
+    if (!range.from && !range.to) return allSales;
+    return allSales.filter((s: any) => {
+      if (!s.created_at) return false;
+      const day = isoDay(new Date(s.created_at));
+      if (range.from && day < range.from) return false;
+      if (range.to && day > range.to) return false;
+      return true;
+    });
+  }, [allSales, range]);
+
+  const totalCount = inRange.length;
+  const grandTotal = inRange.reduce((a: number, s: any) => a + Number(s.total ?? 0), 0);
+  // Refunds are counted against the same window, so the two figures on the
+  // page always describe the same set of bills.
+  const rangeSaleIds = useMemo(() => new Set(inRange.map((s: any) => s.id)), [inRange]);
+  const grandRefunded = allReturns
+    .filter((r: any) => rangeSaleIds.has(r.sale_id))
+    .reduce((a: number, r: any) => a + Number(r.total_refund ?? 0), 0);
 
   const sales = useMemo(() => {
     const offset = (page - 1) * pageSize;
-    return allSales.slice(offset, offset + pageSize);
-  }, [allSales, page, pageSize]);
+    return inRange.slice(offset, offset + pageSize);
+  }, [inRange, page, pageSize]);
 
   // Clamp page if totals shrink (e.g. after deletes).
   useEffect(() => {
@@ -308,9 +346,41 @@ export default function Sales() {
         canDelete={canDelete}
       />
 
+      <Card className="p-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">From</Label>
+            <Input
+              type="date"
+              className="h-9 w-40"
+              value={range.from}
+              onChange={(e) => { setPage(1); setRange((r) => ({ ...r, from: e.target.value })); }}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">To</Label>
+            <Input
+              type="date"
+              className="h-9 w-40"
+              value={range.to}
+              onChange={(e) => { setPage(1); setRange((r) => ({ ...r, to: e.target.value })); }}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setPage(1); setRange(dayRange(0)); }}>Today</Button>
+            <Button variant="outline" size="sm" onClick={() => { setPage(1); setRange(dayRange(1)); }}>Yesterday</Button>
+            <Button variant="outline" size="sm" onClick={() => { setPage(1); setRange(lastDays(7)); }}>Last 7 days</Button>
+            <Button variant="outline" size="sm" onClick={() => { setPage(1); setRange(lastDays(30)); }}>Last 30 days</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setPage(1); setRange({ from: "", to: "" }); }}>All time</Button>
+          </div>
+        </div>
+      </Card>
+
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Card className="p-4">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">Total sales</div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">
+            {range.from || range.to ? "Sales in range" : "Total sales"}
+          </div>
           <div className="text-lg sm:text-2xl font-bold tabular-nums mt-1 break-words leading-tight">{totalCount}</div>
         </Card>
         <Card className="p-4">
