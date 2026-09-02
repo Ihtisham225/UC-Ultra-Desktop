@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 const PRO_FEATURES = [
   { icon: BarChart3, label: "Advanced analytics & insights" },
   { icon: ShieldCheck, label: "Staff & permissions management" },
-  { icon: Wallet, label: "Debts & credit tracking" },
+  { icon: Wallet, label: "Ledger & credit tracking" },
   { icon: Wallet, label: "Expense tracking & reports" },
   { icon: MessageCircle, label: "WhatsApp receipts to customers" },
 ];

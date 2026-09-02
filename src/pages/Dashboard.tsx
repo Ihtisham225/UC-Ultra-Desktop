@@ -157,7 +157,7 @@ export default function Dashboard() {
 
       <PageTip id="dashboard.flow" title="The 4-step flow of UCU">
         Add <b>Products</b> → record <b>Purchases</b> when stock arrives → ring up sales at <b>POS</b> → review <b>Analytics</b>.
-        Anything unpaid from a sale is tracked under <b>Debts</b>. Tap the <b>?</b> in the top bar to re-open the full guide.
+        Anything unpaid from a sale is tracked under the <b>Ledger</b>. Tap the <b>?</b> in the top bar to re-open the full guide.
       </PageTip>
 
 

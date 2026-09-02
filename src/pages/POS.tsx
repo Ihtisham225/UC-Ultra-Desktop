@@ -497,6 +497,11 @@ export default function POS() {
 
     setBusy(true);
     const now = new Date().toISOString();
+    // Provisional. A shop using custom order numbers has its number issued by
+    // the server's counter on push — a terminal can't join an atomic increment,
+    // and two tills would otherwise hand out the same number. The real one is
+    // folded into the open slip as soon as the push lands (below).
+    const numbersFromServer = currentShop.receipt_next_number != null;
     const receiptNumber = `R-${Date.now().toString(36).toUpperCase()}`;
     const saleId = uuid();
     const saleRecord: Record<string, unknown> = {
@@ -657,6 +662,29 @@ export default function POS() {
           }
         } catch {
           toast.info("Lab token will appear in the Lab screen once this sale syncs.");
+        }
+      }
+    }
+
+    // Swap the provisional code for the number the server actually issued, so
+    // the slip on screen is the one written on the bill. Offline, the counter
+    // is told the number lands on sync rather than being shown a wrong one.
+    if (numbersFromServer) {
+      if (!navigator.onLine) {
+        toast.info("Offline — this bill gets its order number when the terminal syncs.");
+      } else {
+        try {
+          await syncAll();
+          const issued = await rpc<{ receipt_number: string | null } | null>(
+            "getSaleReceiptAction", saleId,
+          );
+          if (issued?.receipt_number) {
+            setCompletedSale((prev: any) =>
+              prev && prev.id === saleId ? { ...prev, receipt_number: issued.receipt_number } : prev,
+            );
+          }
+        } catch {
+          /* the slip keeps the provisional code; the pull corrects the row */
         }
       }
     }

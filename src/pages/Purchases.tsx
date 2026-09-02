@@ -36,6 +36,7 @@ import { generateSku, generateBarcode } from "@/lib/sku";
 import { v4 as uuid } from "uuid";
 import { ProductFormFields, type ProductFormValue } from "@/components/ProductFormFields";
 import { AccountPicker } from "@/components/AccountPicker";
+import { PartySelect } from "@/components/PartySelect";
 
 const PAGE_SIZE_KEY = "pos.pageSize.purchases";
 const DEFAULT_PAGE_SIZE = 20;
@@ -838,13 +839,14 @@ export default function Purchases() {
                   <div className="space-y-1.5">
                     <Label>{t("purchases.supplier")}</Label>
                     <div className="flex gap-2">
-                      <Select value={supplierId || "__none__"} onValueChange={(v) => setSupplierId(v === "__none__" ? "" : v)}>
-                        <SelectTrigger className="flex-1"><SelectValue placeholder={t("purchases.supplierNone")} /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">{t("purchases.supplierNone")}</SelectItem>
-                          {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <PartySelect
+                        value={supplierId}
+                        onChange={setSupplierId}
+                        options={suppliers}
+                        placeholder={t("purchases.supplierNone")}
+                        emptyLabel={t("purchases.supplierNone")}
+                        className="flex-1 min-w-0"
+                      />
                       <Button type="button" variant="outline" size="icon" onClick={() => setSupplierOpen(true)} title={t("purchases.addSupplier")}>
                         <Plus className="size-4" />
                       </Button>

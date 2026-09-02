@@ -139,7 +139,7 @@ const ar: Translations = {
     purchases: "المشتريات",
     suppliers: "الموردين",
     expenses: "المصاريف",
-    debts: "الديون",
+    debts: "الدفتر",
     investors: "المستثمرون",
     payroll: "الرواتب",
     staff: "الموظفين",
