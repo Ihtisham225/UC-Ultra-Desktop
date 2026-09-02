@@ -15,19 +15,6 @@ export function isHandicraft(
 }
 
 /**
- * The processes a shop starts with. English names for the app's own screens,
- * Urdu for the challan print, which is what the factory reads. Seeded once
- * when the store type is set; the shop can rename, re-rate or archive them
- * afterwards, and add their own.
- */
-export const DEFAULT_JOB_PROCESSES: { name: string; nameLocal: string }[] = [
-  { name: "Bumbul", nameLocal: "بمبل" },
-  { name: "Rangai (dyeing)", nameLocal: "رنگائی" },
-  { name: "Dhulai (washing)", nameLocal: "دھلائی" },
-  { name: "Press", nameLocal: "پریس" },
-];
-
-/**
  * What a party does for the shop. A party can do more than one of these — a
  * karigar who also presses, a yarn dealer who also dyes — so they're flags,
  * not one value.
@@ -137,3 +124,18 @@ export function lineAmount(
 
 /** Kilos in a bag when a bill doesn't say otherwise. */
 export const DEFAULT_KG_PER_BAG = 45;
+
+
+/**
+ * What a person on a ledger can be. Customers live in the customer book; the
+ * other three are party records, told apart by their role flags — so someone
+ * added here as a maker also shows up in the making challan's picker.
+ */
+export const LEDGER_PERSON_TYPES = [
+  { value: "customer", label: "Customer" },
+  { value: "supplier", label: "Supplier" },
+  { value: "maker", label: "Maker (karigar)" },
+  { value: "processor", label: "Processing company" },
+] as const;
+
+export type LedgerPersonType = (typeof LEDGER_PERSON_TYPES)[number]["value"];

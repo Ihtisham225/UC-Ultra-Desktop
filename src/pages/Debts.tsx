@@ -29,6 +29,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DetailsDialog } from "@/components/DetailsDialog";
 import { PageTip } from "@/components/PageTip";
 import { AccountPicker } from "@/components/AccountPicker";
+import { LedgerPersonPicker, type LedgerPerson } from "@/components/LedgerPersonPicker";
 
 type Direction = "owed_to_me" | "i_owe";
 type Status = "open" | "settled";
@@ -39,6 +40,7 @@ interface Debt {
   created_by: string;
   direction: Direction;
   person_name: string;
+  party_id: string | null;
   phone: string | null;
   amount: number;
   paid_amount: number;
@@ -109,6 +111,8 @@ export default function Debts() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Debt | null>(null);
   const [form, setForm] = useState({ ...empty });
+  /** Who the ledger is against, when it was picked rather than typed. */
+  const [person, setPerson] = useState<LedgerPerson | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
@@ -220,6 +224,11 @@ export default function Debts() {
 
   const startEdit = (d: Debt) => {
     setEditing(d);
+    setPerson(
+      d.party_id
+        ? { id: d.party_id, name: d.person_name, phone: d.phone, source: "party", role_label: "Party" }
+        : null,
+    );
     setForm({
       direction: d.direction,
       person_name: d.person_name,
@@ -264,6 +273,8 @@ export default function Debts() {
     const payload = {
       direction: form.direction,
       person_name: form.person_name.trim(),
+      // Only parties can be linked; a customer ledger keeps the name snapshot.
+      party_id: person?.source === "party" ? person.id : null,
       phone: form.phone.trim() || null,
       amount: amt,
       due_date: form.due_date || null,
@@ -611,9 +622,22 @@ export default function Debts() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label>Person</Label>
+              <LedgerPersonPicker
+                value={person}
+                onChange={(p) => {
+                  setPerson(p);
+                  if (p) setForm((f) => ({ ...f, person_name: p.name, phone: p.phone ?? "" }));
+                }}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Customers and every kind of party are in this list. Use + to add someone new.
+              </p>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Person name</Label>
+                <Label>Name on the ledger</Label>
                 <Input value={form.person_name} onChange={(e) => setForm({ ...form, person_name: e.target.value })} />
               </div>
               <div className="space-y-1.5">
