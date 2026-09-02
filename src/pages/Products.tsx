@@ -31,7 +31,7 @@ import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { upsertLocal, deleteLocal, notifyChange, getAll } from "@/lib/localDb";
-import { syncAll } from "@/lib/syncEngine";
+import { syncNow } from "@/lib/syncEngine";
 import { CategorySelect, flattenCategories, type CategoryDto, type CategoryOption } from "@/components/CategorySelect";
 import { BrandSelect, type BrandDto } from "@/components/BrandSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -362,7 +362,7 @@ export default function Products() {
       .filter((u) => u.name !== "" && Number.isFinite(u.factor) && u.factor > 0);
     if (isOil(currentShop) && !(editing as { is_service?: boolean }).is_service) {
       try {
-        await syncAll();
+        await syncNow();
         const res = await rpc<{ ok: boolean; error?: string }>("saveProductUnitsAction", productId, units);
         if (!res.ok) toast.warning(res.error ?? "Sale units could not be saved");
       } catch {
@@ -373,7 +373,7 @@ export default function Products() {
     const labParams = (editing as { lab_parameters?: { name: string; unit?: string | null; normal_range?: string | null }[] }).lab_parameters;
     if ((editing as { is_lab_test?: boolean }).is_lab_test && labParams) {
       try {
-        await syncAll();
+        await syncNow();
         const res = await rpc<{ ok: boolean; error?: string }>("saveLabParametersAction", productId, labParams);
         if (!res.ok) toast.warning(res.error ?? "Test factors could not be saved");
       } catch {

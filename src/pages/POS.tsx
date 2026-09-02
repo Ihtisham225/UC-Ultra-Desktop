@@ -19,7 +19,7 @@ import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
 import { PatientPicker, type PatientLite } from "@/components/PatientPicker";
 import { LabTokenDialog, type LabTokenOrder } from "@/components/LabTokenDialog";
 import { rpc } from "@/lib/apiClient";
-import { syncAll } from "@/lib/syncEngine";
+import { syncNow } from "@/lib/syncEngine";
 import type { LabOrderDto } from "@/lib/labTypes";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { VariantPickerDialog, type VariantOption } from "@/components/VariantPickerDialog";
@@ -622,18 +622,51 @@ export default function POS() {
     notifyChange("sales");
     notifyChange("sale_items");
 
-    setBusy(false);
-    // The slip should show the split immediately, before the row has synced.
     const receiptPayments = tenders
       .map((t) => ({
         account_name: accounts.find((a) => a.id === t.account_id)?.name ?? "Unassigned",
         amount: parseFloat(t.amount) || 0,
       }))
       .filter((p) => p.amount > 0);
+
+    // Anything the server owns has to be in hand BEFORE the slip appears.
+    // The order number is issued by the server's counter, and showing the
+    // provisional code first means a counter who prints straight away puts a
+    // number on a real bill that the books will never agree with. One round
+    // trip is far cheaper than that. Shops with neither custom numbering nor
+    // lab tests skip this entirely and the slip is instant, as before.
+    const needsServer = navigator.onLine && (numbersFromServer || hasLabTests);
+    let issuedNumber = receiptNumber;
+    let labOrders: LabOrderDto[] = [];
+    if (needsServer) {
+      try {
+        await syncNow();
+        if (numbersFromServer) {
+          const issued = await rpc<{ receipt_number: string | null } | null>(
+            "getSaleReceiptAction", saleId,
+          );
+          if (issued?.receipt_number) issuedNumber = issued.receipt_number;
+        }
+        if (hasLabTests) {
+          labOrders = await rpc<LabOrderDto[]>("listLabOrdersForSaleAction", saleId);
+          if (labOrders.length > 0) setLabTokens(labOrders);
+        }
+      } catch {
+        // The bill is saved either way; the pull corrects the row later.
+        if (hasLabTests) toast.info("Lab token will appear in the Lab screen once this sale syncs.");
+      }
+    } else if (!navigator.onLine) {
+      if (numbersFromServer) toast.info("Offline — this bill gets its order number when the terminal syncs.");
+      if (hasLabTests) toast.info("Offline — the lab token will be issued when this terminal syncs.");
+    }
+
+    setBusy(false);
     setCompletedSale({
       ...saleRecord, items: itemRows, shop: currentShop, customer,
+      receipt_number: issuedNumber,
       payments: receiptPayments, balance_due: owed,
       oil_change: oilChangeRow,
+      ...(labOrders.length > 0 ? { lab_orders: labOrders } : {}),
     });
     setVehicle({ ...blankVehicle });
     setPickedVehicle(null);
@@ -643,51 +676,6 @@ export default function POS() {
     setTenders((prev) => (prev.length > 0 ? [{ ...prev[0], amount: "" }] : prev));
     toast.success("Sale completed!");
     refresh();
-
-    // Lab orders (and their tokens) are raised server-side when the sale is
-    // pushed, so grab them once the queue has drained. Offline, the tokens are
-    // issued on the next sync and can be printed from the Lab screen.
-    if (hasLabTests) {
-      if (!navigator.onLine) {
-        toast.info("Offline — the lab token will be issued when this terminal syncs.");
-      } else {
-        try {
-          await syncAll();
-          const orders = await rpc<LabOrderDto[]>("listLabOrdersForSaleAction", saleId);
-          if (orders.length > 0) {
-            setLabTokens(orders);
-            // The receipt is already on screen — fold the tokens into it so the
-            // printed slip carries them alongside the patient details.
-            setCompletedSale((prev: any) => (prev && prev.id === saleId ? { ...prev, lab_orders: orders } : prev));
-          }
-        } catch {
-          toast.info("Lab token will appear in the Lab screen once this sale syncs.");
-        }
-      }
-    }
-
-    // Swap the provisional code for the number the server actually issued, so
-    // the slip on screen is the one written on the bill. Offline, the counter
-    // is told the number lands on sync rather than being shown a wrong one.
-    if (numbersFromServer) {
-      if (!navigator.onLine) {
-        toast.info("Offline — this bill gets its order number when the terminal syncs.");
-      } else {
-        try {
-          await syncAll();
-          const issued = await rpc<{ receipt_number: string | null } | null>(
-            "getSaleReceiptAction", saleId,
-          );
-          if (issued?.receipt_number) {
-            setCompletedSale((prev: any) =>
-              prev && prev.id === saleId ? { ...prev, receipt_number: issued.receipt_number } : prev,
-            );
-          }
-        } catch {
-          /* the slip keeps the provisional code; the pull corrects the row */
-        }
-      }
-    }
   };
 
   const variantOptions: VariantOption[] = useMemo(() => {
