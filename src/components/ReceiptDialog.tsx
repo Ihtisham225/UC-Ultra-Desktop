@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Printer, MessageCircle, Sparkles } from "lucide-react";
-import { formatMoney, formatAmount } from "@/lib/format";
+import { formatMoney, formatAmount, orderNumberLabel } from "@/lib/format";
 import { format } from "date-fns";
 import { soldAs, formatUnitQty } from "@/lib/sale-units";
 import { rpc } from "@/lib/apiClient";
@@ -30,7 +30,7 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
   // is, which is not the same kind of optional nicety as the customer name.
   const labOrders: any[] = sale.lab_orders ?? [];
   const metaRows = [
-    { label: "Receipt", value: sale.receipt_number ?? "" },
+    { label: "Receipt", value: orderNumberLabel(sale.receipt_number) },
     { label: "Date", value: format(new Date(sale.created_at), "Pp") },
     ...(showCustomer && customer ? [{ label: "Customer", value: customer.name }] : []),
     ...(showCustomer && customer?.phone ? [{ label: "Phone", value: customer.phone }] : []),
@@ -151,7 +151,7 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>Receipt ${escapeHtml(sale.receipt_number ?? "")}</title>
+      <title>Receipt ${escapeHtml(orderNumberLabel(sale.receipt_number))}</title>
       <style>
         @page { margin: 0; }
         * { box-sizing: border-box; }
@@ -372,7 +372,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
 
     const message = buildReceiptMessage({
       shopName: sale.shop?.name ?? "",
-      receiptNumber: sale.receipt_number ?? sale.id.slice(0, 8),
+      receiptNumber: orderNumberLabel(sale.receipt_number),
       date: format(new Date(sale.created_at), "dd/MM/yyyy h:mm a"),
       customerName: customer.name,
       lines: (sale.items ?? []).map((it: any) => ({
@@ -426,7 +426,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
             <div className={dashed} />
 
             <div className="text-[11px] space-y-0.5">
-              <div className="flex items-start justify-between gap-2"><span className="shrink-0">Receipt</span><span className="min-w-0 max-w-[58%] text-right break-words">{sale.receipt_number}</span></div>
+              <div className="flex items-start justify-between gap-2"><span className="shrink-0">Receipt</span><span className="min-w-0 max-w-[58%] text-right break-words">{orderNumberLabel(sale.receipt_number)}</span></div>
               <div className="flex items-start justify-between gap-2"><span className="shrink-0">Date</span><span className="min-w-0 max-w-[58%] text-right break-words">{format(new Date(sale.created_at), "Pp")}</span></div>
               {sale.shop?.show_customer_on_receipt && customer && (
                 <div className="flex items-start justify-between gap-2"><span className="shrink-0">Customer</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.name}</span></div>
@@ -579,7 +579,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
         </div>
 
         <DialogHeader className="sr-only">
-          <DialogTitle>Receipt {sale.receipt_number}</DialogTitle>
+          <DialogTitle>Receipt {orderNumberLabel(sale.receipt_number)}</DialogTitle>
         </DialogHeader>
 
         {/* Receipt is a white "paper" preview, so keep the footer buttons light in any theme. */}

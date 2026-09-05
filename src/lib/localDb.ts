@@ -171,19 +171,41 @@ export async function queueCount(): Promise<number> {
   return db.count('sync_queue')
 }
 
-// ─── Change notification (simple broadcast) ────────────────────────────────
+// ─── Change notification ───────────────────────────────────────────────────
 
 const channel = typeof BroadcastChannel !== 'undefined'
   ? new BroadcastChannel('uc-ultra-local-changes')
   : null
 
+/**
+ * ⚠️ BroadcastChannel does NOT deliver a message back to the context that
+ * posted it — by spec it only reaches OTHER browsing contexts. The app holds
+ * one channel for the whole window, so a page that wrote a row never heard its
+ * own notification: the screen that just saved a ledger entry, a payment or a
+ * purchase went on showing the old list until it was reloaded by hand.
+ *
+ * Subscribers are therefore kept in-process and called directly, with the
+ * channel still used to reach any other window.
+ */
+const listeners = new Set<(table: string) => void>()
+
 export function notifyChange(table: string) {
+  for (const cb of [...listeners]) {
+    try {
+      cb(table)
+    } catch {
+      /* one bad subscriber must not stop the rest being told */
+    }
+  }
   channel?.postMessage({ table })
 }
 
 export function onLocalChange(cb: (table: string) => void): () => void {
-  if (!channel) return () => {}
+  listeners.add(cb)
   const handler = (e: MessageEvent) => cb(e.data.table)
-  channel.addEventListener('message', handler)
-  return () => channel.removeEventListener('message', handler)
+  channel?.addEventListener('message', handler)
+  return () => {
+    listeners.delete(cb)
+    channel?.removeEventListener('message', handler)
+  }
 }

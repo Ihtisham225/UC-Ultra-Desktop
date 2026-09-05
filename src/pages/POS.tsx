@@ -517,12 +517,14 @@ export default function POS() {
 
     setBusy(true);
     const now = new Date().toISOString();
-    // Provisional. A shop using custom order numbers has its number issued by
-    // the server's counter on push — a terminal can't join an atomic increment,
-    // and two tills would otherwise hand out the same number. The real one is
-    // folded into the open slip as soon as the push lands (below).
-    const numbersFromServer = currentShop.receipt_next_number != null;
-    const receiptNumber = `R-${Date.now().toString(36).toUpperCase()}`;
+    // ⚠️ The terminal does NOT invent an order number. It used to mint an
+    // `R-<timestamp>` code, which is how bills ended up reading "R-MTO2I2OT"
+    // instead of the shop's own sequence. The number belongs to the server's
+    // counter — a till cannot join an atomic increment, and two of them would
+    // hand out the same number — so the row goes up without one and the real
+    // number is fetched as soon as the push lands (below). Offline it stays
+    // blank until the terminal syncs, which is the honest answer.
+    const receiptNumber: string | null = null;
     const saleId = uuid();
     const saleRecord: Record<string, unknown> = {
       id: saleId,
@@ -655,13 +657,13 @@ export default function POS() {
     // number on a real bill that the books will never agree with. One round
     // trip is far cheaper than that. Shops with neither custom numbering nor
     // lab tests skip this entirely and the slip is instant, as before.
-    const needsServer = navigator.onLine && (numbersFromServer || hasLabTests);
+    const needsServer = navigator.onLine;
     let issuedNumber = receiptNumber;
     let labOrders: LabOrderDto[] = [];
     if (needsServer) {
       try {
         await syncNow();
-        if (numbersFromServer) {
+        {
           const issued = await rpc<{ receipt_number: string | null } | null>(
             "getSaleReceiptAction", saleId,
           );
@@ -676,7 +678,7 @@ export default function POS() {
         if (hasLabTests) toast.info("Lab token will appear in the Lab screen once this sale syncs.");
       }
     } else if (!navigator.onLine) {
-      if (numbersFromServer) toast.info("Offline — this bill gets its order number when the terminal syncs.");
+      toast.info("Offline — this bill gets its order number when the terminal syncs.");
       if (hasLabTests) toast.info("Offline — the lab token will be issued when this terminal syncs.");
     }
 
