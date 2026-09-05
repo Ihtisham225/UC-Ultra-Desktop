@@ -20,3 +20,63 @@ export function derivePaidAmount(
   }, 0);
   return Math.round(total * 100) / 100;
 }
+
+/** What the book took in, split by where the money landed. */
+export interface LedgerCollection {
+  cash: number;
+  banked: number;
+  unassigned: number;
+  total: number;
+}
+
+/**
+ * Today's ledger collection, derived from the offline store.
+ *
+ * Mirrors `ledgerCollectionToday` in the web app's `src/lib/ledger-collection.ts`
+ * exactly — cash accounts on one side, bank and wallet together on the other —
+ * so the terminal and the web can never show different figures for the same
+ * day. Change one, change the other.
+ *
+ * ⚠️ `unassigned` is not decoration. A settlement can be recorded with no
+ * account (the picker can be cleared, and imported ledger payments have none),
+ * and that money belongs to neither column. Dropping it would leave two tiles
+ * that quietly failed to add up, so cash + banked + unassigned always equals
+ * total.
+ *
+ * ⚠️ Only `kind === "payment"` counts. An "increase" raises what somebody owes
+ * rather than collecting anything.
+ */
+export function deriveCollection(
+  payments: {
+    kind?: string | null;
+    amount?: number | string | null;
+    account_id?: string | null;
+    created_at?: string | null;
+  }[],
+  accountTypeById: Map<string, string>,
+  since: Date,
+): LedgerCollection {
+  let cash = 0;
+  let banked = 0;
+  let unassigned = 0;
+
+  for (const p of payments) {
+    if ((p.kind ?? "payment") !== "payment") continue;
+    if (!p.created_at || new Date(p.created_at) < since) continue;
+    const amount = Number(p.amount ?? 0);
+    if (!Number.isFinite(amount)) continue;
+
+    const type = p.account_id ? accountTypeById.get(p.account_id) : undefined;
+    if (!type) unassigned += amount;
+    else if (type === "cash") cash += amount;
+    else banked += amount;
+  }
+
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  return {
+    cash: r2(cash),
+    banked: r2(banked),
+    unassigned: r2(unassigned),
+    total: r2(cash + banked + unassigned),
+  };
+}
