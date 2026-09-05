@@ -5,11 +5,12 @@ import { useShop } from "@/contexts/ShopContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ScanBarcode, Package, Receipt, AlertTriangle, TrendingUp, DollarSign, Users, PackageOpen, Wallet, BarChart3, NotebookPen } from "lucide-react";
+import { ScanBarcode, Package, Receipt, AlertTriangle, TrendingUp, DollarSign, Users, PackageOpen, Wallet, BarChart3, NotebookPen, Banknote, Landmark } from "lucide-react";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { PageTip } from "@/components/PageTip";
 import { useLocalStore } from "@/hooks/useLocalStore";
+import { deriveCollection } from "@/lib/ledger";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { useState } from "react";
 import { rpc } from "@/lib/apiClient";
@@ -50,6 +51,19 @@ export default function Dashboard() {
   const { data: allPurchaseItems } = useLocalStore<any>("purchase_items", currentShop?.id);
   // The khata, for the credit tile. Synced locally, so it reads offline too.
   const { data: allDebts } = useLocalStore<any>("debts", currentShop?.id);
+  // The other side of the khata: what came back in today. The account's type
+  // decides which column it lands in, so both tables are needed.
+  const { data: allDebtPayments } = useLocalStore<{
+    id: string;
+    kind?: string | null;
+    amount?: number | string | null;
+    account_id?: string | null;
+    created_at?: string | null;
+  }>("debt_payments", currentShop?.id);
+  const { data: allAccounts } = useLocalStore<{ id: string; type?: string }>(
+    "money_accounts",
+    currentShop?.id,
+  );
 
   const loading = salesLoading || productsLoading;
 
@@ -133,7 +147,18 @@ export default function Dashboard() {
         0,
       );
 
+    const collected = deriveCollection(
+      allDebtPayments,
+      new Map<string, string>(
+        allAccounts
+          .filter((a) => a.id && a.type)
+          .map((a) => [String(a.id), String(a.type)] as const),
+      ),
+      startOfDay,
+    );
+
     return {
+      collected,
       todaySales,
       todayCount,
       productCount: activeProducts.length,
@@ -144,7 +169,7 @@ export default function Dashboard() {
       todayCredit,
       totalOwedToMe,
     };
-  }, [allSales, allProducts, allSaleItems, allExpenses, allPurchases, allPurchaseItems, allDebts]);
+  }, [allSales, allProducts, allSaleItems, allExpenses, allPurchases, allPurchaseItems, allDebts, allDebtPayments, allAccounts]);
 
   const cur = currentShop?.currency ?? "USD";
 
@@ -216,6 +241,27 @@ export default function Dashboard() {
           value={formatMoney(safeStats.todayCredit, cur)}
           tone={safeStats.todayCredit > 0 ? "warning" : "default"}
           hint={`${formatMoney(safeStats.totalOwedToMe, cur)} owed in total`}
+        />
+        {/* The other side of the khata: what came back in today, split by
+            where it landed. The two tiles plus anything unassigned add up to
+            everything collected, so money is never lost between them. */}
+        <StatCard
+          icon={Banknote}
+          label={t("dashboard.collectedCash", { defaultValue: "Collected — cash" })}
+          value={formatMoney(safeStats.collected.cash, cur)}
+          tone={safeStats.collected.cash > 0 ? "primary" : "default"}
+          hint={`${formatMoney(safeStats.collected.total, cur)} collected today`}
+        />
+        <StatCard
+          icon={Landmark}
+          label={t("dashboard.collectedBanked", { defaultValue: "Collected — bank" })}
+          value={formatMoney(safeStats.collected.banked, cur)}
+          tone={safeStats.collected.banked > 0 ? "accent" : "default"}
+          hint={
+            safeStats.collected.unassigned > 0
+              ? `+ ${formatMoney(safeStats.collected.unassigned, cur)} with no account set`
+              : "bank & wallet accounts"
+          }
         />
       </div>
 
