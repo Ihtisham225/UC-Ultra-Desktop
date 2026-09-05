@@ -37,7 +37,7 @@ const Categories = lazy(() => import("./pages/Categories"));
 const Brands = lazy(() => import("./pages/Brands"));
 const Sales = lazy(() => import("./pages/Sales"));
 const Returns = lazy(() => import("./pages/Returns"));
-const Customers = lazy(() => import("./pages/Customers"));
+const Customers = lazy(() => import("./pages/CustomersRouter"));
 const Patients = lazy(() => import("./pages/Patients"));
 const OilChanges = lazy(() => import("./pages/OilChanges"));
 const Settings = lazy(() => import("./pages/Settings"));

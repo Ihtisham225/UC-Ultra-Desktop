@@ -59,6 +59,9 @@ export const isMaker = (p?: PartyRoles | null) => !!p?.is_maker;
 /** Does the finishing work — the parties a processing challan can go to. */
 export const isProcessor = (p?: PartyRoles | null) => !!p?.is_processor;
 
+/** Buys finished goods from the shop. Its own book — see the Customers page. */
+export const isCustomerParty = (p?: PartyRoles | null) => !!p?.is_customer;
+
 /** Short label for a party row: "Supplier · Maker". */
 export function partyRoleLabel(p?: PartyRoles | null): string {
   const parts = PARTY_ROLE_FIELDS.filter((f) => p?.[f.key]).map((f) =>

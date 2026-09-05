@@ -30,7 +30,12 @@ export function PartySelect({
   const selected = options.find((o) => o.id === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // ⚠️ `modal` matters: this picker is used inside dialogs (the purchase
+    // form, the customer challan form). Without it the popover's dismissal
+    // escapes to the dialog behind, which reads it as a click outside and
+    // closes itself — so choosing a party would shut the form you were
+    // filling in.
+    <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <Button
           type="button"

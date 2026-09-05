@@ -23,7 +23,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  isHandicraft, isMaterialSupplier, isMaker, isProcessor, partyRoleLabel, PARTY_ROLE_FIELDS,
+  isHandicraft, isMaterialSupplier, isMaker, isProcessor, isCustomerParty, partyRoleLabel, PARTY_ROLE_FIELDS,
 } from "@/lib/handicraft";
 import { formatMoney } from "@/lib/format";
 import type { PartyBalance } from "@/lib/handicraftTypes";
@@ -58,7 +58,7 @@ export default function Suppliers() {
   const sel = useRowSelection();
   // Handicraft shops read this page as a khata of what each party is owed.
   const [balances, setBalances] = useState<Record<string, PartyBalance>>({});
-  const [roleTab, setRoleTab] = useState<"all" | "supplier" | "maker" | "processor">("all");
+  const [roleTab, setRoleTab] = useState<"all" | "supplier" | "maker" | "processor" | "customer">("all");
 
   const canManage = perms.canManageSuppliers;
   const craft = isHandicraft(currentShop);
@@ -76,6 +76,7 @@ export default function Suppliers() {
     if (!craft || roleTab === "all") return items;
     if (roleTab === "supplier") return items.filter(isMaterialSupplier);
     if (roleTab === "maker") return items.filter(isMaker);
+    if (roleTab === "customer") return items.filter(isCustomerParty);
     return items.filter(isProcessor);
   }, [items, craft, roleTab]);
 
@@ -223,7 +224,11 @@ export default function Suppliers() {
             onClick={() =>
               setEditing({
                 name: "",
-                is_supplier: !craft || roleTab === "all" || roleTab === "supplier",
+                // Adding from a role tab pre-ticks that role. On the customer
+                // tab that means supplier stays OFF, or every customer added
+                // here would also turn up in the purchase form's seller list.
+                is_supplier: craft ? roleTab === "all" || roleTab === "supplier" : true,
+                is_customer: craft && roleTab === "customer",
                 is_maker: craft && roleTab === "maker",
                 is_processor: craft && roleTab === "processor",
               })
@@ -242,6 +247,7 @@ export default function Suppliers() {
             <TabsTrigger value="supplier">Suppliers ({items.filter(isMaterialSupplier).length})</TabsTrigger>
             <TabsTrigger value="maker">Makers ({items.filter(isMaker).length})</TabsTrigger>
             <TabsTrigger value="processor">Processing ({items.filter(isProcessor).length})</TabsTrigger>
+            <TabsTrigger value="customer">Customers ({items.filter(isCustomerParty).length})</TabsTrigger>
           </TabsList>
         </Tabs>
       )}
