@@ -1,3 +1,4 @@
+import { orderNumberLabel } from "@/lib/format";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
@@ -307,7 +308,7 @@ export default function Sales() {
     const rows = sales.filter((s) => sel.has(s.id));
     if (rows.length === 0) return toast.error(t("bulk.nothingExported"));
     downloadCsv(`sales-${new Date().toISOString().slice(0, 10)}`, rows, [
-      { header: "Receipt", value: (r) => r.receipt_number ?? "" },
+      { header: "Receipt", value: (r) => orderNumberLabel(r.receipt_number) },
       { header: "Customer", value: (r) => r.customer_name ?? "" },
       { header: "Date", value: (r) => format(new Date(r.created_at), "yyyy-MM-dd HH:mm") },
       { header: "Items", value: (r) => r.sale_items.length },
@@ -423,7 +424,7 @@ export default function Sales() {
                     />
                     <button onClick={() => openReceipt(s.id)} className="min-w-0 flex-1 text-start">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold font-mono text-sm">{s.receipt_number}</span>
+                        <span className="font-semibold font-mono text-sm">{orderNumberLabel(s.receipt_number)}</span>
                         {s.returnStatus === "full" && (
                           <Badge variant="destructive" className="gap-1 text-[10px] uppercase tracking-wide">
                             <Undo2 className="size-3" /> {t("sales.fullyReturned")}

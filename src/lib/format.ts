@@ -53,3 +53,15 @@ export const formatAmount = (amount: number | string, currency = "USD"): string 
   const digits = decimalsFor(currency);
   return n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 };
+
+/**
+ * How an order number reads before the server has issued one.
+ *
+ * A bill rung up offline has no number yet — the shop's counter lives on the
+ * server so two tills cannot collide — and it gets one the moment the terminal
+ * syncs. Showing an empty cell would look like a bug, and inventing a code is
+ * what produced the old "R-…" numbers that matched nothing in the books.
+ */
+export function orderNumberLabel(n?: string | null): string {
+  return n && n.trim() !== "" ? n : "Pending sync";
+}
