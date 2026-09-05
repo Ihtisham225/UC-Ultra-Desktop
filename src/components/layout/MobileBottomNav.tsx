@@ -48,7 +48,7 @@ export const MobileBottomNav = () => {
     { to: "/job-work", label: "Job Work", icon: Factory, show: craft && perms.canManagePurchases },
     { to: "/suppliers", label: craft ? "Parties" : t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
     { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },
-    { to: "/debts", label: t("nav.debts"), icon: HandCoins, show: perms.canManageExpenses },
+    { to: "/debts", label: t("nav.debts"), icon: HandCoins, show: !craft && perms.canManageExpenses },
     { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, show: perms.canManageStaff },
   ].filter((n) => n.show);
 

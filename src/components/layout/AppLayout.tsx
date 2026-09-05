@@ -60,6 +60,9 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/sales", label: t("nav.sales"), icon: Receipt, show: !craft },
     { to: "/returns", label: t("nav.returns"), icon: Undo2, show: !craft },
     { to: "/customers", label: t("nav.customers"), icon: Users, show: !craft },
+    // Craft shops sell on a challan, not through the till, so they get their
+    // own Customers screen rather than the sales-shaped one.
+    { to: "/customers", label: t("nav.customers"), icon: Users, show: craft && perms.canManageSuppliers },
     { to: "/analytics", label: t("nav.analytics"), icon: BarChart3, show: !craft && perms.canManageExpenses },
     { to: "/reports", label: "Reports", icon: FileBarChart, show: perms.canManageExpenses },
     { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, show: !craft && perms.canManagePurchases },
@@ -69,7 +72,10 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/suppliers", label: craft ? "Parties" : t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
     { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },
     { to: "/accounts", label: "Accounts", icon: Landmark, show: perms.canManageExpenses || hasPerm("accounts", "view") },
-    { to: "/debts", label: `${t("nav.debts")} (Khata)`, icon: HandCoins, show: perms.canManageExpenses },
+    // A craft shop keeps two books already — what it owes each party, on the
+    // Parties page, and what customers owe it, on Customers — so the general
+    // khata would be a third place for the same money.
+    { to: "/debts", label: `${t("nav.debts")} (Khata)`, icon: HandCoins, show: !craft && perms.canManageExpenses },
     { to: "/investors", label: t("nav.investors"), icon: TrendingUp, show: perms.canManageExpenses && !!currentShop?.investors_enabled },
     { to: "/payroll", label: t("nav.payroll"), icon: BadgeDollarSign, show: perms.canManageExpenses },
     { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, show: perms.canManageStaff },
