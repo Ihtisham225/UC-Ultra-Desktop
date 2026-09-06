@@ -10,7 +10,7 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useShop } from "@/contexts/ShopContext";
 import { soldAs, formatUnitQty } from "@/lib/sale-units";
 import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
-import { AccountPicker } from "@/components/AccountPicker";
+import { loadAccountOptions } from "@/components/AccountPicker";
 import { VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft } from "@/components/VehicleFields";
 import { isOil } from "@/lib/oil";
 import { rpc } from "@/lib/apiClient";
@@ -55,6 +55,8 @@ export interface EditableSale {
   customer_name?: string | null;
   customer_phone?: string | null;
   account_id?: string | null;
+  /** The tenders as they stand, so a split bill opens showing its split. */
+  payments?: Array<{ account_id: string | null; amount: number }>;
   notes?: string | null;
   items: Array<{
     product_id: string | null;
@@ -86,7 +88,6 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
   const cur = currentShop?.currency ?? "USD";
   const [lines, setLines] = useState<Line[]>([]);
   const [discount, setDiscount] = useState("0");
-  const [paid, setPaid] = useState("0");
   // The account picker already says how the money moved, so the sale edit no
   // longer asks for a method as well — the sale's stored value rides along
   // unchanged rather than being reset to a guess.
@@ -95,6 +96,13 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
   // mistyped order usually means the wrong one of these too.
   const [customer, setCustomer] = useState<CustomerLite | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
+  /**
+   * The tenders, so a corrected bill can be settled across several accounts —
+   * some cash, some wallet, the rest on the khata — the same as the till
+   * allows. Seeded from what the sale already carries.
+   */
+  const [tenders, setTenders] = useState<{ key: string; account_id: string; amount: string }[]>([]);
+  const [accounts, setAccounts] = useState<{ id: string; name: string; type: string }[]>([]);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   // The free oil change is why the car came in, so correcting the bill has to
@@ -125,7 +133,6 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
       }),
     );
     setDiscount(String(sale.discount ?? 0));
-    setPaid(String(sale.amount_paid ?? 0));
     setMethod(sale.payment_method || "cash");
     setCustomer(
       sale.customer_id
@@ -133,6 +140,16 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
         : null,
     );
     setAccountId(sale.account_id ?? null);
+    setTenders(
+      (sale.payments ?? []).length > 0
+        ? (sale.payments ?? []).map((pmt, i) => ({
+            key: `t${i}`,
+            account_id: pmt.account_id ?? "",
+            amount: String(pmt.amount ?? 0),
+          }))
+        : [{ key: "t0", account_id: sale.account_id ?? "", amount: String(sale.amount_paid ?? 0) }],
+    );
+    void loadAccountOptions().then(setAccounts);
     setSearch("");
 
     setOil(blankVehicle);
@@ -178,7 +195,9 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
   );
   const discountValue = Math.min(round2(num(discount)), subtotal);
   const total = round2(subtotal - discountValue);
-  const owed = round2(Math.max(0, total - Math.min(round2(num(paid)), total)));
+  // What was actually handed over, across however many accounts it took.
+  const tendered = round2(tenders.reduce((a, t) => a + num(t.amount), 0));
+  const owed = round2(Math.max(0, total - Math.min(tendered, total)));
 
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -246,7 +265,12 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
           imei2: l.imei2 ?? null,
         })),
         discount: discountValue,
-        amount_paid: Math.min(round2(num(paid)), total),
+        amount_paid: Math.min(tendered, total),
+        // The tenders win over account_id; the server writes one money row
+        // per account so the books show where each part actually landed.
+        payments: tenders
+          .filter((t) => t.account_id && num(t.amount) > 0)
+          .map((t) => ({ account_id: t.account_id, amount: round2(num(t.amount)) })),
         payment_method: method,
         customer_id: customer?.id ?? null,
         account_id: accountId,
@@ -396,21 +420,12 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs">Discount</Label>
-            <Input
-              type="number" step="0.01" min="0" inputMode="decimal" className="h-9"
-              value={discount} onChange={(e) => setDiscount(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Amount paid</Label>
-            <Input
-              type="number" step="0.01" min="0" inputMode="decimal" className="h-9"
-              value={paid} onChange={(e) => setPaid(e.target.value)}
-            />
-          </div>
+        <div className="space-y-1 max-w-[12rem]">
+          <Label className="text-xs">Discount</Label>
+          <Input
+            type="number" step="0.01" min="0" inputMode="decimal" className="h-9"
+            value={discount} onChange={(e) => setDiscount(e.target.value)}
+          />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -418,10 +433,66 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
             <Label className="text-xs">Customer</Label>
             <CustomerPicker value={customer} onChange={setCustomer} />
           </div>
-          <div className="space-y-1">
-            <AccountPicker value={accountId} onChange={setAccountId} label="Paid into" />
-          </div>
         </div>
+
+        {/* Settled the same way the till settles a sale: as many accounts as
+            it took, and whatever is left over stays on the customer's khata.
+            Without this the only way to record a split was to void the bill
+            and ring it again, which loses its order number. */}
+        <div className="space-y-2">
+          <Label className="text-xs">Paid into</Label>
+          {tenders.map((t, idx) => (
+            <div key={t.key} className="flex items-center gap-2">
+              <Select
+                value={t.account_id}
+                onValueChange={(v) =>
+                  setTenders((prev) => prev.map((x) => (x.key === t.key ? { ...x, account_id: v } : x)))
+                }
+              >
+                <SelectTrigger className="flex-1 h-9"><SelectValue placeholder="Account" /></SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.type === "cash" ? "💵" : a.type === "wallet" ? "📱" : "🏦"} {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                type="number" step="0.01" min="0" inputMode="decimal"
+                className="w-28 h-9 tabular-nums"
+                value={t.amount}
+                onChange={(e) =>
+                  setTenders((prev) => prev.map((x) => (x.key === t.key ? { ...x, amount: e.target.value } : x)))
+                }
+              />
+              {tenders.length > 1 ? (
+                <Button
+                  size="icon" variant="ghost" className="size-8 shrink-0"
+                  onClick={() => setTenders((prev) => prev.filter((x) => x.key !== t.key))}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              ) : (
+                idx === 0 && <span className="w-8 shrink-0" />
+              )}
+            </div>
+          ))}
+          {accounts.length > 1 && (
+            <Button
+              variant="outline" size="sm" className="w-full"
+              onClick={() =>
+                setTenders((prev) => [
+                  ...prev,
+                  { key: `t${Date.now()}`, account_id: "", amount: "" },
+                ])
+              }
+            >
+              <Plus className="size-3.5 me-1" /> Split across another account
+            </Button>
+          )}
+        </div>
+
 
         {oilShop && oilLoaded && (
           <div className="rounded-lg border p-3 space-y-3">

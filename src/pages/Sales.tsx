@@ -237,6 +237,14 @@ export default function Sales() {
         (allParties.find((c: any) => c.id === (sale as any).customer_id)?.phone ??
           allLegacyCustomers.find((c: any) => c.id === (sale as any).customer_id)?.phone) ?? null,
       account_id: (sale as { account_id?: string | null }).account_id ?? null,
+      // The tenders as they stand, so a split bill reopens showing its split
+      // instead of collapsing onto one account.
+      payments: allPayments
+        .filter((p: { sale_id?: string }) => p.sale_id === sale.id)
+        .map((p: { account_id?: string | null; amount?: number }) => ({
+          account_id: p.account_id ?? null,
+          amount: Number(p.amount ?? 0),
+        })),
       items: sale.sale_items.map((it) => ({
         product_id: (it as { product_id?: string | null }).product_id ?? null,
         variant_id: (it as { variant_id?: string | null }).variant_id ?? null,
