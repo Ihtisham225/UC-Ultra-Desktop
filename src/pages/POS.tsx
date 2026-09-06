@@ -1162,6 +1162,27 @@ export default function POS() {
                     className="w-28 tabular-nums"
                     value={tRow.amount}
                     onChange={(e) => setTender(tRow.key, { amount: e.target.value })}
+                    // ⚠️ Cash may be over the bill — that is how change gets
+                    // given, and the difference shows as Change due. Nothing
+                    // else may: a transfer larger than the bill is money the
+                    // shop never received, and it lands in the books as if it
+                    // had. Capped on blur, never mid-keystroke.
+                    onBlur={() => {
+                      const type = accounts.find((a) => a.id === tRow.account_id)?.type;
+                      if (type === "cash") return;
+                      const others = round2(
+                        tenders
+                          .filter((x) => x.key !== tRow.key)
+                          .reduce((a, x) => a + (parseFloat(x.amount) || 0), 0),
+                      );
+                      const room = round2(Math.max(0, total - others));
+                      if ((parseFloat(tRow.amount) || 0) > room) {
+                        setTender(tRow.key, { amount: String(room) });
+                        toast.info(
+                          `Capped at ${formatMoney(room, cur)} — only cash can be over the bill, for change.`,
+                        );
+                      }
+                    }}
                   />
                   {tenders.length > 1 && (
                     <Button size="icon" variant="ghost" className="size-8 shrink-0" onClick={() => removeTender(tRow.key)}>
