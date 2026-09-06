@@ -657,27 +657,43 @@ export default function POS() {
     // number on a real bill that the books will never agree with. One round
     // trip is far cheaper than that. Shops with neither custom numbering nor
     // lab tests skip this entirely and the slip is instant, as before.
-    const needsServer = navigator.onLine;
     let issuedNumber = receiptNumber;
     let labOrders: LabOrderDto[] = [];
-    if (needsServer) {
-      try {
-        await syncNow();
-        {
+    if (navigator.onLine) {
+      // ⚠️ Retried, not attempted once. syncNow() swallows a failed push — it
+      // logs and resolves — so a blip leaves the sale absent from the server,
+      // getSaleReceiptAction returns null, and nothing throws. The bill then
+      // printed "Pending sync" where its number should be, and the counter
+      // handed that to a customer. A second attempt costs a moment; a bill
+      // with no number on it costs the shop the paper trail.
+      for (let attempt = 0; attempt < 3 && !issuedNumber; attempt++) {
+        try {
+          if (attempt > 0) await new Promise((r) => setTimeout(r, 500 * attempt));
+          await syncNow();
           const issued = await rpc<{ receipt_number: string | null } | null>(
             "getSaleReceiptAction", saleId,
           );
           if (issued?.receipt_number) issuedNumber = issued.receipt_number;
+        } catch {
+          /* try again; the bill is already saved locally either way */
         }
-        if (hasLabTests) {
+      }
+      if (hasLabTests) {
+        try {
           labOrders = await rpc<LabOrderDto[]>("listLabOrdersForSaleAction", saleId);
           if (labOrders.length > 0) setLabTokens(labOrders);
+        } catch {
+          toast.info("Lab token will appear in the Lab screen once this sale syncs.");
         }
-      } catch {
-        // The bill is saved either way; the pull corrects the row later.
-        if (hasLabTests) toast.info("Lab token will appear in the Lab screen once this sale syncs.");
       }
-    } else if (!navigator.onLine) {
+      if (!issuedNumber) {
+        // Say so out loud rather than letting an unusable slip be printed.
+        toast.warning(
+          "Could not reach the server for this bill's order number. It is saved — reprint it from Sales once the terminal syncs.",
+          { duration: 10000 },
+        );
+      }
+    } else {
       toast.info("Offline — this bill gets its order number when the terminal syncs.");
       if (hasLabTests) toast.info("Offline — the lab token will be issued when this terminal syncs.");
     }
@@ -693,6 +709,34 @@ export default function POS() {
       oil_change: oilChangeRow,
       ...(labOrders.length > 0 ? { lab_orders: labOrders } : {}),
     });
+    // The slip is on screen without a number. Keep trying quietly in the
+    // background: the moment the server issues one, the open receipt picks it
+    // up so the counter can print a correct bill without re-entering the sale.
+    if (!issuedNumber && navigator.onLine) {
+      void (async () => {
+        for (let i = 0; i < 10; i++) {
+          await new Promise((r) => setTimeout(r, 3000));
+          try {
+            await syncNow();
+            const issued = await rpc<{ receipt_number: string | null } | null>(
+              "getSaleReceiptAction", saleId,
+            );
+            if (issued?.receipt_number) {
+              setCompletedSale((prev) =>
+                prev && prev.id === saleId
+                  ? { ...prev, receipt_number: issued.receipt_number }
+                  : prev,
+              );
+              toast.success(`Order number ${issued.receipt_number} assigned — this bill can be printed now.`);
+              return;
+            }
+          } catch {
+            /* keep trying until the attempts run out */
+          }
+        }
+      })();
+    }
+
     setVehicle({ ...blankVehicle });
     setPickedVehicle(null);
     setKnownVehicle(null);
