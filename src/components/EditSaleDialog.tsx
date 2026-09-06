@@ -465,6 +465,22 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
                 onChange={(e) =>
                   setTenders((prev) => prev.map((x) => (x.key === t.key ? { ...x, amount: e.target.value } : x)))
                 }
+                // ⚠️ Capped on BLUR, never while typing: clamping each
+                // keystroke means a figure whose first digit is over the cap
+                // can never be typed at all. A correction has no change to
+                // give, so nothing may exceed what is still owed on the bill.
+                onBlur={() => {
+                  const others = round2(
+                    tenders.filter((x) => x.key !== t.key).reduce((a, x) => a + num(x.amount), 0),
+                  );
+                  const room = round2(Math.max(0, total - others));
+                  if (num(t.amount) > room) {
+                    setTenders((prev) =>
+                      prev.map((x) => (x.key === t.key ? { ...x, amount: String(room) } : x)),
+                    );
+                    toast.info(`Capped at ${formatMoney(room, cur)} — the bill comes to ${formatMoney(total, cur)}.`);
+                  }
+                }}
               />
               {tenders.length > 1 ? (
                 <Button
