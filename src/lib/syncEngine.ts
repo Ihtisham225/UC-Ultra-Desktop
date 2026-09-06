@@ -10,6 +10,7 @@
 
 import { syncPush, syncPull, getToken, type PushOp } from './apiClient'
 import {
+  purgeLocalChildren,
   SYNC_TABLES,
   getAllQueued,
   removeFromQueue,
@@ -29,6 +30,19 @@ export async function pullAll() {
 
   const { changes, serverTime } = await syncPull(tables)
 
+  // ⚠️ A corrected bill REPLACES its lines and tenders, so the server's set is
+  // the whole truth for that sale. Upserting alone would leave the rows it
+  // removed sitting locally — which is how a bill showed its old total beside
+  // a tender that had already been deleted. The stale children go first.
+  const changedSaleIds = new Set(
+    (changes['sales'] ?? []).map((r) => String((r as { id?: unknown }).id ?? '')).filter(Boolean),
+  )
+  if (changedSaleIds.size > 0) {
+    for (const child of ['sale_items', 'sale_payments'] as const) {
+      await purgeLocalChildren(child, 'sale_id', changedSaleIds)
+    }
+  }
+
   for (const table of SYNC_TABLES) {
     const rows = changes[table] ?? []
     if (rows.length > 0) {
@@ -37,6 +51,10 @@ export async function pullAll() {
     }
     // Watermark = server time captured before the queries (safe against skew).
     await setLastPulledAt(table, serverTime)
+  }
+  if (changedSaleIds.size > 0) {
+    notifyChange('sale_items')
+    notifyChange('sale_payments')
   }
 }
 

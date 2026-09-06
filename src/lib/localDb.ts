@@ -209,3 +209,32 @@ export function onLocalChange(cb: (table: string) => void): () => void {
     channel?.removeEventListener('message', handler)
   }
 }
+
+/**
+ * Drop every locally-held child row belonging to the given parents.
+ *
+ * Used before applying a pull that carries a replaced set: a corrected bill
+ * rewrites its lines and tenders, and an upsert alone would leave the removed
+ * ones behind, so the bill would read with both the old and the new.
+ */
+export async function purgeLocalChildren(
+  table: string,
+  fkField: string,
+  parentIds: Set<string>,
+) {
+  if (parentIds.size === 0) return
+  const db = await getLocalDb()
+  const tx = db.transaction('records', 'readwrite')
+  const store = tx.objectStore('records')
+  let cursor = await store.openCursor()
+  const doomed: IDBValidKey[] = []
+  while (cursor) {
+    const v = cursor.value as Record<string, unknown>
+    if (v._table === table && parentIds.has(String(v[fkField] ?? ''))) {
+      doomed.push(cursor.primaryKey)
+    }
+    cursor = await cursor.continue()
+  }
+  for (const key of doomed) await store.delete(key)
+  await tx.done
+}

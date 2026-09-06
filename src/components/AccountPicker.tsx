@@ -10,6 +10,20 @@ export function setAccountOptionsLoader(fn: () => Promise<AccountOption[]>) {
   loader = fn;
 }
 
+/**
+ * The same list, for screens that lay the accounts out themselves — the till's
+ * split tenders and the sale edit's. Goes through the injected loader so those
+ * screens work on web and on the terminal without knowing which they are on.
+ */
+export async function loadAccountOptions(): Promise<AccountOption[]> {
+  if (!loader) return [];
+  try {
+    return await loader();
+  } catch {
+    return [];
+  }
+}
+
 const ICON: Record<string, string> = { cash: "💵", wallet: "📱", bank: "🏦" };
 const NONE = "__none__";
 
