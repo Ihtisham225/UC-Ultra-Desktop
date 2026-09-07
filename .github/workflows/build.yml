@@ -39,6 +39,56 @@ jobs:
       - name: Write App Store Connect API key to file
         run: echo "${{ secrets.APPLE_API_KEY }}" > apple_api_key.p8
 
+      # ⚠️ The signing keychain is built here rather than left to
+      # electron-builder, and this is why:
+      #
+      # app-builder-lib 24.x creates its temp keychain with a random password,
+      # then hands `security set-key-partition-list` the CERTIFICATE's password
+      # (CSC_KEY_PASSWORD) where the KEYCHAIN's belongs. The wrong value is
+      # harmless while that keychain is still unlocked, and fatal the moment it
+      # isn't — `SecKeychainUnlock: the passphrase you entered is not correct`.
+      # Runner image 20260831.0337 leaves it locked by then where 20260728.0273
+      # did not, and `macos-latest` hands out whichever image it likes, so the
+      # same commit and secrets passed or failed at random (8/8 either way).
+      #
+      # macPackager only calls that code when CSC_LINK is set, so preparing the
+      # keychain here and passing CSC_KEYCHAIN below skips it entirely. Setting
+      # CSC_KEY_PASSWORD would NOT have fixed it — the certificate's password
+      # still isn't the keychain's.
+      - name: Prepare the signing keychain
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+
+          printf '%s' "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # A long timeout, so it cannot lock mid-build — being locked at the
+          # wrong moment is the whole failure this step exists to avoid.
+          security set-keychain-settings -t 21600 -u "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          # -P is the certificate's password, empty as it has always been here;
+          # this line is exactly what electron-builder already does today.
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "" \
+            -T /usr/bin/codesign -T /usr/bin/productbuild
+          # -k is the KEYCHAIN's password. Passing the certificate's here is
+          # the upstream bug; keep these two straight.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          # codesign ignores keychains that aren't on the search list.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed s/\"//g)
+
+          rm -f "$RUNNER_TEMP/cert.p12"
+          # Informational: the identity electron-builder will pick up. Not a
+          # gate — let the build be the judge rather than guess at its rules.
+          security find-identity -v -p codesigning "$KEYCHAIN" || true
+          echo "CSC_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
       - name: Build, sign & notarize (arm64 + x64)
         run: npm run build && npx electron-builder --mac --arm64 --x64 --publish never
         env:
@@ -46,8 +96,9 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # ⚠️ CSC_LINK and CSC_KEY_PASSWORD are deliberately NOT set: their
+          # presence is what sends electron-builder down the broken path above.
+          # CSC_KEYCHAIN arrives from the step's GITHUB_ENV.
           APPLE_API_KEY: ${{ github.workspace }}/apple_api_key.p8
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
@@ -56,6 +107,11 @@ jobs:
       - name: Remove API key file
         if: always()
         run: rm -f apple_api_key.p8
+
+      # delete-keychain also drops it from the search list.
+      - name: Remove the signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
 
       - name: Publish macOS installers to release
         env:
