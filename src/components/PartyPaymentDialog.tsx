@@ -50,6 +50,7 @@ export function PartyPaymentDialog({
   methods,
   canEdit,
   onSaved,
+  onDismissed,
 }: {
   draft: PaymentDraft | null;
   setDraft: (d: PaymentDraft | null) => void;
@@ -59,7 +60,14 @@ export function PartyPaymentDialog({
   /** Methods already used, for the autocomplete. */
   methods: string[];
   canEdit: boolean;
-  onSaved: () => void;
+  /** The saved payment, so a caller can point at the record it just made. */
+  onSaved: (saved: { id: string; number: number }) => void;
+  /**
+   * Closed without saving. Fired only by the user dismissing the dialog —
+   * Radix doesn't call `onOpenChange` when `draft` is cleared in code, so a
+   * successful save never lands here.
+   */
+  onDismissed?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
@@ -70,7 +78,7 @@ export function PartyPaymentDialog({
     if (num(draft.amount) <= 0) return toast.error("Enter the amount paid.");
 
     setBusy(true);
-    const result = await rpc<{ ok: boolean; error?: string; id?: string }>("savePartyPaymentAction", draft.id, {
+    const result = await rpc<{ ok: boolean; error?: string; id?: string; number?: number }>("savePartyPaymentAction", draft.id, {
       supplier_id: draft.supplier_id,
       kind,
       date: draft.date,
@@ -91,11 +99,11 @@ export function PartyPaymentDialog({
     toast.success(draft.id ? "Payment updated" : "Payment recorded");
     setPendingPhotos([]);
     setDraft(null);
-    onSaved();
+    onSaved({ id: result.id, number: result.number });
   };
 
   return (
-    <Dialog open={!!draft} onOpenChange={(o) => { if (!o) { setPendingPhotos([]); setDraft(null); } }}>
+    <Dialog open={!!draft} onOpenChange={(o) => { if (!o) { setPendingPhotos([]); setDraft(null); onDismissed?.(); } }}>
       <DialogContent className="w-[96vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{draft?.id ? "Edit payment" : "Record payment"}</DialogTitle>

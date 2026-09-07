@@ -25,6 +25,8 @@ import {
   PartyPaymentDialog, emptyPaymentDraft, paymentToDraft, type PaymentDraft,
 } from "@/components/PartyPaymentDialog";
 import { isMaterialSupplier, lineAmount, DEFAULT_KG_PER_BAG, type WeightUnit } from "@/lib/handicraft";
+import { useDaybookHandoff } from "@/hooks/useDaybookHandoff";
+import type { DaybookEntryDto } from "@/lib/daybookTypes";
 import { rpc } from "@/lib/apiClient";
 import type {
   PartyOption, MaterialPurchaseDto, PartyPaymentDto, LedgerResult,
@@ -153,6 +155,45 @@ export default function MaterialPurchases() {
     resetDeps: [party, from, to, payments.length],
   });
 
+  // ------------------------------------------------- from the Roznamcha
+
+  /**
+   * A daybook line handed over to be written up properly. The line already
+   * says who and how much; the bill's own columns — bilty, rate, book number —
+   * are what the clerk still has to fill in.
+   */
+  const daybook = useDaybookHandoff({
+    material_purchase: (e: DaybookEntryDto) => {
+      setPendingPhotos([]);
+      setPurchaseDraft({
+        id: null,
+        supplier_id: e.party_id ?? "",
+        date: e.date,
+        book_number: "",
+        city: "",
+        bilty_number: "",
+        // A line written in kilos is a kg bill; anything else falls back to
+        // the pound bill that most yarn comes on.
+        weight_unit: e.unit?.trim().toLowerCase() === "kg" ? "kg" : "lb",
+        kg_per_bag: String(DEFAULT_KG_PER_BAG),
+        received_by: "",
+        notes: e.notes ?? "",
+        items: [{
+          ...emptyItem(),
+          colour: e.description ?? "",
+          weight: e.quantity ? String(e.quantity) : "",
+        }],
+      });
+    },
+    party_payment_material: (e: DaybookEntryDto) => {
+      setPaymentDraft({
+        ...emptyPaymentDraft(e.date, e.party_id ?? ""),
+        amount: String(e.amount),
+        note: e.notes ?? "",
+      });
+    },
+  });
+
   // ---------------------------------------------------------- purchases
 
   const newPurchase = () => {
@@ -270,6 +311,8 @@ export default function MaterialPurchases() {
     setBusy(false);
     if (!result.ok) return toast.error(result.error ?? "Failed");
     toast.success(purchaseDraft.id ? "Purchase updated" : `Purchase #${result.number} saved`);
+    // Point the Roznamcha line at the bill it just became, if it came from one.
+    await daybook.link(result.id, `Purchase bill #${result.number}`);
     setPendingPhotos([]);
     setPurchaseDraft(null);
     load();
@@ -565,7 +608,12 @@ export default function MaterialPurchases() {
       </Tabs>
 
       {/* ------------------------------------------------ purchase dialog */}
-      <Dialog open={!!purchaseDraft} onOpenChange={(o) => !o && setPurchaseDraft(null)}>
+      {/* Closing without saving gives up any Roznamcha hand-off, so the next
+          bill written here is not attributed to that line. */}
+      <Dialog
+        open={!!purchaseDraft}
+        onOpenChange={(o) => { if (!o) { setPurchaseDraft(null); daybook.abandon(); } }}
+      >
         <DialogContent className="w-[96vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>{purchaseDraft?.id ? "Edit purchase" : "New purchase"}</DialogTitle>
@@ -764,7 +812,11 @@ export default function MaterialPurchases() {
         parties={materialSuppliers}
         methods={payments.map((x) => x.method)}
         canEdit={canManage}
-        onSaved={load}
+        onSaved={async (saved) => {
+          await daybook.link(saved.id, `Payment #${saved.number}`);
+          load();
+        }}
+        onDismissed={daybook.abandon}
       />
 
       <RecordDetailsDialog

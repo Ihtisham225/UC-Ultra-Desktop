@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { Landmark, LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Factory, Scissors, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse, Car } from "lucide-react";
+import { Landmark, LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Factory, Scissors, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse, Car, BookOpenCheck } from "lucide-react";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
@@ -48,6 +48,10 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
 
   const nav: NavItem[] = [
     { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
+    // The shawl trade's daily book: every movement is written here as it
+    // happens, then raised as a real record at the end of the day. It sits
+    // first because it is the screen they are on all day.
+    { to: "/daybook", label: "Roznamcha", icon: BookOpenCheck, show: craft && perms.canManagePurchases },
     { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: !craft },
     { to: "/products", label: t("nav.products"), icon: Package, show: !craft },
     { to: "/categories", label: "Categories", icon: FolderTree, show: !craft && perms.canManageProducts },

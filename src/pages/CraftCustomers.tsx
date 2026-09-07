@@ -17,6 +17,8 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePermissions } from "@/hooks/usePermissions";
 import { PartySelect } from "@/components/PartySelect";
 import { CustomerChallanPrintDialog } from "@/components/CustomerChallanPrintDialog";
+import { useDaybookHandoff } from "@/hooks/useDaybookHandoff";
+import type { DaybookEntryDto } from "@/lib/daybookTypes";
 import { rpc } from "@/lib/apiClient";
 import type {
   CraftCustomer,
@@ -29,6 +31,8 @@ type Res = {
   ok: boolean;
   error?: string;
   id?: string;
+  /** The record's book number, for naming it on a Roznamcha line. */
+  number?: number;
   customer?: { id: string; name: string; phone: string | null };
 };
 
@@ -172,6 +176,35 @@ export default function CraftCustomers() {
     setPaymentOpen(true);
   };
 
+  // ------------------------------------------------- from the Roznamcha
+
+  /**
+   * A daybook line handed over to be billed properly. A challan is one amount
+   * off the bill pad, and a material line carries no money, so what the goods
+   * came to is the one thing the clerk still types.
+   */
+  const daybook = useDaybookHandoff({
+    customer_challan: (e: DaybookEntryDto) => {
+      setChallanForm({
+        ...emptyChallan,
+        customer_id: e.party_id ?? "",
+        date: e.date,
+        notes: [e.description, e.notes].filter(Boolean).join(" — "),
+      });
+      setChallanOpen(true);
+    },
+    customer_payment: (e: DaybookEntryDto) => {
+      setPaymentForm({
+        ...emptyPayment,
+        customer_id: e.party_id ?? "",
+        date: e.date,
+        amount: String(e.amount),
+        note: e.notes ?? "",
+      });
+      setPaymentOpen(true);
+    },
+  });
+
   const saveChallan = async () => {
     if (!challanForm.customer_id) return toast.error("Pick a customer");
     const amount = parseFloat(challanForm.amount);
@@ -191,6 +224,8 @@ export default function CraftCustomers() {
       if (!res.ok) return toast.error(res.error);
       toast.success(challanForm.id ? "Challan updated" : "Challan saved");
       setChallanOpen(false);
+      // Point the Roznamcha line at the challan it just became, if it came from one.
+      await daybook.link(res.id, `Customer challan #${res.number}`);
       await load();
     } finally {
       setBusy(false);
@@ -215,6 +250,7 @@ export default function CraftCustomers() {
       if (!res.ok) return toast.error(res.error);
       toast.success(paymentForm.id ? "Payment updated" : "Payment recorded");
       setPaymentOpen(false);
+      await daybook.link(res.id, `Customer payment #${res.number}`);
       await load();
     } finally {
       setBusy(false);
@@ -509,7 +545,11 @@ export default function CraftCustomers() {
       )}
 
       {/* New / edit challan */}
-      <Dialog open={challanOpen} onOpenChange={(o) => { if (!busy) setChallanOpen(o); }}>
+      {/* Closing without saving gives up any Roznamcha hand-off. */}
+      <Dialog
+        open={challanOpen}
+        onOpenChange={(o) => { if (!busy) { setChallanOpen(o); if (!o) daybook.abandon(); } }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{challanForm.id ? "Edit challan" : "New challan"}</DialogTitle>
@@ -576,7 +616,10 @@ export default function CraftCustomers() {
       </Dialog>
 
       {/* Record payment */}
-      <Dialog open={paymentOpen} onOpenChange={(o) => { if (!busy) setPaymentOpen(o); }}>
+      <Dialog
+        open={paymentOpen}
+        onOpenChange={(o) => { if (!busy) { setPaymentOpen(o); if (!o) daybook.abandon(); } }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{paymentForm.id ? "Edit payment" : "Record payment"}</DialogTitle>

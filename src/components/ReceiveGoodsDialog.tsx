@@ -53,7 +53,8 @@ export function ReceiveGoodsDialog({
   processes: JobProcessDto[];
   currency: string;
   onClose: () => void;
-  onSaved: () => void;
+  /** The saved bill, so a caller can point at the record it just made. */
+  onSaved: (saved: { id: string; number: number }) => void;
 }) {
   const formatMoney = useFormatMoney();
   const [draft, setDraft] = useState<ReceiptDraft | null>(null);
@@ -276,7 +277,7 @@ export function ReceiveGoodsDialog({
     if (!result.ok) return toast.error(result.error ?? "Failed");
     toast.success(receipt ? "Bill updated" : `Bill #${result.number} saved`);
     setPendingPhotos([]);
-    onSaved();
+    onSaved({ id: result.id, number: result.number });
   };
 
   return (

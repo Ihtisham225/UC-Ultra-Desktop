@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { LayoutDashboard, ScanBarcode, Menu, Settings as SettingsIcon, Package, Receipt, Users, BarChart3, PackageOpen, Wallet, ShieldCheck, ShieldAlert, Sparkles, LogOut, Undo2, LifeBuoy, HandCoins, Truck, Factory, Scissors, FileBarChart, Boxes, FolderTree } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Menu, Settings as SettingsIcon, Package, Receipt, Users, BarChart3, PackageOpen, Wallet, ShieldCheck, ShieldAlert, Sparkles, LogOut, Undo2, LifeBuoy, HandCoins, Truck, Factory, Scissors, FileBarChart, Boxes, FolderTree, BookOpenCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ export const MobileBottomNav = () => {
 
   const allNav: NavItem[] = [
     { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
+    { to: "/daybook", label: "Roznamcha", icon: BookOpenCheck, show: craft && perms.canManagePurchases },
     { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: !craft },
     { to: "/products", label: t("nav.products"), icon: Package, show: !craft },
     { to: "/categories", label: "Categories", icon: FolderTree, show: !craft && perms.canManageProducts },
