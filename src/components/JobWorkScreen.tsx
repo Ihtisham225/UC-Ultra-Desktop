@@ -28,6 +28,8 @@ import {
   PartyPaymentDialog, emptyPaymentDraft, paymentToDraft, type PaymentDraft,
 } from "@/components/PartyPaymentDialog";
 import { ReceiveGoodsDialog } from "@/components/ReceiveGoodsDialog";
+import { useDaybookHandoff } from "@/hooks/useDaybookHandoff";
+import type { DaybookEntryDto } from "@/lib/daybookTypes";
 import { ChallanPrintDialog } from "@/components/ChallanPrintDialog";
 import { RecordDetailsDialog } from "@/components/RecordDetailsDialog";
 import { JobWorkBillPrintDialog } from "@/components/JobWorkBillPrintDialog";
@@ -170,6 +172,50 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
 
   // Each stage offers only the parties that do that stage's work.
   const processors = parties.filter(making ? isMaker : isProcessor);
+
+  // ------------------------------------------------- from the Roznamcha
+
+  /**
+   * A daybook line handed over to be written up properly.
+   *
+   * A bill for work done can't be pre-filled the way a challan can: it hangs
+   * off the challan those goods went out on, and only the clerk knows which.
+   * So the bill targets narrow the page to that party and open the challan
+   * picker — the next click is the one decision the line can't make for them.
+   */
+  const daybook = useDaybookHandoff({
+    [making ? "making_challan" : "job_work_challan"]: (e: DaybookEntryDto) => {
+      setPendingPhotos([]);
+      setDraft({
+        id: null,
+        supplier_id: e.party_id ?? "",
+        date: e.date,
+        book_number: "",
+        sent_via: "",
+        sent_by: "",
+        counted_by: "",
+        total_bundles: "",
+        notes: e.notes ?? "",
+        items: [{
+          ...emptyItem(),
+          description: e.description ?? "",
+          quantity: e.quantity ? String(e.quantity) : "",
+          quantityEdited: true,
+        }],
+      });
+    },
+    [making ? "making_receipt" : "job_work_receipt"]: (e: DaybookEntryDto) => {
+      if (e.party_id) setParty(e.party_id);
+      openReceivePicker();
+    },
+    [making ? "party_payment_making" : "party_payment_processing"]: (e: DaybookEntryDto) => {
+      setPaymentDraft({
+        ...emptyPaymentDraft(e.date, e.party_id ?? ""),
+        amount: String(e.amount),
+        note: e.notes ?? "",
+      });
+    },
+  });
 
   const challanPages = usePagination(challans, {
     key: "job-work-challans",
@@ -321,6 +367,8 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
     setBusy(false);
     if (!result.ok) return toast.error(result.error ?? "Failed");
     toast.success(draft.id ? "Challan updated" : `Challan #${result.number} saved`);
+    // Point the Roznamcha line at the challan it just became, if it came from one.
+    await daybook.link(result.id, `${copy.title} challan #${result.number}`);
     setPendingPhotos([]);
     setDraft(null);
     load();
@@ -771,11 +819,19 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         partyLabel={copy.party}
         methods={payments.map((x) => x.method)}
         canEdit={canManage}
-        onSaved={load}
+        onSaved={async (saved) => {
+          await daybook.link(saved.id, `Payment #${saved.number}`);
+          load();
+        }}
+        onDismissed={daybook.abandon}
       />
 
       {/* ------------------------------------------------- challan dialog */}
-      <Dialog open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
+      {/* Closing without saving gives up any Roznamcha hand-off. */}
+      <Dialog
+        open={!!draft}
+        onOpenChange={(o) => { if (!o) { setDraft(null); daybook.abandon(); } }}
+      >
         <DialogContent className="w-[96vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>
@@ -1014,12 +1070,20 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         receipt={editingReceipt}
         processes={processes}
         currency={currency}
-        onClose={() => { setReceiveFor(null); setEditingReceipt(null); }}
-        onSaved={() => { setReceiveFor(null); setEditingReceipt(null); load(); }}
+        onClose={() => { setReceiveFor(null); setEditingReceipt(null); daybook.abandon(); }}
+        onSaved={async (saved) => {
+          setReceiveFor(null);
+          setEditingReceipt(null);
+          await daybook.link(saved.id, `${copy.title} bill #${saved.number}`);
+          load();
+        }}
       />
 
       {/* Which challan are these goods coming back from? */}
-      <Dialog open={pickingChallan} onOpenChange={(o) => !o && setPickingChallan(false)}>
+      <Dialog
+        open={pickingChallan}
+        onOpenChange={(o) => { if (!o) { setPickingChallan(false); daybook.abandon(); } }}
+      >
         <DialogContent className="w-[96vw] sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Goods received — which challan?</DialogTitle>
