@@ -222,6 +222,60 @@ export interface ReceiptDraft {
   rates: Record<string, number>;
 }
 
+/** One bill that brought some of a product back off a challan. */
+export interface ProductBillDto {
+  id: string;
+  number: number;
+  date: string;
+  received: number;
+  short: number;
+  damaged: number;
+}
+
+/** What one challan did with one product. */
+export interface ProductChallanDto {
+  challan_id: string;
+  number: number;
+  book_number: string | null;
+  date: string;
+  status: "open" | "closed";
+  supplier_id: string;
+  supplier_name: string;
+  sent: number;
+  received: number;
+  short: number;
+  damaged: number;
+  /** sent − (received + short + damaged), clamped per challan at zero. */
+  outstanding: number;
+  sent_weight: number;
+  received_weight: number;
+  bills: ProductBillDto[];
+}
+
+/** A product as the challans know it — free text, grouped and totalled. */
+export interface ChallanProductDto {
+  /** Normalized match key — see challanProductKey. */
+  key: string;
+  /** Spelling from the most recent challan, which is what the shop reads. */
+  description: string;
+  sent: number;
+  received: number;
+  short: number;
+  damaged: number;
+  outstanding: number;
+  sent_weight: number;
+  received_weight: number;
+  challans_count: number;
+  open_challans: number;
+  parties_count: number;
+  last_date: string;
+}
+
+export interface ChallanProductDetailDto extends ChallanProductDto {
+  /** Every challan it was sent on, newest first. */
+  challans: ProductChallanDto[];
+}
+
 export interface AttachmentDto {
   id: string;
   entity_type: string;
