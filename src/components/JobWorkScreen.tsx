@@ -18,7 +18,7 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
-import { isMaker, isProcessor, CHALLAN_KIND, type ChallanKindValue } from "@/lib/handicraft";
+import { isMaker, isProcessor, CHALLAN_KIND, challanProductKey, type ChallanKindValue } from "@/lib/handicraft";
 import { AttachmentsField, AttachmentsDialog, uploadPendingAttachments } from "@/components/AttachmentsField";
 import { rpc } from "@/lib/apiClient";
 import type {
@@ -27,6 +27,7 @@ import type {
 import {
   PartyPaymentDialog, emptyPaymentDraft, paymentToDraft, type PaymentDraft,
 } from "@/components/PartyPaymentDialog";
+import { ProductLookup } from "@/components/ProductLookup";
 import { ReceiveGoodsDialog } from "@/components/ReceiveGoodsDialog";
 import { useDaybookHandoff } from "@/hooks/useDaybookHandoff";
 import type { DaybookEntryDto } from "@/lib/daybookTypes";
@@ -89,6 +90,12 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
 
   const [party, setParty] = useState(ALL);
   const [status, setStatus] = useState<"all" | "open" | "closed">("all");
+  /**
+   * Normalized تفصیل of the product being traced, or "" for none. Narrows the
+   * sent-challan list to the challans that carry it; the lookup's own panel
+   * does the totalling.
+   */
+  const [productKey, setProductKey] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -217,10 +224,21 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
     },
   });
 
-  const challanPages = usePagination(challans, {
+  // The product filter is applied here, not in the query: the lookup needs the
+  // unfiltered challans for its own totals, and every line of a matching
+  // challan still belongs on screen — the clerk is looking at that whole slip.
+  const visibleChallans = useMemo(
+    () =>
+      productKey
+        ? challans.filter((c) => c.items.some((it) => challanProductKey(it.description) === productKey))
+        : challans,
+    [challans, productKey],
+  );
+
+  const challanPages = usePagination(visibleChallans, {
     key: "job-work-challans",
     defaultSize: 20,
-    resetDeps: [party, status, from, to, challans.length],
+    resetDeps: [party, status, from, to, productKey, visibleChallans.length],
   });
   const receiptPages = usePagination(receipts, {
     key: "job-work-receipts",
@@ -491,14 +509,16 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div className="flex items-end">
-            {(from || to || party !== ALL || status !== "all") && (
-              <Button variant="ghost" onClick={() => { setFrom(""); setTo(""); setParty(ALL); setStatus("all"); }}>
+            {(from || to || party !== ALL || status !== "all" || productKey) && (
+              <Button variant="ghost" onClick={() => { setFrom(""); setTo(""); setParty(ALL); setStatus("all"); setProductKey(""); }}>
                 <X className="size-4 mr-1.5" /> Clear
               </Button>
             )}
           </div>
         </div>
       </Card>
+
+      <ProductLookup kind={kind} filters={filters} value={productKey} onChange={setProductKey} />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="shadow-card p-4 border-primary/40">
@@ -533,7 +553,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
 
       <Tabs defaultValue="challans" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="challans">Sent challans ({challans.length})</TabsTrigger>
+          <TabsTrigger value="challans">Sent challans ({visibleChallans.length})</TabsTrigger>
           <TabsTrigger value="bills">Received bills ({receipts.length})</TabsTrigger>
           <TabsTrigger value="payments">Payments ({payments.length})</TabsTrigger>
         </TabsList>
@@ -542,10 +562,14 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
           <Card className="shadow-card overflow-hidden">
             {loading ? (
               <div className="p-12 text-center text-muted-foreground">Loading…</div>
-            ) : challans.length === 0 ? (
+            ) : visibleChallans.length === 0 ? (
               <div className="p-16 text-center">
                 <Truck className="size-12 mx-auto text-muted-foreground/40 mb-3" />
-                <p className="text-muted-foreground">No challans yet. Create one when {making ? "material" : "goods"} go out.</p>
+                <p className="text-muted-foreground">
+                  {productKey
+                    ? "No challan in this range carries that product."
+                    : `No challans yet. Create one when ${making ? "material" : "goods"} go out.`}
+                </p>
               </div>
             ) : (
               <>
@@ -625,7 +649,14 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                               <TableCell colSpan={8} className="py-3">
                                 <div className="space-y-2">
                                   {c.items.map((it) => (
-                                    <div key={it.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                                    <div
+                                      key={it.id}
+                                      className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-sm ${
+                                        productKey && challanProductKey(it.description) === productKey
+                                          ? "bg-primary/10 rounded px-2 py-1 -mx-2"
+                                          : ""
+                                      }`}
+                                    >
                                       <span className="font-medium min-w-48">{it.description}</span>
                                       <span className="text-muted-foreground">
                                         {it.quantity} {making ? "boxes" : "pcs"}

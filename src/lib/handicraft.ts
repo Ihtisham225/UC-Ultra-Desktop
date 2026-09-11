@@ -76,6 +76,21 @@ export function partyRoleLabel(p?: PartyRoles | null): string {
   return parts.length ? parts.join(" · ") : "No role set";
 }
 
+/**
+ * The key two challan lines are the same product by.
+ *
+ * A line's تفصیل is free text off the bill pad, so the same shawl is written
+ * "کالی شال" one day and " Kali  Shawl " the next. Match on a trimmed,
+ * space-collapsed, case-folded form so those land on one row of the product
+ * lookup; the spelling shown is whichever the latest challan used.
+ *
+ * ⚠️ Mirrors the web app's src/lib/handicraft.ts. The server groups on its
+ * copy, so a terminal that normalized differently would filter its challan
+ * list to a different set than the panel above it totals.
+ */
+export const challanProductKey = (description: string): string =>
+  description.trim().replace(/\s+/g, " ").toLowerCase();
+
 /** The two directions goods travel out of the shop. */
 export type ChallanKindValue = "making" | "processing";
 
