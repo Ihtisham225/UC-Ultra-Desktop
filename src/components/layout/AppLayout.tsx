@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { Landmark, LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Factory, Scissors, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse, Car, BookOpenCheck } from "lucide-react";
+import { Landmark, LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Factory, Scissors, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse, Car, BookOpenCheck, ScrollText } from "lucide-react";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +20,7 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { InstallPwaButton } from "@/components/InstallPwaButton";
+import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { Logo } from "@/components/Logo";
 import { isLabEnabled } from "@/lib/lab";
 import { isHandicraft } from "@/lib/handicraft";
@@ -83,6 +84,9 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
     { to: "/investors", label: t("nav.investors"), icon: TrendingUp, show: perms.canManageExpenses && !!currentShop?.investors_enabled },
     { to: "/payroll", label: t("nav.payroll"), icon: BadgeDollarSign, show: perms.canManageExpenses },
     { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, show: perms.canManageStaff },
+    // Who did what in this store. Owner/manager only, matching the action's
+    // own guard — a cashier must not be able to audit their own trail.
+    { to: "/activity", label: "Activity", icon: ScrollText, show: role === "owner" || role === "manager" },
     { to: "/settings", label: t("nav.settings"), icon: Settings, show: true },
     { to: "/support", label: t("nav.support"), icon: LifeBuoy, show: true },
   ].filter((n) => n.show);
@@ -189,6 +193,10 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
           </div>
         </div>
       </header>
+
+      {/* Platform notices sit above the subscription warning: one is from us,
+          the other is about their own account. */}
+      <AnnouncementBanner />
 
       {isPro && daysLeft > 0 && daysLeft <= 10 && (
         <div className="px-4 lg:px-8 pt-3 shrink-0">

@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShop } from "@/contexts/ShopContext";
@@ -11,7 +11,54 @@ import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { isMacDesktop } from "@/components/TitleBar";
-import { ShieldAlert, Store, LogOut, ChevronDown } from "lucide-react";
+import {
+  ShieldAlert, Store, LogOut, ChevronDown, LayoutDashboard, Users, Building2,
+  ScrollText, Megaphone, TrendingUp, CreditCard, Settings,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+/**
+ * The admin area is a set of real ROUTES rather than tabs on one page — each
+ * section carries its own filters and paging, and a tab strip cannot be
+ * linked to or reloaded back into the state you were reading. Kept in step
+ * with the web app's own AdminLayout.
+ */
+const NAV: { to: string; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] = [
+  { to: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
+  { to: "/admin/revenue", label: "Revenue", icon: TrendingUp },
+  { to: "/admin/shops", label: "Stores", icon: Building2 },
+  { to: "/admin/users", label: "Users", icon: Users },
+  { to: "/admin/audit", label: "Audit log", icon: ScrollText },
+  { to: "/admin/announcements", label: "Announcements", icon: Megaphone },
+  { to: "/admin/plans", label: "Plans", icon: CreditCard },
+  { to: "/admin/settings", label: "Settings", icon: Settings },
+];
+
+function NavLinks() {
+  const { pathname } = useLocation();
+  return (
+    <nav className="space-y-0.5">
+      {NAV.map((item) => {
+        const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
+        return (
+          <Link
+            key={item.to}
+            to={item.to}
+            className={cn(
+              "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              active
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <item.icon className="size-4 shrink-0" />
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
 
 /**
  * Dedicated shell for the super-admin area — deliberately separate from the
@@ -94,7 +141,14 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
         </div>
       </header>
 
-      <main className="flex-1 container mx-auto p-4 lg:p-8">{children}</main>
+      <div className="flex-1 flex">
+        <aside className="hidden lg:block w-56 shrink-0 border-e bg-card/40 p-3">
+          <div className="sticky top-[4.5rem]">
+            <NavLinks />
+          </div>
+        </aside>
+        <main className="flex-1 min-w-0 p-4 lg:p-6">{children}</main>
+      </div>
     </div>
   );
 };

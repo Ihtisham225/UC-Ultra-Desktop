@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "uc-ultra-desktop-renderer",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--mode", "renderer"],
+      "port": 8080
+    }
+  ]
+}
