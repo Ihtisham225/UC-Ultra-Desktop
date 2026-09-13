@@ -161,14 +161,19 @@ export const VariantPickerDialog = ({
               Nothing matches “{query}”.
             </p>
           ) : (
-            shown.map((v) => {
+            shown.map((v, i) => {
               const price = v.price_override ?? basePrice;
               const stock = Number(v.stock);
               const disabled = !allowOutOfStock && stock <= 0;
+              // Without a search box nothing had focus, so a till driven from the
+              // keyboard needed the mouse to choose. Focus the first choice that
+              // can be sold; Tab or arrows move on and Enter picks.
+              const firstPickable = shown.findIndex((x) => allowOutOfStock || Number(x.stock) > 0);
               return (
                 <button
                   key={v.id}
                   type="button"
+                  autoFocus={!showSearch && i === firstPickable}
                   onClick={() => pick(v, disabled)}
                   disabled={disabled}
                   className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-start transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-transparent ${picked.has(v.id) ? "border-primary bg-primary/5" : ""}`}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatQty } from "@/lib/format";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,6 +34,9 @@ import { format } from "date-fns";
 import { VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft } from "@/components/VehicleFields";
 import { VehiclePicker, type VehicleLite } from "@/components/VehiclePicker";
 import { useLocalStore } from "@/hooks/useLocalStore";
+import { STEP, advanceFrom, focusSoon, focusStep, stepsIn } from "@/lib/checkout-keys";
+import { matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
+import { useIsMac } from "@/hooks/useIsMac";
 
 interface Variant {
   id: string;
@@ -186,6 +189,42 @@ export default function POS() {
   const [variantPicker, setVariantPicker] = useState<Product | null>(null);
   const [discountType, setDiscountType] = useState<"amount" | "percent">("amount");
   const [discountValue, setDiscountValue] = useState<string>("");
+  /** A note written at checkout, kept with the bill. */
+  const [notes, setNotes] = useState("");
+  const isMac = useIsMac();
+
+  /**
+   * The keyboard path through the till (lib/checkout-keys):
+   * search → Enter adds the product and lands on its quantity → Enter → price
+   * → Enter → back to search. Ctrl+Enter opens checkout, whose fields Enter
+   * walks in order: customer, vehicle, discount, amount, account, notes —
+   * and Enter on the notes places the order.
+   */
+  const chargeRef = useRef<HTMLDivElement>(null);
+  const SEARCH = '[data-pos="search"]';
+  const qtySel = (key: string) => `[data-pos-qty="${key}"]`;
+  const priceSel = (key: string) => `[data-pos-price="${key}"]`;
+  const advance = (from: Element) => advanceFrom(from, chargeRef.current ?? document);
+  /** Move on from a dropdown step once its choice has been made. */
+  const advancePastPicker = (step: number) =>
+    requestAnimationFrame(() => {
+      const el = chargeRef.current?.querySelector(`[data-checkout-step="${step}"][data-checkout-picker]`);
+      if (el) advance(el);
+    });
+  /** Plain Enter moves on. Ctrl/Cmd+Enter is left for the checkout shortcut. */
+  const enterAdvances = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key !== "Enter" || e.nativeEvent.isComposing || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    advance(e.currentTarget);
+  };
+  /** Set when the account was changed from its menu, read when that menu closes. */
+  const accountPickedRef = useRef(false);
+  /**
+   * ⚠️ Guards against ringing up the same sale twice. The Charge button is
+   * disabled while busy, but only after a re-render — a second Enter on the
+   * notes box can arrive before that. Held until the cart has been cleared.
+   */
+  const submittingRef = useRef(false);
 
   // Pharmacies with a lab split the catalog: goods vs lab tests.
   const labEnabled = isLabEnabled(currentShop);
@@ -515,6 +554,9 @@ export default function POS() {
       );
     }
 
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
     setBusy(true);
     const now = new Date().toISOString();
     // ⚠️ The terminal does NOT invent an order number. It used to mint an
@@ -543,6 +585,7 @@ export default function POS() {
       change_due: change,
       payment_method: derivedMethod(),
       receipt_number: receiptNumber,
+      notes: notes.trim() || null,
       updated_at: now,
       created_at: now,
     };
@@ -602,13 +645,22 @@ export default function POS() {
         shop_id: currentShop.id,
         created_by: user.id,
         direction: "owed_to_me",
+        // ⚠️ Linked to the bill and to the customer. Without these the row
+        // reached the khata unlinked: editing or voiding the bill couldn't find
+        // it, and it never counted toward the customer's balance — which the
+        // Ledger and the receipt both add up BY PARTY ID. A patient isn't a
+        // party, so a lab sale carries only the bill.
+        sale_id: saleId,
+        party_id: hasLabTests ? null : (customer?.id ?? null),
         person_name: payer.name,
         phone: payer.phone ?? null,
         amount: owed,
         paid_amount: 0,
         currency: cur,
         status: "open",
-        notes: `Sale ${receiptNumber}${effectivePaid > 0 ? ` (partial paid ${effectivePaid})` : ""}`,
+        // The order number is issued by the server after this row is written,
+        // so it can't go in the note — this used to print "Sale null".
+        notes: `Credit sale${effectivePaid > 0 ? ` (partial paid ${effectivePaid})` : ""}`,
         updated_at: now,
         created_at: now,
       }, true);
@@ -658,6 +710,9 @@ export default function POS() {
     // trip is far cheaper than that. Shops with neither custom numbering nor
     // lab tests skip this entirely and the slip is instant, as before.
     let issuedNumber = receiptNumber;
+    // The customer's khata balance before this bill is snapshotted by the
+    // server when the push lands; it comes back with the order number.
+    let issuedBalance: number | null = null;
     let labOrders: LabOrderDto[] = [];
     if (navigator.onLine) {
       // ⚠️ Retried, not attempted once. syncNow() swallows a failed push — it
@@ -670,10 +725,11 @@ export default function POS() {
         try {
           if (attempt > 0) await new Promise((r) => setTimeout(r, 500 * attempt));
           await syncNow();
-          const issued = await rpc<{ receipt_number: string | null } | null>(
+          const issued = await rpc<{ receipt_number: string | null; previous_balance?: number | null } | null>(
             "getSaleReceiptAction", saleId,
           );
           if (issued?.receipt_number) issuedNumber = issued.receipt_number;
+          if (issued) issuedBalance = issued.previous_balance ?? null;
         } catch {
           /* try again; the bill is already saved locally either way */
         }
@@ -705,6 +761,7 @@ export default function POS() {
     setCompletedSale({
       ...saleRecord, items: itemRows, shop: currentShop, customer,
       receipt_number: issuedNumber,
+      previous_balance: issuedBalance,
       payments: receiptPayments, balance_due: owed,
       oil_change: oilChangeRow,
       ...(labOrders.length > 0 ? { lab_orders: labOrders } : {}),
@@ -718,13 +775,13 @@ export default function POS() {
           await new Promise((r) => setTimeout(r, 3000));
           try {
             await syncNow();
-            const issued = await rpc<{ receipt_number: string | null } | null>(
+            const issued = await rpc<{ receipt_number: string | null; previous_balance?: number | null } | null>(
               "getSaleReceiptAction", saleId,
             );
             if (issued?.receipt_number) {
               setCompletedSale((prev) =>
                 prev && prev.id === saleId
-                  ? { ...prev, receipt_number: issued.receipt_number }
+                  ? { ...prev, receipt_number: issued.receipt_number, previous_balance: issued.previous_balance ?? null }
                   : prev,
               );
               toast.success(`Order number ${issued.receipt_number} assigned — this bill can be printed now.`);
@@ -741,11 +798,41 @@ export default function POS() {
     setPickedVehicle(null);
     setKnownVehicle(null);
     setCart([]); setQtyDraft({}); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
+    setNotes("");
     setTendersTouched(false);
     setTenders((prev) => (prev.length > 0 ? [{ ...prev[0], amount: "" }] : prev));
     toast.success("Sale completed!");
     refresh();
+    } finally {
+      submittingRef.current = false;
+      setBusy(false);
+    }
   };
+
+  /**
+   * Ctrl/Cmd+Enter: opens checkout from the till, places the order from inside
+   * it. Ignored while the slip, a variant picker or the scanner is up, so it
+   * can never fire a sale behind a dialog. Re-subscribed each render so it
+   * always sees the current cart and totals.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (matchPosShortcut(e) !== "checkout") return;
+      if (completedSale || variantPicker || scannerOpen) return;
+      // ⚠️ Not from inside a dropdown or a nested dialog. A search list takes
+      // Enter to pick its highlighted item, and the sale would be placed before
+      // that choice reached it — billing whoever was selected a moment before.
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.("[cmdk-root], [role='listbox']")) return;
+      const dialog = target?.closest?.("[role='dialog']");
+      if (dialog && dialog !== chargeRef.current) return;
+      e.preventDefault();
+      if (chargeOpen) void completeSale();
+      else openCharge();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   const variantOptions: VariantOption[] = useMemo(() => {
     if (!variantPicker) return [];
@@ -777,21 +864,29 @@ export default function POS() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
-              autoFocus placeholder={t("pos.searchProducts")} value={search}
+              autoFocus data-pos="search" placeholder={t("pos.searchProducts")} value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   // Try barcode-style match across products + variants first
                   const code = search.trim();
+                  // Straight to the new line's quantity, so the counter can
+                  // type how many without touching the mouse. A product with
+                  // variants opens its picker instead, which lands there itself.
+                  const addAndFocus = (p: Parameters<typeof handleProductClick>[0]) => {
+                    handleProductClick(p);
+                    setSearch("");
+                    if (!(p.variants && p.variants.length > 0)) focusSoon(qtySel(p.id));
+                  };
                   if (code) {
                     for (const p of products) {
                       const v = p.variants?.find((x) => x.barcode === code);
-                      if (v) { pushToCart(p, v); setSearch(""); return; }
+                      if (v) { pushToCart(p, v); setSearch(""); focusSoon(qtySel(v.id)); return; }
                     }
                     const exact = products.find((p) => p.barcode === code);
-                    if (exact) { handleProductClick(exact); setSearch(""); return; }
+                    if (exact) { addAndFocus(exact); return; }
                   }
-                  if (filtered[0]) { handleProductClick(filtered[0]); setSearch(""); }
+                  if (filtered[0]) addAndFocus(filtered[0]);
                 }
               }}
               className="ps-9 h-12 text-base"
@@ -912,6 +1007,15 @@ export default function POS() {
                       }}
                       onBlur={() => commitQuantity(c.key)}
                       onFocus={(e) => e.currentTarget.select()}
+                      data-pos-qty={c.key}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
+                        e.preventDefault();
+                        commitQuantity(c.key);
+                        // If running out of stock removed the line, there's no
+                        // price box to reach — fall back to the search.
+                        focusSoon(priceSel(c.key), true, SEARCH);
+                      }}
                       className="h-7 w-16 text-center text-sm px-1 tabular-nums"
                     />
                     <Button size="icon" variant="outline" className="size-7" onClick={() => updateQty(c.key, 1)}><Plus className="size-3" /></Button>
@@ -941,6 +1045,14 @@ export default function POS() {
                         min="0"
                         inputMode="decimal"
                         value={c.unit_price}
+                        onFocus={(e) => e.currentTarget.select()}
+                        data-pos-price={c.key}
+                        aria-label={`Price of ${c.product_name}`}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
+                          e.preventDefault();
+                          focusSoon(SEARCH);
+                        }}
                         onChange={(e) => {
                           const v = parseFloat(e.target.value);
                           setCart((prev) => prev.map((x) => x.key === c.key ? { ...x, unit_price: isNaN(v) ? 0 : v } : x));
@@ -1035,6 +1147,11 @@ export default function POS() {
             {/* The total sits directly above in a larger font, so the button
                 does not repeat it. */}
             {busy ? t("common.processing") : t("pos.checkout", { defaultValue: "Checkout" })}
+            {!busy && (
+              <kbd className="ms-2 rounded border border-white/40 px-1.5 text-xs font-medium text-white/80">
+                {shortcutLabel("checkout", isMac)}
+              </kbd>
+            )}
           </Button>
           </div>
         </div>
@@ -1051,7 +1168,21 @@ export default function POS() {
             anywhere else the left side is just a picker, and a second column
             would only leave it stranded beside the money. */}
         <DialogContent
+          ref={chargeRef}
           className={`max-h-[92vh] overflow-y-auto ${oilShop ? "sm:max-w-4xl" : "sm:max-w-2xl"}`}
+          // Land on the customer and open its list, so typing searches at once.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            requestAnimationFrame(() => {
+              const first = chargeRef.current ? stepsIn(chargeRef.current)[0] : null;
+              if (first) focusStep(first);
+            });
+          }}
+          // Dismissed without a sale: straight back to the search box.
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            focusSoon(SEARCH);
+          }}
         >
           <DialogHeader>
             <DialogTitle className="flex items-baseline justify-between gap-4 pe-6">
@@ -1062,6 +1193,12 @@ export default function POS() {
 
           <div className={`grid grid-cols-1 gap-x-6 gap-y-3 items-start ${oilShop ? "md:grid-cols-2" : ""}`}>
             <div className="space-y-3 min-w-0">
+                {/* Customer first: it is the first stop for the Enter key, and
+                    what's on screen should read in the order the keys move. */}
+                {hasLabTests
+                  ? <PatientPicker value={patient} onChange={setPatient} step={STEP.customer} onPicked={() => advancePastPicker(STEP.customer)} />
+                  : <CustomerPicker value={customer} onChange={setCustomer} step={STEP.customer} onPicked={() => advancePastPicker(STEP.customer)} />}
+
                 {oilShop && (
                   <div className="rounded-lg border p-3 space-y-3">
                     <div className="flex items-center gap-2">
@@ -1070,7 +1207,12 @@ export default function POS() {
                       <span className="text-[11px] text-muted-foreground ms-auto">Optional</span>
                     </div>
 
-                    <VehiclePicker value={pickedVehicle} onChange={chooseVehicle} />
+                    <VehiclePicker
+                      value={pickedVehicle}
+                      onChange={chooseVehicle}
+                      step={STEP.vehicle}
+                      onPicked={() => advancePastPicker(STEP.vehicle)}
+                    />
 
                     {/* The rest of the form only matters once there's a car. */}
                     {pickedVehicle && (
@@ -1086,15 +1228,12 @@ export default function POS() {
                           onChange={setVehicle}
                           compact
                           showIdentity={false}
+                          step={STEP.vehicle}
                         />
                       </>
                     )}
                   </div>
                 )}
-
-                {hasLabTests
-                  ? <PatientPicker value={patient} onChange={setPatient} />
-                  : <CustomerPicker value={customer} onChange={setCustomer} />}
             </div>
 
             <div className="space-y-3 min-w-0">
@@ -1109,6 +1248,8 @@ export default function POS() {
                   placeholder="Discount"
                   value={discountValue}
                   onChange={(e) => setDiscountValue(e.target.value)}
+                  data-checkout-step={STEP.discount}
+                  onKeyDown={enterAdvances}
                   className="pe-16 h-9"
                 />
                 {discountValue && rawDiscount > subtotal && (
@@ -1147,9 +1288,33 @@ export default function POS() {
             <div className="space-y-2">
               {tenders.map((tRow, idx) => (
                 <div key={tRow.key} className="flex items-center gap-2">
-                  <Select value={tRow.account_id} onValueChange={(v) => setTender(tRow.key, { account_id: v })}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Account" /></SelectTrigger>
-                    <SelectContent>
+                  <Select
+                    value={tRow.account_id}
+                    onValueChange={(v) => {
+                      if (idx === 0) accountPickedRef.current = true;
+                      setTender(tRow.key, { account_id: v });
+                    }}
+                  >
+                    {/* Only the first tender is in the Enter chain; splitting a
+                        bill across accounts stays a mouse job, as agreed. */}
+                    <SelectTrigger
+                      className="flex-1"
+                      data-checkout-step={idx === 0 ? STEP.account : undefined}
+                      // Enter keeps the account shown and moves on. Arrow keys
+                      // or Space open the list to change it.
+                      onKeyDown={idx === 0 ? enterAdvances : undefined}
+                    >
+                      <SelectValue placeholder="Account" />
+                    </SelectTrigger>
+                    <SelectContent
+                      onCloseAutoFocus={(e) => {
+                        if (idx !== 0 || !accountPickedRef.current) return;
+                        accountPickedRef.current = false;
+                        e.preventDefault();
+                        const trigger = chargeRef.current?.querySelector(`[data-checkout-step="${STEP.account}"]`);
+                        if (trigger) advance(trigger);
+                      }}
+                    >
                       {accounts.map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.type === "cash" ? "\u{1F4B5}" : a.type === "wallet" ? "\u{1F4F1}" : "\u{1F3E6}"} {a.name}
@@ -1162,6 +1327,9 @@ export default function POS() {
                     className="w-28 tabular-nums"
                     value={tRow.amount}
                     onChange={(e) => setTender(tRow.key, { amount: e.target.value })}
+                    data-checkout-step={idx === 0 ? STEP.amount : undefined}
+                    onKeyDown={idx === 0 ? enterAdvances : undefined}
+                    onFocus={(e) => e.currentTarget.select()}
                     // ⚠️ Cash may be over the bill — that is how change gets
                     // given, and the difference shows as Change due. Nothing
                     // else may: a transfer larger than the bill is money the
@@ -1204,6 +1372,21 @@ export default function POS() {
               )}
             </div>
 
+            <Input
+              placeholder="Notes (optional)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              maxLength={500}
+              data-checkout-step={STEP.notes}
+              aria-label="Notes"
+              onKeyDown={(e) => {
+                // The end of the chain: Enter here places the order.
+                if (e.key !== "Enter" || e.nativeEvent.isComposing || e.ctrlKey || e.metaKey) return;
+                e.preventDefault();
+                void completeSale();
+              }}
+            />
+
             <div className="text-sm flex justify-between px-3 py-2 rounded-lg bg-muted/50">
               <span className="text-muted-foreground">Paying now</span>
               <span className="tabular-nums font-medium">{formatMoney(effectivePaid, cur)}</span>
@@ -1237,6 +1420,11 @@ export default function POS() {
               {busy ? t("common.processing") : owed > 0
                 ? `Take ${formatMoney(effectivePaid, cur)} · ${formatMoney(owed, cur)} later`
                 : t("pos.charge", { amount: formatMoney(total, cur) })}
+              {!busy && (
+                <kbd className="ms-2 rounded border border-white/40 px-1 text-[10px] font-medium text-white/80">
+                  {shortcutLabel("checkout", isMac)}
+                </kbd>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1252,12 +1440,19 @@ export default function POS() {
           variants={variantOptions}
           onPick={(v) => {
             const variant = variantPicker.variants?.find((x) => x.id === v.id) ?? null;
-            if (variant) pushToCart(variantPicker, variant);
+            if (variant) {
+              pushToCart(variantPicker, variant);
+              focusSoon(qtySel(variant.id));
+            }
           }}
         />
       )}
       {completedSale && (
-        <ReceiptDialog sale={completedSale} onClose={() => setCompletedSale(null)} />
+        <ReceiptDialog
+          sale={completedSale}
+          // New sale: the cart is already clear, so go straight to the search.
+          onClose={() => { setCompletedSale(null); focusSoon(SEARCH); }}
+        />
       )}
       <LabTokenDialog orders={labTokens} onClose={() => setLabTokens(null)} />
     </div>

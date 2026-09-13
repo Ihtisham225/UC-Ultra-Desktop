@@ -12,6 +12,9 @@ import { Link } from "react-router-dom";
 import { useShop } from "@/contexts/ShopContext";
 import { termsToPrintHtml } from "@/lib/rich-text";
 import { printThermalHtml } from "@/lib/printThermal";
+import { receiptLedger } from "@/lib/receipt-ledger";
+import { matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
+import { useIsMac } from "@/hooks/useIsMac";
 
 const escapeHtml = (value: string) =>
   value
@@ -22,6 +25,25 @@ const escapeHtml = (value: string) =>
     .replace(/'/g, "&#39;");
 
 const withLineBreaks = (value?: string | null) => escapeHtml(value ?? "").replace(/\n/g, "<br />");
+
+/**
+ * What the shop's receipt settings let onto the slip. Both the printed HTML and
+ * the on-screen paper go through these, so a toggle can never show on one and
+ * not the other — and the Settings preview, which renders the same paper,
+ * shows exactly what will print.
+ */
+interface ReceiptGateSale {
+  shop?: { show_previous_balance_on_receipt?: boolean; show_notes_on_receipt?: boolean } | null;
+  previous_balance?: number | string | null;
+  balance_due?: number | string | null;
+  notes?: unknown;
+}
+const ledgerFor = (sale: ReceiptGateSale) =>
+  sale.shop?.show_previous_balance_on_receipt ? receiptLedger(sale) : null;
+const noteFor = (sale: ReceiptGateSale): string | null =>
+  sale.shop?.show_notes_on_receipt && typeof sale.notes === "string" && sale.notes.trim()
+    ? sale.notes.trim()
+    : null;
 
 const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: any; customer: { name: string; phone: string | null } | null; currency: string; withTerms: boolean }) => {
   const showCustomer = sale.shop?.show_customer_on_receipt === true;
@@ -119,6 +141,8 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
     </tbody>
     </table>`;
 
+  const ledger = ledgerFor(sale);
+  const note = noteFor(sale);
   const summaryRows = [
     `<div class="row"><span>Subtotal</span><span class="value">${escapeHtml(formatMoney(sale.subtotal, currency))}</span></div>`,
     Number(sale.discount) > 0
@@ -138,9 +162,19 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
     Number(sale.change_due) > 0
       ? `<div class="row small"><span>Change</span><span class="value">${escapeHtml(formatMoney(sale.change_due, currency))}</span></div>`
       : "",
-    // Only shown when something is actually outstanding.
-    Number(sale.balance_due ?? 0) > 0
+    // With an old balance on the khata, the three-line block below replaces
+    // BALANCE DUE — "this bill" in it IS the balance due, so both would repeat.
+    !ledger && Number(sale.balance_due ?? 0) > 0
       ? `<div class="total-row" style="font-size:14px;"><span>BALANCE DUE</span><span class="value">${escapeHtml(formatMoney(sale.balance_due, currency))}</span></div>`
+      : "",
+    ledger
+      ? `<div class="rule"></div>` +
+        `<div class="row small"><span>Previous balance</span><span class="value">${escapeHtml(formatMoney(ledger.previous, currency))}</span></div>` +
+        `<div class="row small"><span>This bill</span><span class="value">${escapeHtml(formatMoney(ledger.thisBill, currency))}</span></div>` +
+        `<div class="total-row" style="font-size:14px;"><span>TOTAL BALANCE</span><span class="value">${escapeHtml(formatMoney(ledger.total, currency))}</span></div>`
+      : "",
+    note
+      ? `<div class="rule"></div><div class="small note">Note: ${withLineBreaks(note)}</div>`
       : "",
   ]
     .filter(Boolean)
@@ -338,6 +372,221 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
   </html>`;
 };
 
+/**
+ * The receipt paper itself — shared by the receipt dialog and the live preview
+ * in Settings → Receipt, so the preview can never drift from what the counter
+ * actually hands over. Everything it shows comes off `sale`, including the shop
+ * settings on `sale.shop`; the preview passes the form's unsaved values there.
+ */
+export const ReceiptPaper = ({
+  sale,
+  customer,
+  withTerms,
+}: {
+  sale: any;
+  customer: { name: string; phone: string | null } | null;
+  withTerms: boolean;
+}) => {
+  const cur = sale.shop?.currency ?? "USD";
+  const terms: string = sale.shop?.receipt_terms ?? "";
+  const ledger = ledgerFor(sale);
+  const note = noteFor(sale);
+  // Solid rules print crisper than dashed on a thermal head; the preview
+  // mirrors the printed slip so what the cashier sees is what comes out.
+  const dashed = "border-t border-black my-2";
+  return (
+    <div
+      id="receipt-print"
+      dir="ltr"
+      className="w-full max-w-[72mm] mx-auto bg-white text-black font-sans font-bold text-[13px] leading-[1.45] [font-variant-numeric:tabular-nums]"
+      style={{ direction: "ltr", unicodeBidi: "isolate" }}
+    >
+      <div className="text-center">
+        <div className="font-bold text-base uppercase tracking-[0.08em]">{sale.shop?.name}</div>
+        {sale.shop?.address && <div className="text-[11px] whitespace-pre-line break-words">{sale.shop.address}</div>}
+        {sale.shop?.phone && <div className="text-[11px]">{sale.shop.phone}</div>}
+        {sale.shop?.receipt_header && <div className="text-[11px] mt-1 whitespace-pre-line break-words">{sale.shop.receipt_header}</div>}
+      </div>
+
+      <div className={dashed} />
+
+      <div className="text-[11px] space-y-0.5">
+        <div className="flex items-start justify-between gap-2"><span className="shrink-0">Receipt</span><span className="min-w-0 max-w-[58%] text-right break-words">{orderNumberLabel(sale.receipt_number)}</span></div>
+        <div className="flex items-start justify-between gap-2"><span className="shrink-0">Date</span><span className="min-w-0 max-w-[58%] text-right break-words">{format(new Date(sale.created_at), "Pp")}</span></div>
+        {sale.shop?.show_customer_on_receipt && customer && (
+          <div className="flex items-start justify-between gap-2"><span className="shrink-0">Customer</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.name}</span></div>
+        )}
+        {sale.shop?.show_customer_on_receipt && customer?.phone && (
+          <div className="flex items-start justify-between gap-2"><span className="shrink-0">Phone</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.phone}</span></div>
+        )}
+        {sale.patient_name && (
+          <div className="flex items-start justify-between gap-2"><span className="shrink-0">Patient</span><span className="min-w-0 max-w-[58%] text-right break-words">{sale.patient_name}</span></div>
+        )}
+        {(sale.patient_age || sale.patient_gender) && (
+          <div className="flex items-start justify-between gap-2"><span className="shrink-0">Age / Sex</span><span className="min-w-0 max-w-[58%] text-right break-words">{[sale.patient_age, sale.patient_gender].filter(Boolean).join(" / ")}</span></div>
+        )}
+        {sale.patient_phone && (
+          <div className="flex items-start justify-between gap-2"><span className="shrink-0">Phone</span><span className="min-w-0 max-w-[58%] text-right break-words">{sale.patient_phone}</span></div>
+        )}
+      </div>
+
+      {sale.oil_change && (
+        <>
+          <div className={dashed} />
+          <div className="text-center text-[11px]">OIL CHANGE</div>
+          <div className="text-[11px] space-y-0.5 mt-0.5">
+            {[
+              ["Vehicle", String(sale.oil_change.vehicle_number ?? "")],
+              ["Make / model", [sale.oil_change.make, sale.oil_change.model_number].filter(Boolean).join(" ")],
+              ["Name", sale.oil_change.visitor_name ?? ""],
+              ["Phone", sale.oil_change.phone ?? ""],
+              ["Oil", sale.oil_change.oil_changer ?? ""],
+              ["Current KM", sale.oil_change.current_km == null ? "" : Number(sale.oil_change.current_km).toLocaleString()],
+              ["Next change at", sale.oil_change.next_km == null ? "" : `${Number(sale.oil_change.next_km).toLocaleString()} km`],
+            ]
+              .filter(([, v]) => v !== "")
+              .map(([label, v]) => (
+                <div key={label} className="flex items-start justify-between gap-2">
+                  <span className="shrink-0">{label}</span>
+                  <span className="min-w-0 max-w-[58%] text-right break-words">{v}</span>
+                </div>
+              ))}
+          </div>
+        </>
+      )}
+
+      {(sale.lab_orders ?? []).length > 0 && (
+        <>
+          <div className={dashed} />
+          <div className="text-center text-[11px]">LAB TOKEN{sale.lab_orders.length > 1 ? "S" : ""}</div>
+          <div className="text-[11px] space-y-0.5 mt-0.5">
+            {sale.lab_orders.map((o: any) => (
+              <div key={o.id} className="flex items-start justify-between gap-2">
+                <span className="min-w-0 break-words">{o.test_name}</span>
+                <span className="shrink-0 font-bold">{o.token_number}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className={dashed} />
+
+      {/* Same Description / Qty / Unit / @ / Amt table the printer gets,
+          so what's on screen is what comes off the roll. */}
+      <table className="w-full table-fixed border-collapse font-normal text-[11px]">
+        <thead>
+          <tr className="border-b border-current">
+            <th className="text-start font-bold pb-0.5 pe-1">Description</th>
+            <th className="text-end font-bold pb-0.5 pe-1 w-[12%]">Qty</th>
+            <th className="text-start font-bold pb-0.5 pe-1 w-[13%]">Unit</th>
+            <th className="text-end font-bold pb-0.5 pe-1 w-[21%]">@</th>
+            <th className="text-end font-bold pb-0.5 w-[22%]">Amt</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sale.items.map((it: any, i: number) => {
+            const sold = soldAs(it);
+            const imeis = sale.shop?.show_imei_on_receipt
+              ? [it.imei1, it.imei2].filter(Boolean)
+              : [];
+            return (
+              <Fragment key={i}>
+                <tr className="align-top">
+                  <td className="py-0.5 pe-1 break-words [overflow-wrap:anywhere]">{it.product_name}</td>
+                  <td className="py-0.5 pe-1 text-end tabular-nums">{formatUnitQty(sold.quantity)}</td>
+                  <td className="py-0.5 pe-1 break-words">{sold.unit ?? ""}</td>
+                  <td className="py-0.5 pe-1 text-end tabular-nums break-words">{formatAmount(sold.unitPrice, cur)}</td>
+                  <td className="py-0.5 text-end tabular-nums break-words">{formatAmount(it.line_total, cur)}</td>
+                </tr>
+                {imeis.map((v: string, k: number) => (
+                  <tr key={k}><td colSpan={5} className="pb-0.5 text-[10px]">IMEI {v}</td></tr>
+                ))}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className={dashed} />
+
+      <div className="space-y-0.5">
+        <div className="flex justify-between gap-2"><span>Subtotal</span><span className="tabular-nums text-right">{formatMoney(sale.subtotal, cur)}</span></div>
+        {Number(sale.discount) > 0 && (
+          <div className="flex justify-between gap-2"><span>Discount</span><span className="tabular-nums text-right">-{formatMoney(sale.discount, cur)}</span></div>
+        )}
+        {Number(sale.tax) > 0 && (sale.shop?.show_tax_line !== false) && (
+          <div className="flex justify-between gap-2"><span>Tax</span><span className="tabular-nums text-right">{formatMoney(sale.tax, cur)}</span></div>
+        )}
+        <div className="border-t border-black mt-1 pt-1 flex justify-between gap-2 font-bold text-[13px]">
+          <span>TOTAL</span><span className="tabular-nums text-right">{formatMoney(sale.total, cur)}</span>
+        </div>
+        {(sale.payments ?? []).length > 0 ? (
+          (sale.payments as Array<{ account_name: string; amount: number }>).map((p, i) => (
+            <div key={i} className="flex justify-between text-[11px] gap-2">
+              <span>Paid ({p.account_name})</span>
+              <span className="tabular-nums text-right">{formatMoney(p.amount, cur)}</span>
+            </div>
+          ))
+        ) : (
+          <div className="flex justify-between text-[11px] gap-2"><span>Paid ({sale.payment_method})</span><span className="tabular-nums text-right">{formatMoney(sale.amount_paid, cur)}</span></div>
+        )}
+        {Number(sale.change_due) > 0 && (
+          <div className="flex justify-between text-[11px] gap-2"><span>Change</span><span className="tabular-nums text-right">{formatMoney(sale.change_due, cur)}</span></div>
+        )}
+        {/* With an old balance, the block below replaces BALANCE DUE —
+            "this bill" in it IS the balance due. */}
+        {!ledger && Number(sale.balance_due ?? 0) > 0 && (
+          <div className="border-t border-black mt-1 pt-1 flex justify-between gap-2 font-bold text-[13px]">
+            <span>BALANCE DUE</span>
+            <span className="tabular-nums text-right">{formatMoney(sale.balance_due, cur)}</span>
+          </div>
+        )}
+      </div>
+
+      {ledger && (
+        <>
+          <div className={dashed} />
+          <div className="space-y-0.5">
+            <div className="flex justify-between text-[11px] gap-2"><span>Previous balance</span><span className="tabular-nums text-right">{formatMoney(ledger.previous, cur)}</span></div>
+            <div className="flex justify-between text-[11px] gap-2"><span>This bill</span><span className="tabular-nums text-right">{formatMoney(ledger.thisBill, cur)}</span></div>
+            <div className="border-t border-black mt-1 pt-1 flex justify-between gap-2 font-bold text-[13px]">
+              <span>TOTAL BALANCE</span>
+              <span className="tabular-nums text-right">{formatMoney(ledger.total, cur)}</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {note && (
+        <>
+          <div className={dashed} />
+          <div className="text-[11px] whitespace-pre-line break-words">Note: {note}</div>
+        </>
+      )}
+
+      {sale.shop?.receipt_footer && (
+        <>
+          <div className={dashed} />
+          <div className="text-center text-[11px] whitespace-pre-line break-words">{sale.shop.receipt_footer}</div>
+        </>
+      )}
+
+      {withTerms && terms && (
+        <>
+          <div className={dashed} />
+          <div
+            className="text-[11px] font-normal leading-[1.35] break-words [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:ps-4 [&_ol]:ps-4"
+            dangerouslySetInnerHTML={{ __html: termsToPrintHtml(terms) }}
+          />
+        </>
+      )}
+
+      <div className="text-center text-[11px] mt-2">** Thank you **</div>
+    </div>
+  );
+};
+
 export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => void }) => {
   const cur = sale.shop?.currency ?? "USD";
   const { currentShop } = useShop();
@@ -399,9 +648,36 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
     setSent(true);
   };
 
-  // Solid rules print crisper than dashed on a thermal head; the preview
-  // mirrors the printed slip so what the cashier sees is what comes out.
-  const dashed = "border-t border-black my-2";
+  const isMac = useIsMac();
+  /**
+   * Alt+W WhatsApp, Ctrl+P print, Alt+N new sale — while the slip is open.
+   * Captured on window, ahead of the page: Ctrl+P would otherwise print the
+   * whole screen instead of the receipt. Re-subscribed each render so the
+   * handlers always see the current customer and sent state.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const hit = matchPosShortcut(e);
+      if (!hit || hit === "checkout") return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (hit === "print") print();
+      else if (hit === "newSale") onClose();
+      else if (hit === "whatsapp") {
+        if (!customer?.phone) toast.error("Customer has no phone number");
+        else if (!isPro) toast.error("WhatsApp receipts are a Pro feature");
+        else if (!sent) sendWhatsApp();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
+
+  const kbd = (s: Parameters<typeof shortcutLabel>[0]) => (
+    <kbd className="ms-2 rounded border border-gray-300 bg-gray-50 px-1 text-[10px] font-medium text-gray-500">
+      {shortcutLabel(s, isMac)}
+    </kbd>
+  );
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -410,172 +686,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
           laptop screen is. */}
       <DialogContent className="sm:max-w-md p-0 sm:p-0 md:p-0 gap-0 overflow-hidden bg-white text-black flex flex-col max-h-[100dvh] sm:max-h-[calc(100dvh-2rem)]">
         <div className="px-4 pt-10 pb-3 flex justify-center flex-1 min-h-0 overflow-y-auto">
-          <div
-            id="receipt-print"
-            dir="ltr"
-            className="w-full max-w-[72mm] mx-auto bg-white text-black font-sans font-bold text-[13px] leading-[1.45] [font-variant-numeric:tabular-nums]"
-            style={{ direction: "ltr", unicodeBidi: "isolate" }}
-          >
-            <div className="text-center">
-              <div className="font-bold text-base uppercase tracking-[0.08em]">{sale.shop?.name}</div>
-              {sale.shop?.address && <div className="text-[11px] whitespace-pre-line break-words">{sale.shop.address}</div>}
-              {sale.shop?.phone && <div className="text-[11px]">{sale.shop.phone}</div>}
-              {sale.shop?.receipt_header && <div className="text-[11px] mt-1 whitespace-pre-line break-words">{sale.shop.receipt_header}</div>}
-            </div>
-
-            <div className={dashed} />
-
-            <div className="text-[11px] space-y-0.5">
-              <div className="flex items-start justify-between gap-2"><span className="shrink-0">Receipt</span><span className="min-w-0 max-w-[58%] text-right break-words">{orderNumberLabel(sale.receipt_number)}</span></div>
-              <div className="flex items-start justify-between gap-2"><span className="shrink-0">Date</span><span className="min-w-0 max-w-[58%] text-right break-words">{format(new Date(sale.created_at), "Pp")}</span></div>
-              {sale.shop?.show_customer_on_receipt && customer && (
-                <div className="flex items-start justify-between gap-2"><span className="shrink-0">Customer</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.name}</span></div>
-              )}
-              {sale.shop?.show_customer_on_receipt && customer?.phone && (
-                <div className="flex items-start justify-between gap-2"><span className="shrink-0">Phone</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.phone}</span></div>
-              )}
-              {sale.patient_name && (
-                <div className="flex items-start justify-between gap-2"><span className="shrink-0">Patient</span><span className="min-w-0 max-w-[58%] text-right break-words">{sale.patient_name}</span></div>
-              )}
-              {(sale.patient_age || sale.patient_gender) && (
-                <div className="flex items-start justify-between gap-2"><span className="shrink-0">Age / Sex</span><span className="min-w-0 max-w-[58%] text-right break-words">{[sale.patient_age, sale.patient_gender].filter(Boolean).join(" / ")}</span></div>
-              )}
-              {sale.patient_phone && (
-                <div className="flex items-start justify-between gap-2"><span className="shrink-0">Phone</span><span className="min-w-0 max-w-[58%] text-right break-words">{sale.patient_phone}</span></div>
-              )}
-            </div>
-
-            {sale.oil_change && (
-              <>
-                <div className={dashed} />
-                <div className="text-center text-[11px]">OIL CHANGE</div>
-                <div className="text-[11px] space-y-0.5 mt-0.5">
-                  {[
-                    ["Vehicle", String(sale.oil_change.vehicle_number ?? "")],
-                    ["Make / model", [sale.oil_change.make, sale.oil_change.model_number].filter(Boolean).join(" ")],
-                    ["Name", sale.oil_change.visitor_name ?? ""],
-                    ["Phone", sale.oil_change.phone ?? ""],
-                    ["Oil", sale.oil_change.oil_changer ?? ""],
-                    ["Current KM", sale.oil_change.current_km == null ? "" : Number(sale.oil_change.current_km).toLocaleString()],
-                    ["Next change at", sale.oil_change.next_km == null ? "" : `${Number(sale.oil_change.next_km).toLocaleString()} km`],
-                  ]
-                    .filter(([, v]) => v !== "")
-                    .map(([label, v]) => (
-                      <div key={label} className="flex items-start justify-between gap-2">
-                        <span className="shrink-0">{label}</span>
-                        <span className="min-w-0 max-w-[58%] text-right break-words">{v}</span>
-                      </div>
-                    ))}
-                </div>
-              </>
-            )}
-
-            {(sale.lab_orders ?? []).length > 0 && (
-              <>
-                <div className={dashed} />
-                <div className="text-center text-[11px]">LAB TOKEN{sale.lab_orders.length > 1 ? "S" : ""}</div>
-                <div className="text-[11px] space-y-0.5 mt-0.5">
-                  {sale.lab_orders.map((o: any) => (
-                    <div key={o.id} className="flex items-start justify-between gap-2">
-                      <span className="min-w-0 break-words">{o.test_name}</span>
-                      <span className="shrink-0 font-bold">{o.token_number}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <div className={dashed} />
-
-            {/* Same Description / Qty / Unit / @ / Amt table the printer gets,
-                so what's on screen is what comes off the roll. */}
-            <table className="w-full table-fixed border-collapse font-normal text-[11px]">
-              <thead>
-                <tr className="border-b border-current">
-                  <th className="text-start font-bold pb-0.5 pe-1">Description</th>
-                  <th className="text-end font-bold pb-0.5 pe-1 w-[12%]">Qty</th>
-                  <th className="text-start font-bold pb-0.5 pe-1 w-[13%]">Unit</th>
-                  <th className="text-end font-bold pb-0.5 pe-1 w-[21%]">@</th>
-                  <th className="text-end font-bold pb-0.5 w-[22%]">Amt</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sale.items.map((it: any, i: number) => {
-                  const sold = soldAs(it);
-                  const imeis = sale.shop?.show_imei_on_receipt
-                    ? [it.imei1, it.imei2].filter(Boolean)
-                    : [];
-                  return (
-                    <Fragment key={i}>
-                      <tr className="align-top">
-                        <td className="py-0.5 pe-1 break-words [overflow-wrap:anywhere]">{it.product_name}</td>
-                        <td className="py-0.5 pe-1 text-end tabular-nums">{formatUnitQty(sold.quantity)}</td>
-                        <td className="py-0.5 pe-1 break-words">{sold.unit ?? ""}</td>
-                        <td className="py-0.5 pe-1 text-end tabular-nums break-words">{formatAmount(sold.unitPrice, cur)}</td>
-                        <td className="py-0.5 text-end tabular-nums break-words">{formatAmount(it.line_total, cur)}</td>
-                      </tr>
-                      {imeis.map((v: string, k: number) => (
-                        <tr key={k}><td colSpan={5} className="pb-0.5 text-[10px]">IMEI {v}</td></tr>
-                      ))}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            <div className={dashed} />
-
-            <div className="space-y-0.5">
-              <div className="flex justify-between gap-2"><span>Subtotal</span><span className="tabular-nums text-right">{formatMoney(sale.subtotal, cur)}</span></div>
-              {Number(sale.discount) > 0 && (
-                <div className="flex justify-between gap-2"><span>Discount</span><span className="tabular-nums text-right">-{formatMoney(sale.discount, cur)}</span></div>
-              )}
-              {Number(sale.tax) > 0 && (sale.shop?.show_tax_line !== false) && (
-                <div className="flex justify-between gap-2"><span>Tax</span><span className="tabular-nums text-right">{formatMoney(sale.tax, cur)}</span></div>
-              )}
-              <div className="border-t border-black mt-1 pt-1 flex justify-between gap-2 font-bold text-[13px]">
-                <span>TOTAL</span><span className="tabular-nums text-right">{formatMoney(sale.total, cur)}</span>
-              </div>
-              {(sale.payments ?? []).length > 0 ? (
-                (sale.payments as Array<{ account_name: string; amount: number }>).map((p, i) => (
-                  <div key={i} className="flex justify-between text-[11px] gap-2">
-                    <span>Paid ({p.account_name})</span>
-                    <span className="tabular-nums text-right">{formatMoney(p.amount, cur)}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="flex justify-between text-[11px] gap-2"><span>Paid ({sale.payment_method})</span><span className="tabular-nums text-right">{formatMoney(sale.amount_paid, cur)}</span></div>
-              )}
-              {Number(sale.change_due) > 0 && (
-                <div className="flex justify-between text-[11px] gap-2"><span>Change</span><span className="tabular-nums text-right">{formatMoney(sale.change_due, cur)}</span></div>
-              )}
-              {Number(sale.balance_due ?? 0) > 0 && (
-                <div className="border-t border-black mt-1 pt-1 flex justify-between gap-2 font-bold text-[13px]">
-                  <span>BALANCE DUE</span>
-                  <span className="tabular-nums text-right">{formatMoney(sale.balance_due, cur)}</span>
-                </div>
-              )}
-            </div>
-
-            {sale.shop?.receipt_footer && (
-              <>
-                <div className={dashed} />
-                <div className="text-center text-[11px] whitespace-pre-line break-words">{sale.shop.receipt_footer}</div>
-              </>
-            )}
-
-            {withTerms && terms && (
-              <>
-                <div className={dashed} />
-                <div
-                  className="text-[11px] font-normal leading-[1.35] break-words [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:ps-4 [&_ol]:ps-4"
-                  dangerouslySetInnerHTML={{ __html: termsToPrintHtml(terms) }}
-                />
-              </>
-            )}
-
-            <div className="text-center text-[11px] mt-2">** Thank you **</div>
-          </div>
+          <ReceiptPaper sale={sale} customer={customer} withTerms={withTerms} />
         </div>
 
         <DialogHeader className="sr-only">
@@ -602,6 +713,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
               <Button variant="outline" onClick={sendWhatsApp} disabled={sent} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
                 <MessageCircle className="size-4 mr-2" />
                 {sent ? "Opened" : "WhatsApp"}
+                {!sent && kbd("whatsapp")}
               </Button>
             ) : (
               <Button asChild variant="outline" className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
@@ -614,8 +726,12 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
           )}
           <Button variant="outline" onClick={print} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
             <Printer className="size-4 mr-2" /> Print
+            {kbd("print")}
           </Button>
-          <Button onClick={onClose} className="w-full sm:w-auto bg-gradient-primary text-white border-0 hover:opacity-90">New sale</Button>
+          <Button onClick={onClose} className="w-full sm:w-auto bg-gradient-primary text-white border-0 hover:opacity-90">
+            New sale
+            <kbd className="ms-2 rounded border border-white/40 px-1 text-[10px] font-medium text-white/80">{shortcutLabel("newSale", isMac)}</kbd>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

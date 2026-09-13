@@ -300,7 +300,39 @@ app.on('before-quit', () => {
   app.isQuitting = true
 })
 
+/**
+ * The application menu, set explicitly on Windows and Linux.
+ *
+ * It is Electron's default — File, Edit, View, Window, Help — with one change:
+ * the Window menu has no Alt-letter mnemonic. ⚠️ On Windows a menu labelled
+ * "&Window" opens on Alt+W, and Alt+W is the till's WhatsApp shortcut: the menu
+ * could take the key before the page ever saw it. Everything else is as it was.
+ * macOS is left on its default — Option+W types a character there and never
+ * opens a menu.
+ */
+function setApplicationMenu() {
+  if (process.platform === 'darwin') return
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { role: 'fileMenu' },
+      { role: 'editMenu' },
+      { role: 'viewMenu' },
+      { role: 'windowMenu', label: 'Window' },
+      {
+        role: 'help',
+        submenu: [
+          {
+            label: 'Learn More',
+            click: () => { void shell.openExternal('https://electronjs.org') },
+          },
+        ],
+      },
+    ]),
+  )
+}
+
 app.whenReady().then(() => {
+  setApplicationMenu()
   registerProtocol()
   createWindow()
   createTray()

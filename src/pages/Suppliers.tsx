@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { rpc } from "@/lib/apiClient";
+import { syncNow } from "@/lib/syncEngine";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { DetailsDialog } from "@/components/DetailsDialog";
+import { CustomerSalesHistory, SupplierPurchaseHistory } from "@/components/PartyHistory";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePagination } from "@/hooks/usePagination";
 import { Pagination } from "@/components/Pagination";
@@ -163,6 +165,10 @@ export default function Suppliers() {
     toast.success(t("common.saved"));
     setEditing(null);
     load();
+    // This page reads the server, but the purchase form, the till and Sales read
+    // the LOCAL store — which only hears of a new party at the next background
+    // sync. Pull it down now so it's there the moment someone switches screens.
+    void syncNow().catch(() => { /* offline: the next sync catches up */ });
   };
 
   const remove = async (id: string) => {
@@ -430,6 +436,7 @@ export default function Suppliers() {
           open={!!details}
           onClose={() => setDetails(null)}
           title={details.name}
+          wide
           rows={[
             ...(craft
               ? [
@@ -456,7 +463,14 @@ export default function Suppliers() {
               {canManage && <Button variant="outline" onClick={() => { setEditing(details); setDetails(null); }}>{t("common.edit")}</Button>}
             </>
           }
-        />
+        >
+          <SupplierPurchaseHistory supplierId={details.id} currency={currency} />
+          {/* One record per person: a supplier who also buys from the shop
+              shows both sides here. Craft shops don't sell through the till. */}
+          {!craft && details.is_customer && (
+            <CustomerSalesHistory customerId={details.id} currency={currency} />
+          )}
+        </DetailsDialog>
       )}
       {confirmDialog}
     </div>
