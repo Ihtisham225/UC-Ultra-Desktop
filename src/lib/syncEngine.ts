@@ -11,6 +11,7 @@
 import { syncPush, syncPull, getToken, type PushOp } from './apiClient'
 import {
   purgeLocalChildren,
+  pruneLocalRows,
   SYNC_TABLES,
   getAllQueued,
   removeFromQueue,
@@ -28,7 +29,7 @@ export async function pullAll() {
     SYNC_TABLES.map(async (table) => ({ table, since: await getLastPulledAt(table) })),
   )
 
-  const { changes, serverTime } = await syncPull(tables)
+  const { changes, serverTime, liveIds, liveShopId } = await syncPull(tables)
 
   // ⚠️ A corrected bill REPLACES its lines and tenders, so the server's set is
   // the whole truth for that sale. Upserting alone would leave the rows it
@@ -55,6 +56,23 @@ export async function pullAll() {
   if (changedSaleIds.size > 0) {
     notifyChange('sale_items')
     notifyChange('sale_payments')
+  }
+
+  // ⚠️ Upserting alone never removes a row the server deleted, so a catalogue
+  // re-imported under fresh ids left every product on the till twice — and a
+  // sale rung up against the stale card moved no stock on the server. The
+  // server names every live catalogue id; drop the rest of this shop's.
+  //
+  // This runs AFTER the upserts, and pushAll has already run before pullAll, so
+  // anything created offline has reached the server and is in the live set.
+  // Whatever a failed push left in the queue is kept regardless.
+  if (liveIds && liveShopId) {
+    const queued = await getAllQueued()
+    for (const [table, ids] of Object.entries(liveIds)) {
+      const keep = new Set(queued.filter((q) => q.table === table).map((q) => q.recordId))
+      const removed = await pruneLocalRows(table, liveShopId, new Set(ids), keep)
+      if (removed > 0) notifyChange(table)
+    }
   }
 }
 
