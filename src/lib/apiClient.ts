@@ -174,6 +174,12 @@ export async function resetPasswordWithToken(input: {
 export interface PullResult {
   changes: Record<string, Record<string, unknown>[]>;
   serverTime: string;
+  /**
+   * Every live id of the catalogue tables, and the shop they belong to. Absent
+   * from an older server, in which case nothing is pruned.
+   */
+  liveIds?: Record<string, string[]>;
+  liveShopId?: string;
 }
 export async function syncPull(tables: { table: string; since: string | null }[]): Promise<PullResult> {
   return request<PullResult>("/api/sync/pull", { method: "POST", body: JSON.stringify({ tables }) });

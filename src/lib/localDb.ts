@@ -9,6 +9,7 @@
  */
 
 import { openDB, type IDBPDatabase } from 'idb'
+import { staleIds } from './prune'
 
 export type SyncOp = 'upsert' | 'delete'
 
@@ -217,6 +218,28 @@ export function onLocalChange(cb: (table: string) => void): () => void {
  * rewrites its lines and tenders, and an upsert alone would leave the removed
  * ones behind, so the bill would read with both the old and the new.
  */
+/**
+ * Drop this shop's cached `table` rows that the server no longer has.
+ * The decision lives in `staleIds` (lib/prune.ts); this only does the I/O.
+ * Reading through the `byTableShop` index means another shop's rows are never
+ * even visited, and `staleIds` checks the shop again besides.
+ */
+export async function pruneLocalRows(
+  table: string,
+  shopId: string,
+  liveIds: ReadonlySet<string>,
+  keepIds: ReadonlySet<string>,
+): Promise<number> {
+  const db = await getLocalDb()
+  const tx = db.transaction('records', 'readwrite')
+  const store = tx.objectStore('records')
+  const rows = (await store.index('byTableShop').getAll([table, shopId])) as Record<string, unknown>[]
+  const doomed = staleIds(rows, shopId, liveIds, keepIds)
+  for (const id of doomed) await store.delete([table, id])
+  await tx.done
+  return doomed.length
+}
+
 export async function purgeLocalChildren(
   table: string,
   fkField: string,
