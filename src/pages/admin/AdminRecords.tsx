@@ -2,9 +2,6 @@ import { forwardRef, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { rpc } from "@/lib/apiClient";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { WhatsAppSettingsCard } from "@/components/WhatsAppSettingsCard";
-import { SiteSettingsCard } from "@/components/SiteSettingsCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,10 +23,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { ShieldCheck, Users, Store, CreditCard, Activity, Sparkles, ExternalLink, Search, Ban, CheckCircle2, ArrowUpCircle, ArrowDownCircle, Crown, AlertTriangle, Trash2 } from "lucide-react";
+import { CreditCard, Search, Ban, CheckCircle2, ArrowUpCircle, ArrowDownCircle, Crown, AlertTriangle, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { AdminPageHeader } from "@/components/admin/AdminUi";
 
 interface OverviewStats {
   total_users: number;
@@ -72,7 +70,12 @@ interface AdminShop {
 }
 
 
-export default function AdminDashboard() {
+/**
+ * The two record tables — users and stores. One component with a `section`
+ * prop rather than two: both share every dialog (block, delete, grant Pro) and
+ * every handler, and splitting them would mean maintaining that twice.
+ */
+export default function AdminRecords({ section }: { section: "users" | "shops" }) {
   const { t } = useTranslation();
   const [stats, setStats] = useState<OverviewStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -231,76 +234,33 @@ export default function AdminDashboard() {
   );
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <ShieldCheck className="size-7 text-primary" /> {t("admin.title")}
-          </h1>
-          <p className="text-muted-foreground text-sm">{t("admin.subtitle")}</p>
-        </div>
-        <Button asChild variant="outline" size="sm">
-          <Link to="/billing"><CreditCard className="size-4 mr-1.5" /> View Billing</Link>
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        <Stat title={t("admin.stats.users")} value={stats ? fmt(stats.total_users) : "—"} icon={Users} />
-        <Stat title={t("admin.stats.shops")} value={stats ? fmt(stats.total_shops) : "—"} icon={Store} />
-        <Stat title={t("admin.stats.activeSubs")} value={stats ? fmt(stats.pro_shops) : "—"} icon={Sparkles} accent />
-        <Stat title={t("admin.stats.totalSales")} value={stats ? fmt(stats.total_sales) : "—"} icon={Activity} />
-        <Stat title={t("admin.stats.revenue")} value={stats ? fmt(stats.total_revenue) : "—"} icon={Sparkles} accent />
-      </div>
-
-      <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabsList>
-            <TabsTrigger value="overview">{t("admin.tabs.overview")}</TabsTrigger>
-            <TabsTrigger value="users">{t("admin.tabs.users")} ({users.length})</TabsTrigger>
-            <TabsTrigger value="shops">{t("admin.tabs.shops")} ({shops.length})</TabsTrigger>
-            <TabsTrigger value="plans">Plans</TabsTrigger>
-            <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
-            <TabsTrigger value="site">Site</TabsTrigger>
-          </TabsList>
-          {tab !== "overview" && tab !== "whatsapp" && tab !== "site" && (
+    <div className="space-y-4">
+      <AdminPageHeader
+        title={section === "users" ? "Users" : "Stores"}
+        description={
+          section === "users"
+            ? "Every account on the platform, and which stores they belong to."
+            : "Every store, what it runs on, and what it is paying."
+        }
+        actions={
+          <>
             <div className="relative w-full sm:w-72">
               <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("admin.searchPlaceholder")} className="ps-8" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("admin.searchPlaceholder")}
+                className="ps-8"
+              />
             </div>
-          )}
-        </div>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/billing"><CreditCard className="size-4 me-1.5" /> Billing</Link>
+            </Button>
+          </>
+        }
+      />
 
-        <TabsContent value="overview" className="mt-4 space-y-4">
-          <div className="grid md:grid-cols-2 gap-4">
-            <Section title={t("admin.recentShops")}>
-              {shops.slice(0, 8).map((s) => (
-                <div key={s.shop_id} className="py-2 flex items-center justify-between text-sm border-b last:border-0">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{s.name}</div>
-                    <div className="text-xs text-muted-foreground truncate">{s.owner_email ?? "—"}</div>
-                  </div>
-                  <ProTag is_pro={s.is_pro} pro_until={s.pro_until} />
-                </div>
-              ))}
-              {!shops.length && !loading && <Empty label={t("admin.noShops")} />}
-            </Section>
-            <Section title="Active Pro shops">
-              {shops.filter((s) => s.is_pro && (!s.pro_until || new Date(s.pro_until) > new Date())).slice(0, 8).map((s) => (
-                <div key={s.shop_id} className="py-2 flex items-center justify-between text-sm border-b last:border-0">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{s.name}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      Until {s.pro_until ? format(new Date(s.pro_until), "PP") : "—"}
-                    </div>
-                  </div>
-                  <ProTag is_pro={s.is_pro} pro_until={s.pro_until} />
-                </div>
-              ))}
-            </Section>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="users" className="mt-4">
+      {section === "users" ? (
           <div className="border rounded-lg overflow-x-auto bg-card">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-xs uppercase">
@@ -396,9 +356,7 @@ export default function AdminDashboard() {
               </tbody>
             </table>
           </div>
-        </TabsContent>
-
-        <TabsContent value="shops" className="mt-4">
+      ) : (
           <div className="border rounded-lg overflow-x-auto bg-card">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-xs uppercase">
@@ -498,21 +456,8 @@ export default function AdminDashboard() {
               </tbody>
             </table>
           </div>
-        </TabsContent>
+      )}
 
-
-        <TabsContent value="plans" className="mt-4">
-          <PlansEditor />
-        </TabsContent>
-
-        <TabsContent value="whatsapp" className="mt-4">
-          <WhatsAppSettingsCard />
-        </TabsContent>
-
-        <TabsContent value="site" className="mt-4">
-          <SiteSettingsCard />
-        </TabsContent>
-      </Tabs>
 
       <AlertDialog open={!!blockShopTarget} onOpenChange={(o) => !o && setBlockShopTarget(null)}>
         <AlertDialogContent>
@@ -745,31 +690,6 @@ export default function AdminDashboard() {
   );
 }
 
-function Stat({ title, value, icon: Icon, accent }: { title: string; value: string; icon: any; accent?: boolean }) {
-  return (
-    <div className={`rounded-xl border p-3 ${accent ? "bg-gradient-to-br from-primary/10 to-amber-500/10 border-primary/30" : "bg-card"}`}>
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{title}</span>
-        <Icon className={`size-3.5 ${accent ? "text-primary" : ""}`} />
-      </div>
-      <div className="mt-1 text-xl font-bold">{value}</div>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="font-semibold mb-2">{title}</div>
-      <div>{children}</div>
-    </div>
-  );
-}
-
-function Empty({ label }: { label: string }) {
-  return <div className="text-sm text-muted-foreground py-4 text-center">{label}</div>;
-}
-
 const ProTag = forwardRef<HTMLSpanElement, { is_pro: boolean; pro_until: string | null; trial_ends_at?: string | null }>(
   ({ is_pro, pro_until, trial_ends_at }, ref) => {
     const { t } = useTranslation();
@@ -789,97 +709,3 @@ const ProTag = forwardRef<HTMLSpanElement, { is_pro: boolean; pro_until: string 
   }
 );
 ProTag.displayName = "ProTag";
-
-
-function PlansEditor() {
-  const [rows, setRows] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
-  const load = async () => {
-    setLoading(true);
-    try {
-      const data = await rpc<any[]>("adminListPlansAction");
-      setRows(data ?? []);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => { load(); }, []);
-
-  const updateField = (id: string, field: string, value: any) => {
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
-  };
-
-  const save = async (row: any) => {
-    setSaving(row.id);
-    try {
-      const res = await rpc<{ ok: boolean; error?: string }>("adminUpdatePlanAction", {
-        id: row.id,
-        name: row.name,
-        price: Number(row.price),
-        currency: row.currency,
-        duration_days: Number(row.duration_days),
-        savings_label: row.savings_label,
-        is_active: row.is_active,
-        sort_order: Number(row.sort_order),
-      });
-      if (!res.ok) return toast.error(res.error ?? "Failed");
-    } catch (e) {
-      return toast.error(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setSaving(null);
-    }
-    toast.success("Plan updated");
-    load();
-  };
-
-  if (loading) return <div className="p-6 text-muted-foreground text-sm">Loading…</div>;
-
-  return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">Edit subscription plan prices, durations and labels. Changes take effect immediately for all shops.</p>
-      <div className="grid gap-3">
-        {rows.map((r) => (
-          <div key={r.id} className="border rounded-lg p-4 bg-card grid gap-3 sm:grid-cols-6">
-            <div className="sm:col-span-2">
-              <Label className="text-xs">Name</Label>
-              <Input value={r.name ?? ""} onChange={(e) => updateField(r.id, "name", e.target.value)} />
-              <div className="text-[10px] text-muted-foreground mt-1">Code: {r.code}</div>
-            </div>
-            <div>
-              <Label className="text-xs">Price</Label>
-              <Input type="number" value={r.price ?? 0} onChange={(e) => updateField(r.id, "price", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Currency</Label>
-              <Input value={r.currency ?? "PKR"} onChange={(e) => updateField(r.id, "currency", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Days</Label>
-              <Input type="number" value={r.duration_days ?? 30} onChange={(e) => updateField(r.id, "duration_days", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Savings label</Label>
-              <Input value={r.savings_label ?? ""} onChange={(e) => updateField(r.id, "savings_label", e.target.value)} placeholder="e.g. SAVE 16%" />
-            </div>
-            <div className="sm:col-span-6 flex items-center justify-between gap-3 pt-2 border-t">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={!!r.is_active} onChange={(e) => updateField(r.id, "is_active", e.target.checked)} />
-                Active
-              </label>
-              <div className="flex items-center gap-2">
-                <Label className="text-xs">Sort</Label>
-                <Input type="number" className="w-20" value={r.sort_order ?? 0} onChange={(e) => updateField(r.id, "sort_order", e.target.value)} />
-                <Button size="sm" disabled={saving === r.id} onClick={() => save(r)}>
-                  {saving === r.id ? "Saving…" : "Save"}
-                </Button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

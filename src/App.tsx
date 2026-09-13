@@ -55,7 +55,14 @@ const Lab = lazy(() => import("./pages/Lab"));
 const LabResults = lazy(() => import("./pages/LabResults"));
 const Billing = lazy(() => import("./pages/Billing"));
 
-const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const AdminOverview = lazy(() => import("./pages/admin/AdminOverview"));
+const AdminRecords = lazy(() => import("./pages/admin/AdminRecords"));
+const AdminAudit = lazy(() => import("./pages/admin/AdminAudit"));
+const AdminRevenue = lazy(() => import("./pages/admin/AdminRevenue"));
+const AdminAnnouncements = lazy(() => import("./pages/admin/AdminAnnouncements"));
+const AdminPlans = lazy(() => import("./pages/admin/AdminPlans"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+const Activity = lazy(() => import("./pages/Activity"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Support = lazy(() => import("./pages/Support"));
 const Debts = lazy(() => import("./pages/Debts"));
@@ -197,10 +204,20 @@ const App = () => {
               <Route path="/patients" element={<SubShell><Patients /></SubShell>} />
               <Route path="/oil-changes" element={<SubShell><OilChanges /></SubShell>} />
               <Route path="/accounts" element={<SubShell><Accounts /></SubShell>} />
+              {/* Who did what in this store. Owner/manager only, matching the
+                  server action's own guard. */}
+              <Route path="/activity" element={<SubShell><RequireRole roles={["owner", "manager"]}><Activity /></RequireRole></SubShell>} />
               <Route path="/lab" element={<SubShell><Lab /></SubShell>} />
               <Route path="/lab-results" element={<SubShell><LabResults /></SubShell>} />
               <Route path="/billing" element={<Shell><Billing /></Shell>} />
-              <Route path="/admin" element={<AdminShell><AdminDashboard /></AdminShell>} />
+              <Route path="/admin" element={<AdminShell><AdminOverview /></AdminShell>} />
+              <Route path="/admin/revenue" element={<AdminShell><AdminRevenue /></AdminShell>} />
+              <Route path="/admin/shops" element={<AdminShell><AdminRecords section="shops" /></AdminShell>} />
+              <Route path="/admin/users" element={<AdminShell><AdminRecords section="users" /></AdminShell>} />
+              <Route path="/admin/audit" element={<AdminShell><AdminAudit /></AdminShell>} />
+              <Route path="/admin/announcements" element={<AdminShell><AdminAnnouncements /></AdminShell>} />
+              <Route path="/admin/plans" element={<AdminShell><AdminPlans /></AdminShell>} />
+              <Route path="/admin/settings" element={<AdminShell><AdminSettings /></AdminShell>} />
               
               <Route path="/settings" element={<Shell><Settings /></Shell>} />
               <Route path="/support" element={<Shell><Support /></Shell>} />
