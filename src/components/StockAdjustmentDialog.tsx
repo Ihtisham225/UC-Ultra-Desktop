@@ -37,6 +37,7 @@ export function StockAdjustmentDialog({ open, onOpenChange, initialProductId, on
   const [reason, setReason] = useState<string>("recount");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [productOpen, setProductOpen] = useState(false);
   const [variantOpen, setVariantOpen] = useState(false);
 
   useEffect(() => {
@@ -102,14 +103,44 @@ export function StockAdjustmentDialog({ open, onOpenChange, initialProductId, on
         <div className="space-y-3">
           <div>
             <Label>Product</Label>
-            <Select value={productId} onValueChange={(v) => { setProductId(v); setVariantId(""); }}>
-              <SelectTrigger><SelectValue placeholder="Select product…" /></SelectTrigger>
-              <SelectContent>
-                {products.map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Searchable: a shop carries hundreds of lines (one oil shop has
+                405), and scrolling a plain dropdown to find one is unusable.
+                Same pattern as the variant picker below. */}
+            <Popover open={productOpen} onOpenChange={setProductOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                  <span className={`truncate ${selectedProduct ? "" : "text-muted-foreground"}`}>
+                    {selectedProduct ? selectedProduct.name : "Select product…"}
+                  </span>
+                  <ChevronsUpDown className="size-4 opacity-50 shrink-0" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+                <Command>
+                  <CommandInput placeholder="Search product…" />
+                  <CommandList>
+                    <CommandEmpty>No product found.</CommandEmpty>
+                    <CommandGroup>
+                      {products.map((p) => (
+                        <CommandItem
+                          key={p.id}
+                          // cmdk filters on `value`, so it has to be the name —
+                          // keying it by id would make the box match nothing.
+                          value={p.name}
+                          onSelect={() => { setProductId(p.id); setVariantId(""); setProductOpen(false); }}
+                        >
+                          <Check className={`size-4 me-2 shrink-0 ${productId === p.id ? "opacity-100" : "opacity-0"}`} />
+                          <span className="flex-1 truncate">{p.name}</span>
+                          {!p.variants?.length && (
+                            <span className="text-xs text-muted-foreground tabular-nums shrink-0">stock: {p.stock}</span>
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {hasVariants && (
