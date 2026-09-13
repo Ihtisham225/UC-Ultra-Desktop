@@ -766,9 +766,19 @@ export default function Purchases() {
     toast.success(t("purchases.supplierAdded"));
     setNewSupplier({ name: "", phone: "", email: "", notes: "" });
     setSupplierOpen(false);
-    // The party list is derived from the local store, which the create action
-    // refreshes through sync; nothing to append by hand.
+    // ⚠️ The dropdown reads the LOCAL store, but the supplier was just created
+    // on the server — nothing brings it down until the next background sync, so
+    // it used to look as if the save had failed until the page was refreshed.
+    // Write it locally now so it appears and is selected at once, then sync so
+    // the server's full row replaces this one.
+    //
+    // ⚠️ `shop_id` has to be added by hand: the action's DTO doesn't carry it,
+    // and the local store finds rows by table AND shop — without it the new
+    // supplier would be saved but still invisible.
+    await upsertLocal("suppliers", { ...supplier, shop_id: currentShop.id }, false);
+    notifyChange("suppliers");
     setSupplierId(supplier.id);
+    void syncNow().catch(() => { /* offline: the next sync catches up */ });
   };
 
   return (

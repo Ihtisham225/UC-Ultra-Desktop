@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import { advanceFrom } from "@/lib/checkout-keys";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -46,12 +47,29 @@ interface Props {
    */
   showIdentity?: boolean;
   disabled?: boolean;
+  /**
+   * Place in the till's Enter-key chain (lib/checkout-keys). When set, every box
+   * here joins the chain in page order and Enter moves to the next one.
+   */
+  step?: number;
 }
 
 export function VehicleFields({
-  value, onChange, onPlateBlur, compact = false, showIdentity = true, disabled,
+  value, onChange, onPlateBlur, compact = false, showIdentity = true, disabled, step,
 }: Props) {
   const set = (patch: Partial<VehicleDraft>) => onChange({ ...value, ...patch });
+  // Spread onto each box: tags it for the chain and lets Enter move on. Inert
+  // when the form is used outside the till (no step given).
+  const chain = step === undefined
+    ? {}
+    : {
+        "data-checkout-step": step,
+        onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+          if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+          e.preventDefault();
+          advanceFrom(e.currentTarget, e.currentTarget.closest("[role=dialog]") ?? document);
+        },
+      };
   const cols = compact ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-2";
 
   // The reading the oil is good until has to be ahead of today's. Shown as a
@@ -74,6 +92,7 @@ export function VehicleFields({
             placeholder="LEA 07-1234"
             className="uppercase"
             disabled={disabled}
+            {...chain}
           />
         </div>
         <div className="space-y-1.5">
@@ -83,6 +102,7 @@ export function VehicleFields({
             onChange={(e) => set({ make: e.target.value })}
             placeholder="Vitz, Swift, Corolla"
             disabled={disabled}
+            {...chain}
           />
         </div>
       </div>
@@ -97,6 +117,7 @@ export function VehicleFields({
               onChange={(e) => set({ model_number: e.target.value })}
               placeholder="GLi 1.3 / 2018"
               disabled={disabled}
+              {...chain}
             />
           </div>
         )}
@@ -107,6 +128,7 @@ export function VehicleFields({
             onChange={(e) => set({ oil_changer: e.target.value })}
             placeholder="Which oil went in"
             disabled={disabled}
+            {...chain}
           />
         </div>
       </div>
@@ -123,6 +145,7 @@ export function VehicleFields({
             onChange={(e) => set({ current_km: e.target.value })}
             placeholder="125400"
             disabled={disabled}
+            {...chain}
           />
         </div>
         <div className="space-y-1.5">
@@ -136,6 +159,7 @@ export function VehicleFields({
             onChange={(e) => set({ next_km: e.target.value })}
             placeholder="130400"
             disabled={disabled}
+            {...chain}
           />
           {kmBackwards && (
             <p className="text-[11px] text-destructive">
@@ -153,6 +177,7 @@ export function VehicleFields({
             onChange={(e) => set({ visitor_name: e.target.value })}
             placeholder="Who brought the vehicle in"
             disabled={disabled}
+            {...chain}
           />
         </div>
         <div className="space-y-1.5">
@@ -163,6 +188,7 @@ export function VehicleFields({
             placeholder="03xx xxxxxxx"
             inputMode="tel"
             disabled={disabled}
+            {...chain}
           />
         </div>
       </div>

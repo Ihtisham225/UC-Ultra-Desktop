@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { rpc, uploadShopLogo } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
@@ -18,6 +18,7 @@ import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shiel
 import { JobProcessesSection } from "@/components/JobProcessesSection";
 import { isHandicraft } from "@/lib/handicraft";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { ReceiptPreview } from "@/components/ReceiptPreview";
 import { AppUpdateCard } from "@/components/AppUpdateCard";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { AppVersionBadge } from "@/components/AppVersionBadge";
@@ -57,6 +58,8 @@ export default function Settings() {
   const [imeiMode, setImeiMode] = useState<"sale" | "product">("sale");
   const [showCustomer, setShowCustomer] = useState(false);
   const [showImei, setShowImei] = useState(false);
+  const [showPrevBalance, setShowPrevBalance] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
 
   const [notifyLow, setNotifyLow] = useState(true);
   const [notifyDaily, setNotifyDaily] = useState(false);
@@ -92,6 +95,8 @@ export default function Settings() {
       setImeiMode((currentShop.imei_capture_mode as "sale" | "product") ?? "sale");
       setShowCustomer(currentShop.show_customer_on_receipt ?? false);
       setShowImei(currentShop.show_imei_on_receipt ?? false);
+      setShowPrevBalance(currentShop.show_previous_balance_on_receipt ?? false);
+      setShowNotes(currentShop.show_notes_on_receipt ?? false);
       setNotifyLow(currentShop.notify_low_stock ?? true);
       setNotifyDaily(currentShop.notify_daily_summary ?? false);
       setInvestorsOn(currentShop.investors_enabled ?? false);
@@ -149,6 +154,19 @@ export default function Settings() {
     refresh();
   };
 
+  // The unsaved form values the live preview renders from.
+  const previewSettings = useMemo(() => ({
+    receipt_header: header,
+    receipt_footer: footer,
+    receipt_terms: terms,
+    print_terms_by_default: printTerms,
+    show_tax_line: showTax,
+    show_customer_on_receipt: showCustomer,
+    show_imei_on_receipt: showImei,
+    show_previous_balance_on_receipt: showPrevBalance,
+    show_notes_on_receipt: showNotes,
+  }), [header, footer, terms, printTerms, showTax, showCustomer, showImei, showPrevBalance, showNotes]);
+
   const saveReceipt = async () => {
     if (!currentShop) return;
     setBusy(true);
@@ -156,6 +174,7 @@ export default function Settings() {
       const res = await rpc<{ ok: boolean; error?: string }>("updateReceiptAction", {
         header: header || null, footer: footer || null, show_tax_line: showTax,
         show_customer_on_receipt: showCustomer, show_imei_on_receipt: showImei,
+        show_previous_balance_on_receipt: showPrevBalance, show_notes_on_receipt: showNotes,
         receipt_terms: terms || null, print_terms_by_default: printTerms,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
@@ -496,6 +515,7 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="receipt">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
           <Card className="shadow-card p-6 space-y-5">
             <div className="space-y-1.5"><Label>{t("settings.receipt.header")}</Label><Input value={header} onChange={(e) => setHeader(e.target.value)} disabled={!canEditShop} placeholder={t("settings.receipt.headerPlaceholder")} /></div>
             <div className="space-y-1.5"><Label>{t("settings.receipt.footer")}</Label><Textarea rows={2} value={footer} onChange={(e) => setFooter(e.target.value)} disabled={!canEditShop} placeholder={t("settings.receipt.footerPlaceholder")} /></div>
@@ -513,6 +533,24 @@ export default function Settings() {
                 <Switch checked={showImei} onCheckedChange={setShowImei} disabled={!canEditShop} />
               </div>
             )}
+            <div className="flex items-center justify-between gap-4 py-2">
+              <div>
+                <Label>Print customer's old balance</Label>
+                <p className="text-xs text-muted-foreground">
+                  When the customer already owes on their khata, print that balance, this bill, and the new total.
+                </p>
+              </div>
+              <Switch checked={showPrevBalance} onCheckedChange={setShowPrevBalance} disabled={!canEditShop} />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-2">
+              <div>
+                <Label>Print sale notes</Label>
+                <p className="text-xs text-muted-foreground">
+                  Print the note written at checkout. Leave off if your notes are for staff only.
+                </p>
+              </div>
+              <Switch checked={showNotes} onCheckedChange={setShowNotes} disabled={!canEditShop} />
+            </div>
             {/* Terms print at the foot of every receipt. Free text, any
                 language — shops write these in Urdu, Pashto or English. */}
             <div className="space-y-1.5 border-t pt-4">
@@ -540,6 +578,19 @@ export default function Settings() {
             </div>
             {canEditShop && <Button disabled={busy} onClick={saveReceipt} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.receipt.saveReceipt")}</Button>}
           </Card>
+
+          {/* Live preview: the same paper the till prints, drawn from the form's
+              unsaved values, so a change is visible before it is saved. */}
+          {currentShop && (
+            <div className="space-y-2 lg:sticky lg:top-4">
+              <div className="flex items-baseline justify-between">
+                <h3 className="text-sm font-medium">Preview</h3>
+                <span className="text-xs text-muted-foreground">Sample bill · updates as you type</span>
+              </div>
+              <ReceiptPreview shop={currentShop} settings={previewSettings} />
+            </div>
+          )}
+          </div>
         </TabsContent>
 
         <TabsContent value="notifications">

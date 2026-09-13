@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { rpc } from "@/lib/apiClient";
+import { syncNow } from "@/lib/syncEngine";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,8 @@ import { Plus, Users as UsersIcon, Trash2, Search, Eye, Edit2 } from "lucide-rea
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { DetailsDialog } from "@/components/DetailsDialog";
+import { CustomerSalesHistory } from "@/components/PartyHistory";
+import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePagination } from "@/hooks/usePagination";
 import { Pagination } from "@/components/Pagination";
@@ -26,6 +29,18 @@ export default function Customers() {
   usePageMeta({ title: "Customers — UCU", description: "Manage customer profiles, contact details and purchase history.", path: "/customers" });
   const { t } = useTranslation();
   const { currentShop, role } = useShop();
+  /** A bill reopened from the customer's history, for a reprint. */
+  const [openSale, setOpenSale] = useState<Record<string, unknown> | null>(null);
+  const openReceipt = async (saleId: string) => {
+    try {
+      // Online-only, like the Sales page reprint: the server holds the full bill.
+      const data = await rpc<Record<string, unknown> | null>("getSaleReceiptAction", saleId);
+      if (data) setOpenSale({ ...data, shop: currentShop });
+      else toast.error("That bill could not be found");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't open the receipt");
+    }
+  };
   const [params, setParams] = useSearchParams();
   const [items, setItems] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,6 +127,10 @@ export default function Customers() {
     toast.success(t("common.saved"));
     setEditing(null);
     load();
+    // This page reads the server, but the purchase form, the till and Sales read
+    // the LOCAL store — which only hears of a new party at the next background
+    // sync. Pull it down now so it's there the moment someone switches screens.
+    void syncNow().catch(() => { /* offline: the next sync catches up */ });
   };
 
   const remove = async (id: string) => {
@@ -281,14 +300,23 @@ export default function Customers() {
           open={!!details}
           onClose={() => setDetails(null)}
           title={details.name}
+          wide
           rows={[
             { label: t("common.phone"), value: details.phone ?? "—" },
             { label: t("common.email"), value: details.email ?? "—" },
             { label: t("common.notes"), value: details.notes ?? "—", full: true },
           ]}
           footer={<Button variant="outline" onClick={() => { setEditing(details); setDetails(null); }}>{t("common.edit")}</Button>}
-        />
+        >
+          <CustomerSalesHistory
+            customerId={details.id}
+            currency={currentShop?.currency ?? "PKR"}
+            onOpenSale={openReceipt}
+          />
+        </DetailsDialog>
       )}
+      {/* Over the details, so closing the slip returns to the history. */}
+      {openSale && <ReceiptDialog sale={openSale} onClose={() => setOpenSale(null)} />}
       {confirmDialog}
     </div>
   );

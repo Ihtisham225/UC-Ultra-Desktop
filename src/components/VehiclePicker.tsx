@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,12 +43,21 @@ const describe = (v: { make: string | null; model_number: string | null }) =>
  * the register is synced like customers are. Plates are matched on their
  * normalized form, so "lea 07 1234" finds "LEA-07-1234".
  */
+const NO_VEHICLE = "__no_vehicle__";
+const REGISTER = "__register__";
+
 export function VehiclePicker({
   value,
   onChange,
+  step,
+  onPicked,
 }: {
   value: VehicleLite | null;
   onChange: (v: VehicleLite | null) => void;
+  /** Place in the till's Enter-key chain (see lib/checkout-keys). */
+  step?: number;
+  /** Called once a choice is made and the dropdown has closed — the till moves on. */
+  onPicked?: () => void;
 }) {
   const { currentShop } = useShop();
   const { data: vehicles, save } = useLocalStore<LocalVehicle>("vehicles", currentShop?.id);
@@ -57,6 +66,32 @@ export function VehiclePicker({
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({ vehicle_number: "", make: "", model_number: "" });
   const [busy, setBusy] = useState(false);
+  /** See CustomerPicker: advance when the dropdown finishes closing, not before. */
+  const pickedRef = useRef(false);
+  const makeRef = useRef<HTMLInputElement>(null);
+  const modelRef = useRef<HTMLInputElement>(null);
+
+  const advanceOnClose = (e: Event) => {
+    if (!pickedRef.current) return;
+    pickedRef.current = false;
+    if (onPicked) {
+      e.preventDefault();
+      onPicked();
+    }
+  };
+
+  const choose = (v: VehicleLite | null) => {
+    onChange(v);
+    pickedRef.current = true;
+    setOpen(false);
+  };
+
+  const openRegister = () => {
+    // Whatever they typed is almost certainly the plate.
+    setForm({ vehicle_number: search.trim(), make: "", model_number: "" });
+    setOpen(false);
+    setCreateOpen(true);
+  };
 
   const matches = useMemo(() => {
     const q = search.trim();
@@ -105,6 +140,7 @@ export function VehiclePicker({
         model_number: row.model_number,
       });
       setForm({ vehicle_number: "", make: "", model_number: "" });
+      pickedRef.current = true;
       setCreateOpen(false);
       setOpen(false);
     } finally {
@@ -117,7 +153,13 @@ export function VehiclePicker({
       <div className="flex gap-2 items-center">
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="flex-1 justify-start min-w-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 justify-start min-w-0"
+              data-checkout-step={step}
+              data-checkout-picker={step === undefined ? undefined : ""}
+            >
               <Car className="size-3.5 me-1.5 shrink-0" />
               {value ? (
                 <span className="truncate font-mono">{value.vehicle_number}</span>
@@ -126,8 +168,10 @@ export function VehiclePicker({
               )}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="p-0 w-80" align="start">
-            <Command shouldFilter={false}>
+          <PopoverContent className="p-0 w-80" align="start" onCloseAutoFocus={advanceOnClose}>
+            {/* Highlight starts on the current car, so reopening and pressing
+                Enter keeps it rather than picking whatever is listed first. */}
+            <Command shouldFilter={false} defaultValue={value?.id ?? NO_VEHICLE}>
               <CommandInput
                 placeholder="Search by plate, make or model…"
                 value={search}
@@ -136,19 +180,25 @@ export function VehiclePicker({
               <CommandList>
                 <CommandEmpty>No vehicle found. Register it below.</CommandEmpty>
                 <CommandGroup>
+                  {/* Optional — not every bill is a service. Enter on an empty
+                      search skips the vehicle without reaching for the mouse. */}
+                  {!search.trim() && (
+                    <CommandItem value={NO_VEHICLE} onSelect={() => choose(null)}>
+                      <span className="text-muted-foreground">No vehicle</span>
+                    </CommandItem>
+                  )}
                   {matches.map((v) => (
                     <CommandItem
                       key={v.id}
                       value={v.id}
-                      onSelect={() => {
-                        onChange({
+                      onSelect={() =>
+                        choose({
                           id: v.id,
                           vehicle_number: v.vehicle_number,
                           make: v.make,
                           model_number: v.model_number,
-                        });
-                        setOpen(false);
-                      }}
+                        })
+                      }
                     >
                       <div className="flex-1 min-w-0">
                         <div className="font-mono font-medium truncate">{v.vehicle_number}</div>
@@ -158,21 +208,15 @@ export function VehiclePicker({
                     </CommandItem>
                   ))}
                 </CommandGroup>
+                {/* Inside the list, so arrow keys reach it — a button below the
+                    list could only be clicked. */}
+                <CommandGroup forceMount className="border-t">
+                  <CommandItem value={REGISTER} forceMount onSelect={openRegister}>
+                    <Plus className="size-3.5 me-1.5" />
+                    {search.trim() ? <>Register &ldquo;{search.trim().toUpperCase()}&rdquo;</> : "Register a new vehicle"}
+                  </CommandItem>
+                </CommandGroup>
               </CommandList>
-              <div className="border-t p-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start"
-                  onClick={() => {
-                    // Whatever they typed is almost certainly the plate.
-                    setForm({ vehicle_number: search.trim(), make: "", model_number: "" });
-                    setCreateOpen(true);
-                  }}
-                >
-                  <Plus className="size-3.5 me-1.5" /> Register a new vehicle
-                </Button>
-              </div>
             </Command>
           </PopoverContent>
         </Popover>
@@ -195,7 +239,7 @@ export function VehiclePicker({
       {value && <p className="text-[11px] text-muted-foreground mt-1">{describe(value)}</p>}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" onCloseAutoFocus={advanceOnClose}>
           <DialogHeader><DialogTitle>Register a vehicle</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -204,6 +248,7 @@ export function VehiclePicker({
                 autoFocus
                 value={form.vehicle_number}
                 onChange={(e) => setForm({ ...form, vehicle_number: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); makeRef.current?.focus(); } }}
                 placeholder="LEA 07-1234"
                 className="uppercase"
               />
@@ -211,16 +256,20 @@ export function VehiclePicker({
             <div className="space-y-1.5">
               <Label>Make</Label>
               <Input
+                ref={makeRef}
                 value={form.make}
                 onChange={(e) => setForm({ ...form, make: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); modelRef.current?.focus(); } }}
                 placeholder="Vitz, Swift, Corolla"
               />
             </div>
             <div className="space-y-1.5">
               <Label>Model</Label>
               <Input
+                ref={modelRef}
                 value={form.model_number}
                 onChange={(e) => setForm({ ...form, model_number: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void create(); } }}
                 placeholder="GLi 1.3 / 2018"
               />
             </div>

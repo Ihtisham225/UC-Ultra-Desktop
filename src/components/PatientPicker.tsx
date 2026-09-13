@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
@@ -28,12 +28,34 @@ export interface PatientLite {
 export const PatientPicker = ({
   value,
   onChange,
-}: { value: PatientLite | null; onChange: (p: PatientLite | null) => void }) => {
+  step,
+  onPicked,
+}: {
+  value: PatientLite | null;
+  onChange: (p: PatientLite | null) => void;
+  /** Place in the till's Enter-key chain (see lib/checkout-keys). */
+  step?: number;
+  /** Called once a patient is chosen and the dropdown has closed. */
+  onPicked?: () => void;
+}) => {
   const { currentShop } = useShop();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", age: "", gender: "" });
   const [busy, setBusy] = useState(false);
+  /**
+   * See CustomerPicker: advance when the dropdown finishes closing. There is no
+   * "no patient" choice — a lab sale must be billed to one.
+   */
+  const pickedRef = useRef(false);
+  const advanceOnClose = (e: Event) => {
+    if (!pickedRef.current) return;
+    pickedRef.current = false;
+    if (onPicked) {
+      e.preventDefault();
+      onPicked();
+    }
+  };
   const { data: list, save } = useLocalStore<PatientLite & { name: string }>(
     "patients",
     currentShop?.id,
@@ -67,7 +89,13 @@ export const PatientPicker = ({
       <div className="flex gap-2 items-center">
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="flex-1 justify-start h-auto py-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 justify-start h-auto py-1.5"
+              data-checkout-step={step}
+              data-checkout-picker={step === undefined ? undefined : ""}
+            >
               <HeartPulse className="size-3.5 mr-1.5 shrink-0" />
               {value ? (
                 <span className="truncate text-start">
@@ -79,14 +107,14 @@ export const PatientPicker = ({
               )}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="p-0 w-72" align="start">
-            <Command>
+          <PopoverContent className="p-0 w-72" align="start" onCloseAutoFocus={advanceOnClose}>
+            <Command defaultValue={value ? value.name + " " + (value.phone ?? "") : undefined}>
               <CommandInput placeholder="Search patients…" />
               <CommandList>
                 <CommandEmpty>No patients found</CommandEmpty>
                 <CommandGroup>
                   {[...list].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
-                    <CommandItem key={p.id} value={p.name + " " + (p.phone ?? "")} onSelect={() => { onChange(p); setOpen(false); }}>
+                    <CommandItem key={p.id} value={p.name + " " + (p.phone ?? "")} onSelect={() => { onChange(p); pickedRef.current = true; setOpen(false); }}>
                       <Check className={"size-3.5 mr-2 " + (value?.id === p.id ? "opacity-100" : "opacity-0")} />
                       <div>
                         <div>{p.name}</div>
