@@ -37,6 +37,7 @@ import { useLocalStore } from "@/hooks/useLocalStore";
 import { STEP, advanceFrom, focusSoon, focusStep, stepsIn } from "@/lib/checkout-keys";
 import { matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
 import { useIsMac } from "@/hooks/useIsMac";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface Variant {
   id: string;
@@ -225,6 +226,7 @@ export default function POS() {
    * notes box can arrive before that. Held until the cart has been cleared.
    */
   const submittingRef = useRef(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   // Pharmacies with a lab split the catalog: goods vs lab tests.
   const labEnabled = isLabEnabled(currentShop);
@@ -810,6 +812,28 @@ export default function POS() {
   };
 
   /**
+   * Empty the cart. The shortcut asks first — one key wiping a long order has
+   * to be reversible — and the confirm dialog focuses Cancel, so a stray Enter
+   * keeps the cart. The trash button clears at once, as it always has.
+   */
+  const clearCart = async (ask: boolean) => {
+    if (cart.length === 0) return;
+    if (ask) {
+      const lines = cart.length;
+      const ok = await confirm({
+        title: "Clear the cart?",
+        description: `This removes all ${lines} ${lines === 1 ? "item" : "items"} from the current sale.`,
+        confirmLabel: "Clear cart",
+      });
+      if (!ok) return focusSoon(SEARCH);
+    }
+    setCart([]);
+    // Stale typed quantities would otherwise resurface on the next line added.
+    setQtyDraft({});
+    focusSoon(SEARCH);
+  };
+
+  /**
    * Ctrl/Cmd+Enter: opens checkout from the till, places the order from inside
    * it. Ignored while the slip, a variant picker or the scanner is up, so it
    * can never fire a sale behind a dialog. Re-subscribed each render so it
@@ -817,7 +841,16 @@ export default function POS() {
    */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (matchPosShortcut(e) !== "checkout") return;
+      const hit = matchPosShortcut(e);
+      if (hit === "clearCart") {
+        // The till panel only: never from inside checkout, the slip or a picker.
+        if (chargeOpen || completedSale || variantPicker || scannerOpen || cart.length === 0) return;
+        if ((e.target as HTMLElement | null)?.closest?.("[role='dialog']")) return;
+        e.preventDefault();
+        void clearCart(true);
+        return;
+      }
+      if (hit !== "checkout") return;
       if (completedSale || variantPicker || scannerOpen) return;
       // ⚠️ Not from inside a dropdown or a nested dialog. A search list takes
       // Enter to pick its highlighted item, and the sale would be placed before
@@ -969,7 +1002,9 @@ export default function POS() {
         <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
           <div className="font-semibold flex items-center gap-2"><Receipt className="size-4" /> {t("pos.cart")}</div>
           {cart.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setCart([])}><Trash2 className="size-4 me-1" /> {t("common.delete")}</Button>
+            <Button variant="ghost" size="sm" onClick={() => void clearCart(false)} title={`Clear cart (${shortcutLabel("clearCart", isMac)})`}>
+              <Trash2 className="size-4 me-1" /> {t("common.delete")}
+            </Button>
           )}
         </div>
 
@@ -1455,6 +1490,7 @@ export default function POS() {
         />
       )}
       <LabTokenDialog orders={labTokens} onClose={() => setLabTokens(null)} />
+      {confirmDialog}
     </div>
   );
 }

@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
-import { matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
+import { BROWSER_RESERVED, matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
 import { orderSteps, stepsIn, advanceFrom, STEP } from "@/lib/checkout-keys";
 
 /**
- * The till is driven from the keyboard: Enter walks the checkout, and four
- * shortcuts open checkout, print, send WhatsApp and start a new sale. These pin
- * the rules — including the shortcuts that were deliberately NOT taken.
+ * The till is driven from the keyboard: Enter walks the checkout, and Ctrl/Cmd
+ * shortcuts open checkout, print, send WhatsApp, start a new sale and clear the
+ * cart. These pin the rules — including the keys that must NOT trigger them.
  */
 
 const key = (over: Partial<Parameters<typeof matchPosShortcut>[0]>) => ({
@@ -24,42 +24,59 @@ describe("matchPosShortcut", () => {
     expect(matchPosShortcut(key({ key: "Enter", metaKey: true }))).toBe("checkout");
   });
 
-  it("prints on Ctrl+P / Cmd+P", () => {
+  it("prints, sends WhatsApp and starts a new sale on Ctrl/Cmd + P, W, N", () => {
     expect(matchPosShortcut(key({ key: "p", code: "KeyP", ctrlKey: true }))).toBe("print");
-    expect(matchPosShortcut(key({ key: "p", code: "KeyP", metaKey: true }))).toBe("print");
+    expect(matchPosShortcut(key({ key: "w", code: "KeyW", ctrlKey: true }))).toBe("whatsapp");
+    expect(matchPosShortcut(key({ key: "n", code: "KeyN", ctrlKey: true }))).toBe("newSale");
+    expect(matchPosShortcut(key({ key: "w", code: "KeyW", metaKey: true }))).toBe("whatsapp");
+    expect(matchPosShortcut(key({ key: "n", code: "KeyN", metaKey: true }))).toBe("newSale");
   });
 
-  it("matches Alt+W and Alt+N on Windows, where the key is the letter", () => {
-    expect(matchPosShortcut(key({ key: "w", code: "KeyW", altKey: true }))).toBe("whatsapp");
-    expect(matchPosShortcut(key({ key: "n", code: "KeyN", altKey: true }))).toBe("newSale");
+  it("matches the physical key, so a non-English layout still works", () => {
+    // An Urdu or Arabic layout types a different character on the W key.
+    expect(matchPosShortcut(key({ key: "ص", code: "KeyW", ctrlKey: true }))).toBe("whatsapp");
   });
 
-  it("still matches on a Mac, where Option+W types ∑ and Option+N is a dead key", () => {
-    // `key` never says "w" or "n" there — only the physical `code` does.
-    expect(matchPosShortcut(key({ key: "∑", code: "KeyW", altKey: true }))).toBe("whatsapp");
-    expect(matchPosShortcut(key({ key: "Dead", code: "KeyN", altKey: true }))).toBe("newSale");
+  it("clears the cart on Ctrl/Cmd+Shift+Backspace", () => {
+    expect(matchPosShortcut(key({ key: "Backspace", ctrlKey: true, shiftKey: true }))).toBe("clearCart");
+    expect(matchPosShortcut(key({ key: "Backspace", metaKey: true, shiftKey: true }))).toBe("clearCart");
   });
 
-  it("leaves copy, close-tab and save alone", () => {
-    // Ctrl+C would stop anyone copying text on the till; Ctrl+W closes the tab
-    // and can't be blocked; Ctrl+S means save. None of them may be claimed.
+  it("never clears the cart on a plain or single-modifier Backspace", () => {
+    // Ctrl+Backspace deletes a word while typing in the search box, and Cmd+Backspace
+    // deletes a line on a Mac — neither may wipe the order.
+    expect(matchPosShortcut(key({ key: "Backspace" }))).toBeNull();
+    expect(matchPosShortcut(key({ key: "Backspace", ctrlKey: true }))).toBeNull();
+    expect(matchPosShortcut(key({ key: "Backspace", metaKey: true }))).toBeNull();
+  });
+
+  it("uses no Alt shortcuts, as the shop asked", () => {
+    expect(matchPosShortcut(key({ key: "w", code: "KeyW", altKey: true }))).toBeNull();
+    expect(matchPosShortcut(key({ key: "n", code: "KeyN", altKey: true }))).toBeNull();
+    expect(matchPosShortcut(key({ key: "w", code: "KeyW", altKey: true, ctrlKey: true }))).toBeNull();
+  });
+
+  it("still leaves copy and save alone", () => {
     expect(matchPosShortcut(key({ key: "c", code: "KeyC", ctrlKey: true }))).toBeNull();
-    expect(matchPosShortcut(key({ key: "w", code: "KeyW", ctrlKey: true }))).toBeNull();
     expect(matchPosShortcut(key({ key: "s", code: "KeyS", ctrlKey: true }))).toBeNull();
   });
 
-  it("ignores a plain Enter and near-miss combinations", () => {
+  it("ignores a plain Enter and shifted letters", () => {
     expect(matchPosShortcut(key({ key: "Enter" }))).toBeNull();
-    expect(matchPosShortcut(key({ key: "p", code: "KeyP", altKey: true }))).toBeNull();
     expect(matchPosShortcut(key({ key: "P", code: "KeyP", ctrlKey: true, shiftKey: true }))).toBeNull();
-    expect(matchPosShortcut(key({ key: "w", code: "KeyW", altKey: true, ctrlKey: true }))).toBeNull();
+    expect(matchPosShortcut(key({ key: "W", code: "KeyW", ctrlKey: true, shiftKey: true }))).toBeNull();
+  });
+
+  it("marks the two keys a browser keeps for itself", () => {
+    expect([...BROWSER_RESERVED].sort()).toEqual(["newSale", "whatsapp"]);
   });
 
   it("labels each shortcut for the platform", () => {
     expect(shortcutLabel("checkout", false)).toBe("Ctrl+Enter");
     expect(shortcutLabel("checkout", true)).toBe("⌘↵");
-    expect(shortcutLabel("whatsapp", false)).toBe("Alt+W");
-    expect(shortcutLabel("newSale", true)).toBe("⌥N");
+    expect(shortcutLabel("whatsapp", false)).toBe("Ctrl+W");
+    expect(shortcutLabel("newSale", true)).toBe("⌘N");
+    expect(shortcutLabel("clearCart", false)).toBe("Ctrl+Shift+Backspace");
   });
 });
 

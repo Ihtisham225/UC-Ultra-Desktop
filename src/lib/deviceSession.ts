@@ -150,6 +150,48 @@ export async function refreshShops(): Promise<void> {
   }
 }
 
+/**
+ * The saved session once `deletedId` no longer exists: that store is gone from
+ * the list, its permissions are dropped, and the current store falls to the
+ * first one left — or "" when none is left, which RequireShop turns into the
+ * onboarding screen. Pure, so the rule can be pinned by a test.
+ */
+export function sessionWithoutShop(session: StoredSession, deletedId: string): StoredSession {
+  const shops = session.shops.filter((s) => s.id !== deletedId);
+  const permissionsByShop = { ...session.permissionsByShop };
+  delete permissionsByShop[deletedId];
+  const currentShopId =
+    session.currentShopId && session.currentShopId !== deletedId && shops.some((s) => s.id === session.currentShopId)
+      ? session.currentShopId
+      : (shops[0]?.id ?? "");
+  return { ...session, shops, permissionsByShop, currentShopId };
+}
+
+/**
+ * Leave a store that was just deleted.
+ *
+ * ⚠️ The device token is scoped to ONE store, and it was this one. Re-opening it
+ * (what `refresh()` did) is refused with 403 "Not a member of that shop", and the
+ * failure was swallowed — so the terminal kept a session, and a token, for a
+ * store that no longer existed. When another store is left, a fresh token is
+ * issued for it. When none is, the session simply stops listing the dead store.
+ *
+ * Returns where the caller should go next.
+ */
+export async function leaveDeletedShop(deletedId: string): Promise<"/" | "/onboarding"> {
+  const current = getSession();
+  if (!current) return "/onboarding";
+  const next = sessionWithoutShop(current, deletedId);
+  persist(next);
+  if (!next.currentShopId) return "/onboarding";
+  try {
+    await switchToShop(next.currentShopId); // a token that isn't scoped to the dead store
+  } catch {
+    // Offline or refused: the list is already right; the next sync will say more.
+  }
+  return "/";
+}
+
 export function signOut() {
   apiLogout();
   persist(null);

@@ -1,19 +1,27 @@
 /**
  * Keyboard shortcuts for the till.
  *
- * Chosen so none of them fights something the counter already relies on:
- * - Ctrl+Enter, not Ctrl+C — Ctrl+C is copy, and taking it would stop anyone
- *   copying a name or a number anywhere on the POS screen.
- * - Alt+W, not Ctrl+W — Ctrl+W closes the browser tab, and a page is not
- *   allowed to block it: the sale in progress would simply vanish.
- * - Alt+N, not Ctrl+S — Ctrl+S means "save", which is not "new sale".
- * - Ctrl+P stays Print; it already means print everywhere.
- * On a Mac the Ctrl shortcuts use Cmd, and Alt is Option.
+ * - Ctrl/Cmd+Enter — open checkout, and place the order from inside it.
+ * - Ctrl/Cmd+P — print the receipt.
+ * - Ctrl/Cmd+W — send the receipt on WhatsApp.
+ * - Ctrl/Cmd+N — start a new sale.
+ * - Ctrl/Cmd+Shift+Backspace — clear the cart (asks first).
+ * On a Mac the Ctrl shortcuts use Cmd. The shop asked for Cmd-style keys
+ * throughout, so there are no Alt shortcuts.
+ *
+ * ⚠️⚠️ Ctrl/Cmd+W and Ctrl/Cmd+N are the BROWSER'S keys — close tab and new
+ * window — and a web page is never told about them, let alone allowed to stop
+ * them. They work in the desktop app (whose own menu no longer claims them) but
+ * NOT on ucultra.com in a browser: there, Ctrl+W closes the tab. The sale is
+ * already saved by the time the receipt is showing, so nothing is lost, but the
+ * web app must not advertise those two keys — see BROWSER_RESERVED.
+ *
+ * Ctrl+C (copy) and Ctrl+S (save) are still deliberately left alone.
  *
  * A copy of the web app's `src/lib/pos-shortcuts.ts` — keep the two in step.
  */
 
-export type PosShortcut = "checkout" | "print" | "whatsapp" | "newSale";
+export type PosShortcut = "checkout" | "print" | "whatsapp" | "newSale" | "clearCart";
 
 interface KeyLike {
   key: string;
@@ -24,28 +32,30 @@ interface KeyLike {
   shiftKey: boolean;
 }
 
-/**
- * ⚠️ Letters match on `code` (the physical key) as well as `key`. On a Mac,
- * Option+W types "∑" and Option+N is a dead key, so `key` alone would never
- * see "w" or "n" there.
- */
+/** Physical key as well as the character, so a non-English layout still matches. */
 const isLetter = (e: KeyLike, letter: string) =>
   e.code === `Key${letter.toUpperCase()}` || e.key.toLowerCase() === letter;
 
 export function matchPosShortcut(e: KeyLike): PosShortcut | null {
   const mod = e.ctrlKey || e.metaKey;
-  if (mod && !e.altKey && e.key === "Enter") return "checkout";
-  if (mod && !e.altKey && !e.shiftKey && isLetter(e, "p")) return "print";
-  if (e.altKey && !mod && isLetter(e, "w")) return "whatsapp";
-  if (e.altKey && !mod && isLetter(e, "n")) return "newSale";
+  if (!mod || e.altKey) return null;
+  if (e.key === "Enter") return "checkout";
+  if (e.shiftKey) return e.key === "Backspace" ? "clearCart" : null;
+  if (isLetter(e, "p")) return "print";
+  if (isLetter(e, "w")) return "whatsapp";
+  if (isLetter(e, "n")) return "newSale";
   return null;
 }
+
+/** Shortcuts a browser keeps for itself — they only work in the desktop app. */
+export const BROWSER_RESERVED: readonly PosShortcut[] = ["whatsapp", "newSale"];
 
 const LABELS: Record<PosShortcut, { mac: string; other: string }> = {
   checkout: { mac: "⌘↵", other: "Ctrl+Enter" },
   print: { mac: "⌘P", other: "Ctrl+P" },
-  whatsapp: { mac: "⌥W", other: "Alt+W" },
-  newSale: { mac: "⌥N", other: "Alt+N" },
+  whatsapp: { mac: "⌘W", other: "Ctrl+W" },
+  newSale: { mac: "⌘N", other: "Ctrl+N" },
+  clearCart: { mac: "⌘⇧⌫", other: "Ctrl+Shift+Backspace" },
 };
 
 export function shortcutLabel(s: PosShortcut, isMac: boolean): string {
