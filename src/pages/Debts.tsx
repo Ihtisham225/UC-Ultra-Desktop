@@ -3,7 +3,8 @@ import { useLocalStore } from "@/hooks/useLocalStore";
 import { derivePaidAmount } from "@/lib/ledger";
 import { syncNow } from "@/lib/syncEngine";
 import { v4 as uuid } from "uuid";
-import { upsertLocal, deleteLocal, notifyChange } from "@/lib/localDb";
+import { upsertLocal, deleteLocal, notifyChange, getById } from "@/lib/localDb";
+import { allocateSettlement, groupLedgers, increaseTarget, type LedgerGroup } from "@/lib/ledger-groups";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -56,8 +57,12 @@ interface Debt {
   settled_at: string | null;
   created_at: string;
   updated_at: string;
+  /** The bill this row was raised by, when it came from a sale or a purchase. */
+  sale_id?: string | null;
+  purchase_id?: string | null;
 }
 
+type Group = LedgerGroup<Debt>;
 type EntryKind = "payment" | "increase";
 
 interface DebtPayment {
@@ -98,8 +103,13 @@ const emptyPayment = {
 const getRemainingAmount = (debt: Pick<Debt, "amount" | "paid_amount">) =>
   Math.max(Number(debt.amount) - Number(debt.paid_amount ?? 0), 0);
 
-const getDisplayStatus = (debt: Pick<Debt, "status" | "amount" | "paid_amount">): Status =>
-  getRemainingAmount(debt as Debt) <= 0 ? "settled" : debt.status;
+/** How one khata row is named inside a person's account. */
+const billLabel = (d: Pick<Debt, "sale_id" | "purchase_id" | "notes">, billNo: Map<string, string>) =>
+  d.sale_id
+    ? `Bill ${billNo.get(d.sale_id) ?? ""}`.trim()
+    : d.purchase_id
+      ? `Purchase ${billNo.get(d.purchase_id) ?? ""}`.trim()
+      : d.notes?.trim() || "Ledger entry";
 
 export default function Debts() {
   const { currentShop } = useShop();
@@ -148,42 +158,82 @@ export default function Debts() {
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
-  const [paymentsOpen, setPaymentsOpen] = useState(false);
-  // Held by id, not by value: the open dialog's balance has to follow the
-  // derived list, so recording a payment updates it without a refetch.
-  const [selectedDebtId, setSelectedDebtId] = useState<string | null>(null);
-  const payments: DebtPayment[] = useMemo(
-    () =>
-      allPayments
-        .filter((p) => p.debt_id === selectedDebtId)
-        .sort((a, b) =>
-          String(a.payment_date ?? "").localeCompare(String(b.payment_date ?? "")),
-        ),
-    [allPayments, selectedDebtId],
+  /**
+   * One account per person. Every unpaid bill still has its own khata row (so
+   * editing or voiding that bill reverses exactly its share), but a customer
+   * with two unpaid bills is ONE ledger on this screen, not two.
+   */
+  const groups = useMemo(
+    () => groupLedgers(items).sort((a, b) => b.latest_at.localeCompare(a.latest_at)),
+    [items],
   );
-  const [paymentsLoading, setPaymentsLoading] = useState(false);
+
+  /**
+   * Each bill's number, for naming it inside the account. Looked up by id
+   * rather than loading every sale and purchase into this page.
+   */
+  const [billNo, setBillNo] = useState<Map<string, string>>(new Map());
+  const billIds = useMemo(
+    () =>
+      items
+        .map((d) => (d.sale_id ? `sales:${d.sale_id}` : d.purchase_id ? `purchases:${d.purchase_id}` : ""))
+        .filter(Boolean)
+        .sort()
+        .join(","),
+    [items],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const next = new Map<string, string>();
+      for (const ref of billIds ? billIds.split(",") : []) {
+        const [table, id] = ref.split(":");
+        const row = await getById<{ receipt_number?: string | null; reference_number?: string | null }>(table, id);
+        const no = table === "sales" ? row?.receipt_number : row?.reference_number;
+        if (no) next.set(id, no);
+      }
+      if (!cancelled) setBillNo(next);
+    })();
+    return () => { cancelled = true; };
+  }, [billIds]);
+
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
+  // Held by ledger key, not by value: the open dialog's balance has to follow
+  // the derived list, so recording a payment updates it without a refetch.
+  const [payKey, setPayKey] = useState<string | null>(null);
+  const selectedGroup = useMemo(() => groups.find((g) => g.key === payKey) ?? null, [groups, payKey]);
+  const payments: DebtPayment[] = useMemo(() => {
+    const ids = new Set(selectedGroup?.debts.map((d) => d.id) ?? []);
+    return allPayments
+      .filter((p) => ids.has(p.debt_id))
+      .sort(
+        (a, b) =>
+          String(a.payment_date ?? "").localeCompare(String(b.payment_date ?? "")) ||
+          String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")),
+      );
+  }, [allPayments, selectedGroup]);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [paymentForm, setPaymentForm] = useState({ ...emptyPayment });
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [confirmPaymentDeleteId, setConfirmPaymentDeleteId] = useState<string | null>(null);
-  const [details, setDetails] = useState<Debt | null>(null);
+  const [detailsKey, setDetailsKey] = useState<string | null>(null);
+  const detailsGroup = useMemo(() => groups.find((g) => g.key === detailsKey) ?? null, [groups, detailsKey]);
   const [importOpen, setImportOpen] = useState(false);
 
   const cur = currentShop?.currency ?? "USD";
 
-  /** Open WhatsApp (owner's own) with a pre-filled debt reminder. */
-  const sendReminder = (d: Debt) => {
-    if (!d.phone) return toast.error("This debt has no phone number.");
-    const balance = getRemainingAmount(d);
+  /** Open WhatsApp (owner's own) with a pre-filled reminder for everything the person owes. */
+  const sendReminder = (g: Group) => {
+    if (!g.phone) return toast.error("This ledger has no phone number.");
     const message = buildDebtReminderMessage({
-      personName: d.person_name,
+      personName: g.person_name,
       shopName: currentShop?.name ?? "our shop",
-      balance,
-      currency: d.currency ?? cur,
-      dueDate: d.due_date,
+      balance: g.remaining,
+      currency: g.currency ?? cur,
+      dueDate: g.due_date,
       formatMoney,
     });
-    const url = buildWaReminderUrl(d.phone, message);
+    const url = buildWaReminderUrl(g.phone, message);
     if (!url) return toast.error("This phone number looks invalid for WhatsApp.");
     window.open(url, "_blank", "noopener,noreferrer");
   };
@@ -201,10 +251,6 @@ export default function Debts() {
     return items;
   };
 
-  const loadPayments = async (debtId: string) => {
-    setPaymentsLoading(false);
-    return allPayments.filter((p: DebtPayment) => p.debt_id === debtId);
-  };
 
   useEffect(() => {
     void load();
@@ -212,21 +258,27 @@ export default function Debts() {
   }, [currentShop?.id]);
 
   const filtered = useMemo(() => {
-    return items.filter((d) => {
-      const displayStatus = getDisplayStatus(d);
-      if (tab !== "all" && displayStatus !== tab) return false;
-      if (filter !== "all" && d.direction !== filter) return false;
+    return groups.filter((g) => {
+      if (tab !== "all" && g.status !== tab) return false;
+      if (filter !== "all" && g.direction !== filter) return false;
       if (search) {
         const s = search.toLowerCase();
-        if (
-          !d.person_name.toLowerCase().includes(s) &&
-          !(d.phone ?? "").toLowerCase().includes(s) &&
-          !(d.notes ?? "").toLowerCase().includes(s)
-        ) return false;
+        const hit =
+          g.person_name.toLowerCase().includes(s) ||
+          (g.phone ?? "").toLowerCase().includes(s) ||
+          g.debts.some(
+            (d) =>
+              (d.notes ?? "").toLowerCase().includes(s) ||
+              (d.phone ?? "").toLowerCase().includes(s) ||
+              ((d.sale_id && billNo.get(d.sale_id)) || (d.purchase_id && billNo.get(d.purchase_id)) || "")
+                .toLowerCase()
+                .includes(s),
+          );
+        if (!hit) return false;
       }
       return true;
     });
-  }, [items, tab, filter, search]);
+  }, [groups, tab, filter, search, billNo]);
 
   const totals = useMemo(() => {
     let owedToMe = 0;
@@ -245,11 +297,7 @@ export default function Debts() {
     resetDeps: [tab, filter, search],
   });
 
-  const selectedDebt = useMemo(
-    () => items.find((d) => d.id === selectedDebtId) ?? null,
-    [items, selectedDebtId],
-  );
-  const selectedDebtRemaining = selectedDebt ? getRemainingAmount(selectedDebt) : 0;
+  const selectedRemaining = selectedGroup?.remaining ?? 0;
 
   const startCreate = () => {
     setEditing(null);
@@ -281,24 +329,13 @@ export default function Debts() {
     setOpen(true);
   };
 
-  const openPaymentsDialog = async (debt: Debt) => {
-    setSelectedDebtId(debt.id);
+  const openPaymentsDialog = (g: Group) => {
+    setPayKey(g.key);
     setPaymentsOpen(true);
     setPaymentForm({
       ...emptyPayment,
-      amount: debt.paid_amount > 0 ? String(getRemainingAmount(debt) || "") : "",
+      amount: g.paid > 0 ? String(g.remaining || "") : "",
     });
-    await loadPayments(debt.id);
-  };
-
-  const refreshDebtState = async (debtId?: string) => {
-    const nextItems = await load();
-    if (!debtId) return;
-    const nextDebt = nextItems.find((item) => item.id === debtId) ?? null;
-    setSelectedDebtId(nextDebt?.id ?? null);
-    if (nextDebt) {
-      await loadPayments(nextDebt.id);
-    }
   };
 
   const save = async () => {
@@ -367,10 +404,10 @@ export default function Debts() {
   };
 
   const savePayment = async () => {
-    if (!currentShop || !user || !selectedDebt) return;
+    if (!currentShop || !user || !selectedGroup) return;
     const amount = Number(paymentForm.amount || 0);
     const discount = paymentForm.kind === "payment" ? Number(paymentForm.discount || 0) : 0;
-    const remaining = getRemainingAmount(selectedDebt);
+    const remaining = selectedGroup.remaining;
     if (!Number.isFinite(amount) || amount < 0) return toast.error("Amount can't be negative");
     if (!Number.isFinite(discount) || discount < 0) return toast.error("Discount can't be negative");
     if (paymentForm.kind === "increase" && amount <= 0) {
@@ -385,39 +422,66 @@ export default function Debts() {
       return toast.error("Payment and discount together can't be more than the remaining balance");
     }
 
-    setPaymentSaving(true);
-    // The money account and the recalculated balance are the server's job when
-    // this row is pushed; the terminal only records that the money came in, so
-    // the counter can take payment with no connection.
+    const remainingOf = (d: Debt) => getRemainingAmount(d);
+    // A payment is spread across the person's bills, oldest first, as one
+    // settlement row per bill — the same split the server makes online, so
+    // each bill's balance (and what its edit or void reverses) stays its own.
+    let parts: { debt_id: string; amount: number; discount: number }[];
     try {
-      await upsertLocal(
-        "debt_payments",
-        {
-          id: uuid(),
-          shop_id: currentShop.id,
-          debt_id: selectedDebt.id,
-          created_by: user.id,
-          kind: paymentForm.kind,
+      if (paymentForm.kind === "payment") {
+        parts = allocateSettlement(
+          selectedGroup.debts.map((d) => ({ id: d.id, created_at: d.created_at, remaining: remainingOf(d) })),
           amount,
           discount,
-          payment_date: paymentForm.payment_date,
-          account_id: payAccountId || null,
-          notes: paymentForm.notes.trim() || null,
-          created_at: new Date().toISOString(),
-        },
-        true,
-      );
-      notifyChange("debt_payments");
-      // An 'increase' raises the principal; mirror it locally so the balance
-      // on screen is right before the push confirms it.
-      if (paymentForm.kind === "increase" && amount > 0) {
-        await upsertLocal(
-          "debts",
-          { ...selectedDebt, amount: Number(selectedDebt.amount) + amount, updated_at: new Date().toISOString() },
-          false,
         );
-        notifyChange("debts");
+      } else {
+        const target = increaseTarget(selectedGroup.debts, remainingOf);
+        if (!target) return toast.error("This ledger has no bills");
+        parts = [{ debt_id: target.id, amount, discount: 0 }];
       }
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : "Failed");
+    }
+
+    setPaymentSaving(true);
+    // The money account and the recalculated balance are the server's job when
+    // these rows are pushed; the terminal only records that the money came in,
+    // so the counter can take payment with no connection.
+    try {
+      const now = new Date().toISOString();
+      for (const part of parts) {
+        await upsertLocal(
+          "debt_payments",
+          {
+            id: uuid(),
+            shop_id: currentShop.id,
+            debt_id: part.debt_id,
+            created_by: user.id,
+            kind: paymentForm.kind,
+            amount: part.amount,
+            discount: part.discount,
+            payment_date: paymentForm.payment_date,
+            account_id: payAccountId || null,
+            notes: paymentForm.notes.trim() || null,
+            created_at: now,
+          },
+          true,
+        );
+        // An 'increase' raises the principal; mirror it locally so the balance
+        // on screen is right before the push confirms it.
+        if (paymentForm.kind === "increase") {
+          const debt = selectedGroup.debts.find((d) => d.id === part.debt_id);
+          if (debt) {
+            await upsertLocal(
+              "debts",
+              { ...debt, amount: Number(debt.amount) + part.amount, updated_at: now },
+              false,
+            );
+          }
+        }
+      }
+      notifyChange("debt_payments");
+      if (paymentForm.kind === "increase") notifyChange("debts");
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -427,7 +491,6 @@ export default function Debts() {
 
     toast.success(paymentForm.kind === "payment" ? "Payment recorded" : "Debt increased");
     setPaymentForm({ ...emptyPayment });
-    await refreshDebtState(selectedDebt.id);
   };
 
   const remove = async (id: string) => {
@@ -472,18 +535,20 @@ export default function Debts() {
     // Built from the local store rather than fetched: every figure on the
     // sheet is already here, and a shop settling up with someone at the
     // counter should not need the line to be up to hand them their statement.
+    // One sheet per PERSON, not per khata row — the same merge the server's
+    // statement action makes.
     const wanted = ids ? items.filter((d) => ids.includes(d.id)) : items;
-    const ledgers = [...wanted]
+    const ledgers = groupLedgers(wanted)
       .sort((a, b) => a.person_name.localeCompare(b.person_name))
-      .map((d) => ({
-        person_name: d.person_name,
-        phone: d.phone,
-        direction: d.direction,
-        amount: Number(d.amount ?? 0),
-        paid_amount: Number(d.paid_amount ?? 0),
-        notes: d.notes,
+      .map((g) => ({
+        person_name: g.person_name,
+        phone: g.phone,
+        direction: g.direction,
+        amount: g.amount,
+        paid_amount: g.paid,
+        notes: g.debts.length === 1 ? g.debts[0].notes : null,
         payments: allPayments
-          .filter((pay) => pay.debt_id === d.id)
+          .filter((pay) => g.debts.some((d) => d.id === pay.debt_id))
           .sort((a, b) =>
             String(a.payment_date ?? "").localeCompare(String(b.payment_date ?? "")),
           )
@@ -501,7 +566,7 @@ export default function Debts() {
       shop: { name: currentShop.name, phone: currentShop.phone, address: currentShop.address },
       ledgers,
       currency: cur,
-      subtitle: ids && ids.length === 1 ? undefined : `${ledgers.length} accounts`,
+      subtitle: ledgers.length === 1 ? undefined : `${ledgers.length} accounts`,
     });
 
     const iframe = document.createElement("iframe");
@@ -542,9 +607,9 @@ export default function Debts() {
                 {/* Printing "all" from the filtered list would silently drop
                     the settled accounts, since the list opens on Open. */}
                 <DropdownMenuItem onClick={() => void printStatements()}>
-                  Every account ({items.length})
+                  Every account ({groups.length})
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void printStatements(filtered.map((d) => d.id))}>
+                <DropdownMenuItem onClick={() => void printStatements(filtered.flatMap((g) => g.debts.map((d) => d.id)))}>
                   Just this list ({filtered.length})
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -561,8 +626,8 @@ export default function Debts() {
 
       <PageTip id="debts.intro" title="Two directions: to receive, and to pay">
         Use <b>To receive</b> when a customer owes you (these are also created automatically from credit sales at POS).
-        Use <b>To pay</b> for money your shop owes a supplier or anyone else. Add a payment any time and the remaining balance updates;
-        once fully paid, the debt is marked <b>settled</b>.
+        Use <b>To pay</b> for money your shop owes a supplier or anyone else. Each person has one ledger: a new unpaid bill
+        adds to it, and a payment clears their oldest bill first. Once fully paid, the ledger is marked <b>settled</b>.
       </PageTip>
 
 
@@ -615,7 +680,7 @@ export default function Debts() {
               </SelectContent>
             </Select>
             <Input
-              placeholder="Search name, phone, notes…"
+              placeholder="Search name, phone, bill #, notes…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-9 w-56"
@@ -642,18 +707,21 @@ export default function Debts() {
                 <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
               ) : visible.length === 0 ? (
                 <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">No debts to show.</TableCell></TableRow>
-              ) : visible.map((d) => {
-                const remaining = getRemainingAmount(d);
-                const displayStatus = getDisplayStatus(d);
+              ) : visible.map((g) => {
+                const money = (n: number) => formatMoney(n, g.currency ?? cur);
+                const only = g.debts.length === 1 ? g.debts[0] : null;
 
                 return (
-                  <TableRow key={d.id}>
+                  <TableRow key={g.key}>
                     <TableCell>
-                      <div className="font-medium">{d.person_name}</div>
-                      {d.phone && <div className="text-xs text-muted-foreground">{d.phone}</div>}
+                      <div className="font-medium">{g.person_name}</div>
+                      {g.phone && <div className="text-xs text-muted-foreground">{g.phone}</div>}
+                      {g.debts.length > 1 && (
+                        <div className="text-xs text-muted-foreground">{g.debts.length} bills</div>
+                      )}
                     </TableCell>
                     <TableCell>
-                      {d.direction === "owed_to_me" ? (
+                      {g.direction === "owed_to_me" ? (
                         <Badge variant="outline" className="text-success border-success/40">
                           <ArrowDownLeft className="size-3 mr-1" /> To receive
                         </Badge>
@@ -663,42 +731,42 @@ export default function Debts() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatMoney(d.amount, d.currency ?? cur)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatMoney(d.paid_amount ?? 0, d.currency ?? cur)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatMoney(remaining, d.currency ?? cur)}
-                    </TableCell>
-                    <TableCell className="text-sm">{d.due_date ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">{money(g.amount)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{money(g.paid)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">{money(g.remaining)}</TableCell>
+                    <TableCell className="text-sm">{g.due_date ?? "—"}</TableCell>
                     <TableCell>
-                      {displayStatus === "open"
+                      {g.status === "open"
                         ? <Badge variant="secondary">Open</Badge>
                         : <Badge>Settled</Badge>}
                     </TableCell>
-                    
+
                     <TableCell className="text-right">
                       {canManage && (
                         <div className="flex justify-end gap-2">
-                          {d.direction === "owed_to_me" && d.phone && remaining > 0 && (
-                            <Button variant="ghost" size="icon" className="size-8 text-success" onClick={() => sendReminder(d)} title="Send WhatsApp reminder">
+                          {g.direction === "owed_to_me" && g.phone && g.remaining > 0 && (
+                            <Button variant="ghost" size="icon" className="size-8 text-success" onClick={() => sendReminder(g)} title="Send WhatsApp reminder">
                               <MessageCircle className="size-4" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setDetails(d)} title="Details">
+                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setDetailsKey(g.key)} title="Details">
                             <Eye className="size-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="size-8" onClick={() => void openPaymentsDialog(d)} title="Payments">
+                          <Button variant="ghost" size="icon" className="size-8" onClick={() => openPaymentsDialog(g)} title="Payments">
                             <Wallet className="size-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="size-8" onClick={() => startEdit(d)} title="Edit">
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setConfirmId(d.id)} title="Delete">
-                            <Trash2 className="size-4" />
-                          </Button>
+                          {/* With several bills, each is edited from the details
+                              view — one pencil here couldn't say which bill. */}
+                          {only && (
+                            <>
+                              <Button variant="ghost" size="icon" className="size-8" onClick={() => startEdit(only)} title="Edit">
+                                <Pencil className="size-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setConfirmId(only.id)} title="Delete">
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       )}
                     </TableCell>
@@ -790,30 +858,32 @@ export default function Debts() {
         onOpenChange={(nextOpen) => {
           setPaymentsOpen(nextOpen);
           if (!nextOpen) {
-            setSelectedDebtId(null);
+            setPayKey(null);
             setPaymentForm({ ...emptyPayment });
           }
         }}
       >
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Payments{selectedDebt ? ` · ${selectedDebt.person_name}` : ""}</DialogTitle>
+            <DialogTitle>Payments{selectedGroup ? ` · ${selectedGroup.person_name}` : ""}</DialogTitle>
           </DialogHeader>
 
-          {selectedDebt && (
-            <div className="space-y-4 py-2">
+          {selectedGroup && (
+            // min-w-0: the dialog is a grid, and without it the entries table
+            // (wider now it names each bill) stretches the dialog past its edge.
+            <div className="space-y-4 py-2 min-w-0">
               <div className="grid gap-3 sm:grid-cols-3">
                 <Card className="p-3">
                   <div className="text-xs text-muted-foreground">Total debt</div>
-                  <div className="mt-1 font-semibold tabular-nums">{formatMoney(selectedDebt.amount, selectedDebt.currency ?? cur)}</div>
+                  <div className="mt-1 font-semibold tabular-nums">{formatMoney(selectedGroup.amount, selectedGroup.currency ?? cur)}</div>
                 </Card>
                 <Card className="p-3">
                   <div className="text-xs text-muted-foreground">Paid</div>
-                  <div className="mt-1 font-semibold tabular-nums">{formatMoney(selectedDebt.paid_amount, selectedDebt.currency ?? cur)}</div>
+                  <div className="mt-1 font-semibold tabular-nums">{formatMoney(selectedGroup.paid, selectedGroup.currency ?? cur)}</div>
                 </Card>
                 <Card className="p-3">
                   <div className="text-xs text-muted-foreground">Remaining</div>
-                  <div className="mt-1 font-semibold tabular-nums">{formatMoney(selectedDebtRemaining, selectedDebt.currency ?? cur)}</div>
+                  <div className="mt-1 font-semibold tabular-nums">{formatMoney(selectedRemaining, selectedGroup.currency ?? cur)}</div>
                 </Card>
               </div>
 
@@ -837,9 +907,13 @@ export default function Debts() {
                         <div className="space-y-0.5">
                           <div className="text-sm font-medium flex items-center gap-1.5">
                             <TrendingDown className="size-4 text-success" />
-                            {selectedDebt.direction === "owed_to_me" ? "Receive payment" : "Make payment"}
+                            {selectedGroup.direction === "owed_to_me" ? "Receive payment" : "Make payment"}
                           </div>
-                          <div className="text-xs text-muted-foreground">Reduces the remaining balance.</div>
+                          <div className="text-xs text-muted-foreground">
+                            {selectedGroup.debts.length > 1
+                              ? "Reduces the remaining balance, oldest bill first."
+                              : "Reduces the remaining balance."}
+                          </div>
                         </div>
                       </label>
                       <label
@@ -869,7 +943,7 @@ export default function Debts() {
                         inputMode="decimal"
                         min="0"
                         step="0.01"
-                        max={paymentForm.kind === "payment" ? selectedDebtRemaining : undefined}
+                        max={paymentForm.kind === "payment" ? selectedRemaining : undefined}
                         value={paymentForm.amount}
                         onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                       />
@@ -923,6 +997,7 @@ export default function Debts() {
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Type</TableHead>
+                      {selectedGroup.debts.length > 1 && <TableHead>Bill</TableHead>}
                       <TableHead>Notes</TableHead>
                       <TableHead className="text-right">Discount</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
@@ -930,16 +1005,13 @@ export default function Debts() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paymentsLoading ? (
+                    {payments.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Loading entries…</TableCell>
-                      </TableRow>
-                    ) : payments.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No entries recorded yet.</TableCell>
+                        <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No entries recorded yet.</TableCell>
                       </TableRow>
                     ) : payments.map((payment) => {
                       const isIncrease = payment.kind === "increase";
+                      const bill = selectedGroup.debts.find((d) => d.id === payment.debt_id);
                       return (
                         <TableRow key={payment.id}>
                           <TableCell>{payment.payment_date}</TableCell>
@@ -954,12 +1026,15 @@ export default function Debts() {
                               </Badge>
                             )}
                           </TableCell>
+                          {selectedGroup.debts.length > 1 && (
+                            <TableCell className="text-sm whitespace-nowrap">{bill ? billLabel(bill, billNo) : "—"}</TableCell>
+                          )}
                           <TableCell className="text-sm text-muted-foreground">{payment.notes ?? "—"}</TableCell>
                           <TableCell className="text-right tabular-nums text-warning">
                             {Number(payment.discount ?? 0) > 0 ? formatMoney(Number(payment.discount), cur) : "—"}
                           </TableCell>
                           <TableCell className={"text-right tabular-nums font-medium " + (isIncrease ? "text-destructive" : "text-success")}>
-                            {isIncrease ? "+" : "−"}{formatMoney(payment.amount, selectedDebt.currency ?? cur)}
+                            {isIncrease ? "+" : "−"}{formatMoney(payment.amount, selectedGroup.currency ?? cur)}
                           </TableCell>
                           <TableCell className="text-right">
                             {canManage && (
@@ -985,35 +1060,88 @@ export default function Debts() {
         </DialogContent>
       </Dialog>
 
-      {details && (
+      {detailsGroup && (
         <DetailsDialog
-          open={!!details}
-          onClose={() => setDetails(null)}
-          title={details.person_name}
-          subtitle={details.direction === "owed_to_me" ? "To receive" : "To pay"}
+          open={!!detailsGroup}
+          onClose={() => setDetailsKey(null)}
+          title={detailsGroup.person_name}
+          subtitle={detailsGroup.direction === "owed_to_me" ? "To receive" : "To pay"}
           rows={[
-            { label: "Type", value: details.direction === "owed_to_me" ? "I will receive money" : "I will pay money" },
-            { label: "Status", value: getDisplayStatus(details) === "settled" ? "Settled" : "Open" },
-            { label: "Phone", value: details.phone ?? "—" },
-            { label: "Due date", value: details.due_date ?? "—" },
-            { label: "Total amount", value: formatMoney(details.amount, details.currency ?? cur) },
-            { label: "Paid", value: formatMoney(details.paid_amount ?? 0, details.currency ?? cur) },
-            { label: "Remaining", value: formatMoney(getRemainingAmount(details), details.currency ?? cur) },
-            { label: "Created", value: new Date(details.created_at).toLocaleString() },
-            { label: "Settled at", value: details.settled_at ? new Date(details.settled_at).toLocaleString() : "—" },
-            { label: "Notes", value: details.notes ?? "—", full: true },
+            { label: "Type", value: detailsGroup.direction === "owed_to_me" ? "I will receive money" : "I will pay money" },
+            { label: "Status", value: detailsGroup.status === "settled" ? "Settled" : "Open" },
+            { label: "Phone", value: detailsGroup.phone ?? "—" },
+            { label: "Due date", value: detailsGroup.due_date ?? "—" },
+            { label: "Total amount", value: formatMoney(detailsGroup.amount, detailsGroup.currency ?? cur) },
+            { label: "Paid", value: formatMoney(detailsGroup.paid, detailsGroup.currency ?? cur) },
+            { label: "Remaining", value: formatMoney(detailsGroup.remaining, detailsGroup.currency ?? cur) },
+            { label: "Since", value: new Date(detailsGroup.debts[0].created_at).toLocaleString() },
           ]}
           wide
         >
+          <section className="space-y-3 border-t pt-4">
+            <h3 className="text-sm font-semibold">
+              Bills on this ledger ({detailsGroup.debts.length})
+            </h3>
+            <div className="rounded-lg border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Bill</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Paid</TableHead>
+                    <TableHead className="text-right">Remaining</TableHead>
+                    {canManage && <TableHead className="text-right">Actions</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...detailsGroup.debts].reverse().map((d) => {
+                    const money = (n: number) => formatMoney(n, d.currency ?? cur);
+                    return (
+                      <TableRow key={d.id}>
+                        <TableCell>
+                          <div className="font-medium">{billLabel(d, billNo)}</div>
+                          {(d.sale_id || d.purchase_id) && d.notes && (
+                            <div className="text-xs text-muted-foreground break-words">{d.notes}</div>
+                          )}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">{new Date(d.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell className="text-right tabular-nums">{money(d.amount)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{money(d.paid_amount ?? 0)}</TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">{money(getRemainingAmount(d))}</TableCell>
+                        {canManage && (
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" className="size-8" onClick={() => startEdit(d)} title="Edit">
+                                <Pencil className="size-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setConfirmId(d.id)} title="Delete">
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </section>
           <LedgerEntriesTable
+            debts={detailsGroup.debts.map((d) => ({
+              id: d.id,
+              amount: d.amount,
+              created_at: d.created_at,
+              label: billLabel(d, billNo),
+            }))}
             payments={allPayments
-              .filter((p) => p.debt_id === details.id)
+              .filter((p) => detailsGroup.debts.some((d) => d.id === p.debt_id))
               .map((p) => ({
                 ...p,
                 account_name: p.account_id ? (moneyAccounts.find((a) => a.id === p.account_id)?.name ?? null) : null,
               }))}
-            debtAmount={Number(details.amount)}
-            currency={details.currency ?? cur}
+            currency={detailsGroup.currency ?? cur}
           />
         </DetailsDialog>
       )}
@@ -1021,7 +1149,7 @@ export default function Debts() {
       <ConfirmDialog
         open={!!confirmId}
         onOpenChange={(v) => !v && setConfirmId(null)}
-        title="Delete debt?"
+        title="Delete this bill from the ledger?"
         description="This action cannot be undone."
         variant="destructive"
         onConfirm={() => { if (confirmId) void remove(confirmId); }}

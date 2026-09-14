@@ -19,34 +19,40 @@ afterEach(() => {
 const render = (el: ReactElement) => act(() => root.render(el));
 const text = () => container.textContent ?? "";
 
-describe("the ledger's payment history", () => {
-  it("lists each entry with its account and the balance after it", () => {
+describe("the ledger's account history", () => {
+  const bills = [
+    { id: "ord214", amount: 18070, created_at: "2026-09-13T09:00:00", label: "Bill ORD-214" },
+    { id: "ord215", amount: 1700, created_at: "2026-09-14T09:00:00", label: "Bill ORD-215" },
+  ];
+
+  it("lists every bill and payment for the person, with the balance after each", () => {
     render(
       <LedgerEntriesTable
-        debtAmount={18070}
+        debts={bills}
         currency="PKR"
         payments={[
-          { id: "a", kind: "payment", amount: 8070, discount: 0, payment_date: "2026-09-15", account_name: "Cash", notes: "first instalment" },
-          { id: "b", kind: "payment", amount: 5000, discount: 0, payment_date: "2026-09-20", account_name: "UBL" },
+          { id: "a", debt_id: "ord214", kind: "payment", amount: 8070, discount: 0, payment_date: "2026-09-15", account_name: "Cash", notes: "first instalment" },
+          { id: "b", debt_id: "ord215", kind: "payment", amount: 1700, discount: 0, payment_date: "2026-09-20", account_name: "UBL" },
         ]}
       />,
     );
-    expect(text()).toContain("Opening amount");
+    expect(text()).toContain("Bill ORD-214");
+    expect(text()).toContain("Bill ORD-215");
     expect(text()).toContain("first instalment");
     expect(text()).toContain("UBL");
-    // The last balance and "Remaining" agree: 18,070 − 8,070 − 5,000.
-    expect(text()).toMatch(/Remaining\D*5,000/);
-    expect(container.querySelectorAll("tbody tr")).toHaveLength(3); // opening + 2 entries
+    // 18,070 + 1,700 − 8,070 − 1,700.
+    expect(text()).toMatch(/Remaining\D*10,000/);
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(4); // 2 bills + 2 payments
   });
 
-  it("says plainly when nothing has been paid", () => {
-    render(<LedgerEntriesTable debtAmount={18070} currency="PKR" payments={[]} />);
-    expect(text()).toContain("No payments recorded yet.");
-    expect(text()).toMatch(/Remaining\D*18,070/);
+  it("shows the bills even when nothing has been paid", () => {
+    render(<LedgerEntriesTable debts={bills} currency="PKR" payments={[]} />);
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(text()).toMatch(/Remaining\D*19,770/);
   });
 
   it("shows the load error instead of an empty table", () => {
-    render(<LedgerEntriesTable debtAmount={1} currency="PKR" payments={null} error="Couldn't load the entries" />);
+    render(<LedgerEntriesTable debts={bills} currency="PKR" payments={null} error="Couldn't load the entries" />);
     expect(text()).toContain("Couldn't load the entries");
     expect(container.querySelector("table")).toBeNull();
   });

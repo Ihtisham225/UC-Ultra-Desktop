@@ -101,3 +101,126 @@ export function ledgerLog(debtAmount: number | string, payments: LedgerLogPaymen
     totals: { added: round2(added), paid: round2(paid), discount: round2(discount) },
   };
 }
+
+// ─── One person's whole account ──────────────────────────────────────────────
+
+export interface PersonLogDebt {
+  id: string;
+  amount: number | string;
+  created_at: string;
+  /** How the bill is named in the log, e.g. "Bill ORD-214" or the row's notes. */
+  label?: string | null;
+}
+
+export interface PersonLogRow {
+  id: string;
+  date: string;
+  kind: "bill" | "increase" | "payment";
+  label: string | null;
+  notes: string | null;
+  account_name: string | null;
+  amount: number;
+  discount: number;
+  change: number;
+  balance_after: number;
+}
+
+export interface PersonLog {
+  rows: PersonLogRow[];
+  closing: number;
+  totals: { billed: number; added: number; paid: number; discount: number };
+}
+
+/**
+ * A person's account across ALL their khata rows, in date order: each bill as a
+ * charge on the day it was raised, then every "added" entry and payment.
+ *
+ * Starts from zero rather than an opening lump, so the balance column is true on
+ * every line — a bill raised last week doesn't appear as money owed a month ago.
+ * Each bill's charge is its ORIGINAL amount (amount minus its own "added"
+ * entries, which appear as rows of their own), so the closing figure is
+ * Σ amount − Σ paid: the same "Remaining" the list shows.
+ */
+export function personLedgerLog(
+  debts: PersonLogDebt[],
+  payments: (LedgerLogPayment & { debt_id: string })[],
+): PersonLog {
+  const ids = new Set(debts.map((d) => d.id));
+  const mine = payments.filter((p) => ids.has(p.debt_id) && (p.kind === "increase" || p.kind === "payment"));
+  const addedBy = new Map<string, number>();
+  for (const p of mine) if (p.kind === "increase") addedBy.set(p.debt_id, (addedBy.get(p.debt_id) ?? 0) + num(p.amount));
+
+  // ⚠️ A bill's day is the LOCAL calendar day it was raised. Its stamp is an
+  // instant, and taking the first ten characters of the ISO string would put a
+  // sale rung up before 5 AM in Pakistan on the previous day.
+  const localDay = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+      ? iso.slice(0, 10)
+      : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  // Within one day a bill comes before what is paid against it.
+  const rank = { bill: 0, increase: 1, payment: 1 } as const;
+  type Pending = Omit<PersonLogRow, "balance_after"> & { at: string };
+  const pending: Pending[] = [
+    ...debts.map((d) => {
+      const original = round2(num(d.amount) - (addedBy.get(d.id) ?? 0));
+      return {
+        id: `bill:${d.id}`,
+        at: d.created_at,
+        date: localDay(d.created_at),
+        kind: "bill" as const,
+        label: d.label?.trim() || null,
+        notes: null,
+        account_name: null,
+        amount: original,
+        discount: 0,
+        change: original,
+      };
+    }),
+    ...mine.map((p) => {
+      const amount = num(p.amount);
+      const off = p.kind === "payment" ? num(p.discount) : 0;
+      return {
+        id: p.id,
+        at: p.created_at ?? "",
+        date: p.payment_date,
+        kind: p.kind as "increase" | "payment",
+        label: null,
+        notes: p.notes?.trim() || null,
+        account_name: p.account_name ?? null,
+        amount: round2(amount),
+        discount: round2(off),
+        change: round2(p.kind === "increase" ? amount : -(amount + off)),
+      };
+    }),
+  ];
+  pending.sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) || rank[a.kind] - rank[b.kind] || a.at.localeCompare(b.at) || a.id.localeCompare(b.id),
+  );
+
+  let balance = 0;
+  const totals = { billed: 0, added: 0, paid: 0, discount: 0 };
+  const rows: PersonLogRow[] = pending.map(({ at, ...r }) => {
+    void at; // only used to sort
+    balance = round2(balance + r.change);
+    if (r.kind === "bill") totals.billed += r.amount;
+    else if (r.kind === "increase") totals.added += r.amount;
+    else {
+      totals.paid += r.amount;
+      totals.discount += r.discount;
+    }
+    return { ...r, balance_after: balance };
+  });
+  return {
+    rows,
+    closing: balance,
+    totals: {
+      billed: round2(totals.billed),
+      added: round2(totals.added),
+      paid: round2(totals.paid),
+      discount: round2(totals.discount),
+    },
+  };
+}

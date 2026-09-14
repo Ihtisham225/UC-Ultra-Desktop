@@ -48,7 +48,12 @@ function statementBody(ledger: StatementLedger, currency: string): string {
   const owedToUs = ledger.direction === "owed_to_me";
   // A statement reads as a running account, so the balance is carried down the
   // page the way a paper khata does rather than only landing at the bottom.
-  let running = ledger.amount;
+  // ⚠️ `amount` already INCLUDES every "added to account" entry (they bump it),
+  // and each of those is also a row below. Starting the running balance at
+  // `amount` counted them twice, so the balance column overshot "Balance due".
+  const added = ledger.payments.reduce((a, p) => a + (p.kind === "increase" ? p.amount : 0), 0);
+  const opening = ledger.amount - added;
+  let running = opening;
   const rows = [...ledger.payments]
     .sort((a, b) => a.payment_date.localeCompare(b.payment_date))
     .map((p) => {
@@ -92,8 +97,8 @@ function statementBody(ledger: StatementLedger, currency: string): string {
         <tbody>
           <tr class="opening">
             <td></td><td>Opening — total billed</td>
-            <td class="num">${amt(ledger.amount)}</td><td class="num"></td>
-            <td class="num"></td><td class="num">${amt(ledger.amount)}</td>
+            <td class="num">${amt(opening)}</td><td class="num"></td>
+            <td class="num"></td><td class="num">${amt(opening)}</td>
           </tr>
           ${rows || `<tr><td colspan="6" class="muted center">No payments recorded yet.</td></tr>`}
         </tbody>
