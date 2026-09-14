@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { leaveDeletedShop } from "@/lib/deviceSession";
 import { useTranslation } from "react-i18next";
 import { rpc, uploadShopLogo } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
@@ -14,11 +16,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, TrendingUp, Layers } from "lucide-react";
+import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, TrendingUp, Layers, Keyboard } from "lucide-react";
 import { JobProcessesSection } from "@/components/JobProcessesSection";
 import { isHandicraft } from "@/lib/handicraft";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ReceiptPreview } from "@/components/ReceiptPreview";
+import { PosShortcutsGuide } from "@/components/PosShortcutsGuide";
 import { AppUpdateCard } from "@/components/AppUpdateCard";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { AppVersionBadge } from "@/components/AppVersionBadge";
@@ -263,11 +266,19 @@ export default function Settings() {
     toast.success(t("settings.data.exported", { table }));
   };
 
+  const navigate = useNavigate();
+  /** What the owner has typed into the delete confirmation. */
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const deleteNameMatches = !!currentShop && deleteConfirmName.trim() === currentShop.name.trim();
+
   const deleteShop = async () => {
     if (!currentShop) return;
+    // The button is disabled until the name matches, but the rule belongs here.
+    if (!deleteNameMatches) return toast.error("Type the store's name exactly to delete it");
+    const deletedId = currentShop.id;
     setBusy(true);
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("deleteShopAction");
+      const res = await rpc<{ ok: boolean; error?: string }>("deleteShopAction", deleteConfirmName);
       if (!res.ok) { setBusy(false); return toast.error(res.error ?? "Failed"); }
     } catch (e) {
       setBusy(false);
@@ -275,10 +286,14 @@ export default function Settings() {
     }
     toast.success(t("settings.danger.shopDeleted"));
     localStorage.removeItem("pos.currentShopId");
-    await refresh();
+    // ⚠️⚠️ Navigate through the ROUTER. The terminal loads index.html from disk
+    // under a HashRouter, so `window.location.href = "/onboarding"` pointed the
+    // window at file:///onboarding — a file that doesn't exist — and left a
+    // blank white screen. That is the crash a shop hit after deleting its store.
+    const next = await leaveDeletedShop(deletedId);
     setBusy(false);
-    const remaining = shops.filter((s) => s.id !== currentShop.id);
-    window.location.href = remaining.length > 0 ? "/" : "/onboarding";
+    setDeleteConfirmName("");
+    navigate(next, { replace: true });
   };
 
   return (
@@ -297,6 +312,10 @@ export default function Settings() {
           <TabsTrigger value="shop"><Store className="size-3.5 mr-1.5" />{t("settings.tabs.shop")}</TabsTrigger>
           <TabsTrigger value="receipt"><Receipt className="size-3.5 mr-1.5" />{t("settings.tabs.receipt")}</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="size-3.5 mr-1.5" />{t("settings.tabs.notifications")}</TabsTrigger>
+          {/* Everyone, cashiers most of all. A handicraft shop has no till. */}
+          {!isHandicraft(currentShop) && (
+            <TabsTrigger value="shortcuts"><Keyboard className="size-3.5 mr-1.5" />Shortcuts</TabsTrigger>
+          )}
           {canEdit && <TabsTrigger value="investors"><TrendingUp className="size-3.5 mr-1.5" />Investors</TabsTrigger>}
           {isHandicraft(currentShop) && <TabsTrigger value="processes"><Layers className="size-3.5 mr-1.5" />Processing work</TabsTrigger>}
           <TabsTrigger value="data"><Download className="size-3.5 mr-1.5" />{t("settings.tabs.data")}</TabsTrigger>
@@ -593,6 +612,12 @@ export default function Settings() {
           </div>
         </TabsContent>
 
+        {!isHandicraft(currentShop) && (
+          <TabsContent value="shortcuts">
+            <PosShortcutsGuide platform="desktop" />
+          </TabsContent>
+        )}
+
         <TabsContent value="notifications">
           <Card className="shadow-card p-6 space-y-5">
             <div className="flex items-center justify-between gap-4 py-2">
@@ -702,7 +727,7 @@ export default function Settings() {
                 <h3 className="font-semibold text-destructive">{t("settings.danger.deleteShop")}</h3>
                 <p className="text-sm text-muted-foreground mt-1" dangerouslySetInnerHTML={{ __html: t("settings.danger.deleteShopWarning", { name: currentShop?.name ?? "" }) }} />
               </div>
-              <AlertDialog>
+              <AlertDialog onOpenChange={(o) => { if (!o) setDeleteConfirmName(""); }}>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive"><Trash2 className="size-4 mr-2" />{t("settings.danger.deleteShop")}</Button>
                 </AlertDialogTrigger>
@@ -711,9 +736,29 @@ export default function Settings() {
                     <AlertDialogTitle>{t("settings.danger.deleteShopTitle", { name: currentShop?.name ?? "" })}</AlertDialogTitle>
                     <AlertDialogDescription>{t("settings.danger.deleteShopConfirm")}</AlertDialogDescription>
                   </AlertDialogHeader>
+                  {/* Two clicks deleted a store and everything in it. Typing its
+                      name means it can't happen by accident. */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="delete-shop-name">
+                      Type <span className="font-semibold">{currentShop?.name}</span> to confirm
+                    </Label>
+                    <Input
+                      id="delete-shop-name"
+                      autoComplete="off"
+                      value={deleteConfirmName}
+                      onChange={(e) => setDeleteConfirmName(e.target.value)}
+                      placeholder={currentShop?.name}
+                    />
+                  </div>
                   <AlertDialogFooter>
                     <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-                    <AlertDialogAction onClick={deleteShop} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">{t("settings.danger.yesDelete")}</AlertDialogAction>
+                    <AlertDialogAction
+                      onClick={deleteShop}
+                      disabled={!deleteNameMatches || busy}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {t("settings.danger.yesDelete")}
+                    </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>

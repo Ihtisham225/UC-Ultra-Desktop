@@ -31,6 +31,7 @@ import { Pagination } from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DetailsDialog } from "@/components/DetailsDialog";
+import { LedgerEntriesTable } from "@/components/LedgerEntriesLog";
 import { PageTip } from "@/components/PageTip";
 import { AccountPicker } from "@/components/AccountPicker";
 import { LedgerPersonPicker, type LedgerPerson } from "@/components/LedgerPersonPicker";
@@ -71,6 +72,7 @@ interface DebtPayment {
   created_by: string;
   created_at: string;
   kind: EntryKind;
+  account_id?: string | null;
 }
 
 const empty = {
@@ -108,6 +110,8 @@ export default function Debts() {
 
   const { data: rawDebts, loading: debtsLoading } = useLocalStore<Debt>("debts", currentShop?.id);
   const { data: allPayments } = useLocalStore<DebtPayment>("debt_payments", currentShop?.id);
+  // Only to name the account each settlement went through in the details log.
+  const { data: moneyAccounts } = useLocalStore<{ id: string; name: string }>("money_accounts", currentShop?.id);
 
   /**
    * ⚠️ paid_amount is DERIVED, not read. The stored column is the server's
@@ -999,7 +1003,19 @@ export default function Debts() {
             { label: "Settled at", value: details.settled_at ? new Date(details.settled_at).toLocaleString() : "—" },
             { label: "Notes", value: details.notes ?? "—", full: true },
           ]}
-        />
+          wide
+        >
+          <LedgerEntriesTable
+            payments={allPayments
+              .filter((p) => p.debt_id === details.id)
+              .map((p) => ({
+                ...p,
+                account_name: p.account_id ? (moneyAccounts.find((a) => a.id === p.account_id)?.name ?? null) : null,
+              }))}
+            debtAmount={Number(details.amount)}
+            currency={details.currency ?? cur}
+          />
+        </DetailsDialog>
       )}
 
       <ConfirmDialog

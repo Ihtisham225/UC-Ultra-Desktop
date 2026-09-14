@@ -301,34 +301,39 @@ app.on('before-quit', () => {
 })
 
 /**
- * The application menu, set explicitly on Windows and Linux.
+ * The application menu, set explicitly on every platform.
  *
- * It is Electron's default — File, Edit, View, Window, Help — with one change:
- * the Window menu has no Alt-letter mnemonic. ⚠️ On Windows a menu labelled
- * "&Window" opens on Alt+W, and Alt+W is the till's WhatsApp shortcut: the menu
- * could take the key before the page ever saw it. Everything else is as it was.
- * macOS is left on its default — Option+W types a character there and never
- * opens a menu.
+ * ⚠️⚠️ It must not claim Ctrl/Cmd+W or Ctrl/Cmd+N. The till uses them — WhatsApp
+ * and new sale — and a menu accelerator is handled before the page ever sees
+ * the key. Electron's default menu puts "Close" (Ctrl/Cmd+W) under Window, and
+ * macOS's under File, so the default would close the whole window the moment a
+ * cashier pressed the WhatsApp key. That is why there is no Close item: the
+ * window still closes from its own title-bar button, and Cmd+Q still quits.
+ * No Alt-letter mnemonics either, so a menu can't open on an Alt key.
  */
 function setApplicationMenu() {
-  if (process.platform === 'darwin') return
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      { role: 'fileMenu' },
-      { role: 'editMenu' },
-      { role: 'viewMenu' },
-      { role: 'windowMenu', label: 'Window' },
-      {
-        role: 'help',
-        submenu: [
-          {
-            label: 'Learn More',
-            click: () => { void shell.openExternal('https://electronjs.org') },
-          },
-        ],
-      },
-    ]),
-  )
+  const isMac = process.platform === 'darwin'
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac ? [{ role: 'appMenu' as const }] : [{ label: 'File', submenu: [{ role: 'quit' as const }] }]),
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    {
+      label: 'Window',
+      submenu: isMac
+        ? [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
+        : [{ role: 'minimize' }],
+    },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Learn More',
+          click: () => { void shell.openExternal('https://electronjs.org') },
+        },
+      ],
+    },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 app.whenReady().then(() => {

@@ -650,7 +650,9 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
 
   const isMac = useIsMac();
   /**
-   * Alt+W WhatsApp, Ctrl+P print, Alt+N new sale — while the slip is open.
+   * Ctrl/Cmd+W WhatsApp, Ctrl/Cmd+P print, Ctrl/Cmd+N new sale — while the slip
+   * is open. The app menu deliberately claims neither Ctrl+W nor Ctrl+N
+   * (electron/main.ts), or it would take them before this ever saw them.
    * Captured on window, ahead of the page: Ctrl+P would otherwise print the
    * whole screen instead of the receipt. Re-subscribed each render so the
    * handlers always see the current customer and sent state.
@@ -658,7 +660,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const hit = matchPosShortcut(e);
-      if (!hit || hit === "checkout") return;
+      if (!hit || hit === "checkout" || hit === "clearCart") return;
       e.preventDefault();
       e.stopPropagation();
       if (hit === "print") print();
