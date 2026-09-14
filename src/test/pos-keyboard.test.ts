@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
-import { BROWSER_RESERVED, matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
+import { BROWSER_RESERVED, isPlainEnter, matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
 import { orderSteps, stepsIn, advanceFrom, STEP } from "@/lib/checkout-keys";
 
 /**
@@ -16,6 +16,33 @@ const key = (over: Partial<Parameters<typeof matchPosShortcut>[0]>) => ({
   altKey: false,
   shiftKey: false,
   ...over,
+});
+
+describe("isPlainEnter", () => {
+  // The search box adds the first product on Enter. Cmd+Enter reaches it too,
+  // before the checkout shortcut does — so it must not count as "Enter" there,
+  // or opening checkout drops an extra product onto the bill.
+  it("is true for a bare Enter, as a barcode scanner sends", () => {
+    expect(isPlainEnter(key({ key: "Enter" }))).toBe(true);
+  });
+
+  it("is false for the checkout shortcut and any other modified Enter", () => {
+    expect(isPlainEnter(key({ key: "Enter", metaKey: true }))).toBe(false);
+    expect(isPlainEnter(key({ key: "Enter", ctrlKey: true }))).toBe(false);
+    expect(isPlainEnter(key({ key: "Enter", altKey: true }))).toBe(false);
+    expect(isPlainEnter(key({ key: "Enter", shiftKey: true }))).toBe(false);
+    // Every key the shortcut treats as checkout is one the search box ignores.
+    for (const mod of [{ ctrlKey: true }, { metaKey: true }]) {
+      const e = key({ key: "Enter", ...mod });
+      expect(matchPosShortcut(e)).toBe("checkout");
+      expect(isPlainEnter(e)).toBe(false);
+    }
+  });
+
+  it("is false mid-composition (an IME's Enter confirms the word) and for other keys", () => {
+    expect(isPlainEnter({ ...key({ key: "Enter" }), isComposing: true })).toBe(false);
+    expect(isPlainEnter(key({ key: "a" }))).toBe(false);
+  });
 });
 
 describe("matchPosShortcut", () => {

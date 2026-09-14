@@ -47,6 +47,21 @@ export function matchPosShortcut(e: KeyLike): PosShortcut | null {
   return null;
 }
 
+/**
+ * Enter with no modifier — what the product search, a barcode scanner and the
+ * Enter chain act on.
+ *
+ * ⚠️⚠️ Ctrl/Cmd+Enter is ALSO an Enter keydown, delivered to the focused field
+ * before the window's shortcut listener sees it. The search box checked only
+ * `key === "Enter"`, so Cmd+Enter from the till (where focus returns after
+ * every line) added the first product on the grid to the cart AND opened
+ * checkout — the counter found an item nobody rang up on the bill. Any field
+ * that acts on Enter must use this, not a bare key check.
+ */
+export function isPlainEnter(e: KeyLike & { isComposing?: boolean }): boolean {
+  return e.key === "Enter" && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey;
+}
+
 /** Shortcuts a browser keeps for itself — they only work in the desktop app. */
 export const BROWSER_RESERVED: readonly PosShortcut[] = ["whatsapp", "newSale"];
 
