@@ -35,7 +35,7 @@ import { VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft } f
 import { VehiclePicker, type VehicleLite } from "@/components/VehiclePicker";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { STEP, advanceFrom, focusSoon, focusStep, stepsIn } from "@/lib/checkout-keys";
-import { matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
+import { isPlainEnter, matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
 import { useIsMac } from "@/hooks/useIsMac";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -900,7 +900,9 @@ export default function POS() {
               autoFocus data-pos="search" placeholder={t("pos.searchProducts")} value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                // Only a plain Enter adds: Ctrl/Cmd+Enter is the checkout
+                // shortcut and must not also drop a product into the cart.
+                if (isPlainEnter(e.nativeEvent)) {
                   // Try barcode-style match across products + variants first
                   const code = search.trim();
                   // Straight to the new line's quantity, so the counter can
