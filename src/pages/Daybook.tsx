@@ -98,7 +98,6 @@ export default function Daybook() {
 
   const [parties, setParties] = useState<PartyOption[]>([]);
   const [entries, setEntries] = useState<DaybookEntryDto[]>([]);
-  const [summary, setSummary] = useState<DaybookSummary>(emptySummary);
   const [hints, setHints] = useState<{ units: string[]; descriptions: string[] }>({ units: [], descriptions: [] });
   const [loading, setLoading] = useState(true);
 
@@ -132,15 +131,13 @@ export default function Daybook() {
     if (!currentShop || !today) return;
     setLoading(true);
     try {
-      const [p, rows, sum, h] = await Promise.all([
+      const [p, rows, h] = await Promise.all([
         rpc<PartyOption[]>("listPartyOptionsAction"),
         rpc<DaybookEntryDto[]>("listDaybookEntriesAction", filters satisfies DaybookFilters),
-        rpc<DaybookSummary>("loadDaybookSummaryAction", filters satisfies DaybookFilters),
         rpc<{ units: string[]; descriptions: string[] }>("listDaybookHintsAction"),
       ]);
       setParties(p);
       setEntries(rows);
-      setSummary(sum);
       setHints(h);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load the daybook");
@@ -157,6 +154,23 @@ export default function Daybook() {
       ),
     [entries, status],
   );
+
+  // The tiles are the sums of exactly the lines listed, so the pending / done
+  // filter narrows them as well — they used to ignore it. Summed here from the
+  // list the screen already has, which is the same set the server would total.
+  const summary = useMemo(() => {
+    const s: DaybookSummary = { ...emptySummary };
+    for (const r of shown) {
+      if (r.kind === "money") {
+        if (r.direction === "in") s.money_in += r.amount;
+        else s.money_out += r.amount;
+      } else if (r.direction === "in") s.material_in += 1;
+      else s.material_out += 1;
+      if (r.completed_at) s.completed += 1;
+      else s.pending += 1;
+    }
+    return s;
+  }, [shown]);
 
   const pages = usePagination(shown, {
     key: "daybook",

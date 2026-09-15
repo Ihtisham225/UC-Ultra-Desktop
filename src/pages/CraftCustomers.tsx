@@ -120,12 +120,6 @@ export default function CraftCustomers() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const totals = useMemo(() => {
-    const billed = customers.reduce((a, c) => a + c.billed, 0);
-    const received = customers.reduce((a, c) => a + c.received, 0);
-    return { billed, received, outstanding: Math.round((billed - received) * 100) / 100 };
-  }, [customers]);
-
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return customers;
@@ -136,6 +130,13 @@ export default function CraftCustomers() {
         (c.city ?? "").toLowerCase().includes(q),
     );
   }, [customers, search]);
+
+  // The tiles follow the search, the same as the list under them.
+  const totals = useMemo(() => {
+    const billed = shown.reduce((a, c) => a + c.billed, 0);
+    const received = shown.reduce((a, c) => a + c.received, 0);
+    return { billed, received, outstanding: Math.round((billed - received) * 100) / 100 };
+  }, [shown]);
 
   const partyOptions = useMemo(
     () => customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),

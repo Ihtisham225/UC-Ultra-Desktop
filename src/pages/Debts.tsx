@@ -281,17 +281,21 @@ export default function Debts() {
     });
   }, [groups, tab, filter, search, billNo]);
 
+  // The tiles follow the list: the tab, the receive/pay filter and the search
+  // all narrow them, so searching one person shows what THAT person owes.
   const totals = useMemo(() => {
     let owedToMe = 0;
     let iOwe = 0;
-    items.forEach((d) => {
-      const remaining = getRemainingAmount(d);
-      if (remaining <= 0) return;
-      if (d.direction === "owed_to_me") owedToMe += remaining;
-      else iOwe += remaining;
+    filtered.forEach((g) => {
+      g.debts.forEach((d) => {
+        const remaining = getRemainingAmount(d);
+        if (remaining <= 0) return;
+        if (d.direction === "owed_to_me") owedToMe += remaining;
+        else iOwe += remaining;
+      });
     });
     return { owedToMe, iOwe, net: owedToMe - iOwe };
-  }, [items]);
+  }, [filtered]);
 
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(filtered, {
     key: "debts",
@@ -550,17 +554,27 @@ export default function Debts() {
         amount: g.amount,
         paid_amount: g.paid,
         notes: g.debts.length === 1 ? g.debts[0].notes : null,
+        // Every bill and entry, so the sheet prints the same dated history as
+        // the account dialog (personLedgerLog) rather than one opening lump.
+        bills: g.debts.map((d) => ({
+          id: d.id,
+          amount: Number(d.amount ?? 0),
+          created_at: d.created_at,
+          label: billLabel(d, billNo),
+          notes: d.sale_id || d.purchase_id ? d.notes : null,
+        })),
         payments: allPayments
           .filter((pay) => g.debts.some((d) => d.id === pay.debt_id))
-          .sort((a, b) =>
-            String(a.payment_date ?? "").localeCompare(String(b.payment_date ?? "")),
-          )
           .map((pay) => ({
+            id: pay.id,
+            debt_id: pay.debt_id,
             payment_date: String(pay.payment_date ?? "").slice(0, 10),
+            created_at: pay.created_at ?? null,
             amount: Number(pay.amount ?? 0),
             discount: Number(pay.discount ?? 0),
             kind: String(pay.kind ?? "payment"),
             notes: pay.notes ?? null,
+            account_name: pay.account_id ? (moneyAccounts.find((a) => a.id === pay.account_id)?.name ?? null) : null,
           })),
       }));
     if (ledgers.length === 0) return toast.error("Nothing to print.");

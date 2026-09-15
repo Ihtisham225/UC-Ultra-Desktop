@@ -7,12 +7,30 @@
  * it becomes a PDF ("Save as PDF" in the print dialog).
  */
 
+import { personLedgerLog } from "@/lib/ledger-log";
+
 export interface StatementPayment {
+  id: string;
+  /** The khata row (bill) the entry was taken against. */
+  debt_id: string;
   payment_date: string;
+  created_at?: string | null;
   amount: number;
   discount: number;
   kind: string;
   notes: string | null;
+  account_name?: string | null;
+}
+
+/** One khata row of the person's account — usually one bill. */
+export interface StatementBill {
+  id: string;
+  amount: number;
+  created_at: string;
+  /** "Bill ORD-214", "Purchase INV-9", or the entry's own note. */
+  label: string;
+  /** Shown under the label, e.g. "Credit sale (partial paid 30000)". */
+  notes?: string | null;
 }
 
 export interface StatementLedger {
@@ -22,6 +40,7 @@ export interface StatementLedger {
   amount: number;
   paid_amount: number;
   notes: string | null;
+  bills: StatementBill[];
   payments: StatementPayment[];
 }
 
@@ -43,36 +62,46 @@ const esc = (v: unknown) =>
 const amt = (n: number) =>
   Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/** A yyyy-mm-dd as the shop writes a date: 14/09/2026. */
+const dmy = (v: string) => (/^\d{4}-\d{2}-\d{2}/.test(v) ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}` : v);
+
 function statementBody(ledger: StatementLedger, currency: string): string {
-  const remaining = Math.max(ledger.amount - ledger.paid_amount, 0);
   const owedToUs = ledger.direction === "owed_to_me";
-  // A statement reads as a running account, so the balance is carried down the
-  // page the way a paper khata does rather than only landing at the bottom.
-  // ⚠️ `amount` already INCLUDES every "added to account" entry (they bump it),
-  // and each of those is also a row below. Starting the running balance at
-  // `amount` counted them twice, so the balance column overshot "Balance due".
-  const added = ledger.payments.reduce((a, p) => a + (p.kind === "increase" ? p.amount : 0), 0);
-  const opening = ledger.amount - added;
-  let running = opening;
-  const rows = [...ledger.payments]
-    .sort((a, b) => a.payment_date.localeCompare(b.payment_date))
-    .map((p) => {
-      const isIncrease = p.kind === "increase";
-      const cleared = isIncrease ? 0 : p.amount + p.discount;
-      running = isIncrease ? running + p.amount : running - cleared;
+  // ⚠️ The SAME history the Ledger's details dialog shows (personLedgerLog):
+  // every bill on the day it was raised, then each "added" entry and payment,
+  // balance carried down the page from zero. The sheet used to open with one
+  // "total billed" lump and list only payments, so a customer holding the
+  // statement couldn't see which bills made up what they owed — and it didn't
+  // match the account screen they'd just been shown.
+  const log = personLedgerLog(
+    ledger.bills.map((b) => ({ id: b.id, amount: b.amount, created_at: b.created_at, label: b.label })),
+    ledger.payments,
+  );
+  const billNotes = new Map(ledger.bills.map((b) => [`bill:${b.id}`, b.notes?.trim() || null]));
+
+  const rows = log.rows
+    .map((r) => {
+      const detail =
+        r.kind === "bill" ? esc(r.label ?? "Bill") : r.kind === "increase" ? "Added to account" : "Payment";
+      const sub = [r.kind === "bill" ? billNotes.get(r.id) : r.notes, r.account_name ? `via ${r.account_name}` : null]
+        .filter(Boolean)
+        .map((t) => esc(t))
+        .join(" · ");
+      const charge = r.kind !== "payment";
       return `
         <tr>
-          <td>${esc(p.payment_date)}</td>
-          <td>${esc(isIncrease ? "Added to account" : "Payment")}${p.notes ? ` — ${esc(p.notes)}` : ""}</td>
-          <td class="num">${isIncrease ? amt(p.amount) : ""}</td>
-          <td class="num">${isIncrease ? "" : amt(p.amount)}</td>
-          <td class="num">${p.discount > 0 ? amt(p.discount) : ""}</td>
-          <td class="num">${amt(running)}</td>
+          <td>${esc(dmy(r.date))}</td>
+          <td>${detail}${sub ? `<div class="sub">${sub}</div>` : ""}</td>
+          <td class="num">${charge ? amt(r.amount) : ""}</td>
+          <td class="num">${charge ? "" : amt(r.amount)}</td>
+          <td class="num">${r.discount > 0 ? amt(r.discount) : ""}</td>
+          <td class="num">${amt(r.balance_after)}</td>
         </tr>`;
     })
     .join("");
 
-  const discountTotal = ledger.payments.reduce((a, p) => a + (p.kind === "increase" ? 0 : p.discount), 0);
+  const { billed, added, paid, discount } = log.totals;
+  const remaining = Math.max(log.closing, 0);
 
   return `
     <section class="statement">
@@ -95,19 +124,14 @@ function statementBody(ledger: StatementLedger, currency: string): string {
           </tr>
         </thead>
         <tbody>
-          <tr class="opening">
-            <td></td><td>Opening — total billed</td>
-            <td class="num">${amt(opening)}</td><td class="num"></td>
-            <td class="num"></td><td class="num">${amt(opening)}</td>
-          </tr>
-          ${rows || `<tr><td colspan="6" class="muted center">No payments recorded yet.</td></tr>`}
+          ${rows || `<tr><td colspan="6" class="muted center">Nothing recorded yet.</td></tr>`}
         </tbody>
       </table>
 
       <div class="totals">
-        <div><span>Total billed</span><b>${amt(ledger.amount)}</b></div>
-        <div><span>Received</span><b>${amt(ledger.paid_amount - discountTotal)}</b></div>
-        ${discountTotal > 0 ? `<div><span>Discount given</span><b>${amt(discountTotal)}</b></div>` : ""}
+        <div><span>Total billed</span><b>${amt(billed + added)}</b></div>
+        <div><span>${owedToUs ? "Received" : "Paid"}</span><b>${amt(paid)}</b></div>
+        ${discount > 0 ? `<div><span>Discount given</span><b>${amt(discount)}</b></div>` : ""}
         <div class="grand"><span>${owedToUs ? "Balance due" : "Balance we owe"}</span><b>${currency} ${amt(remaining)}</b></div>
       </div>
 
@@ -185,7 +209,7 @@ export function buildLedgerStatementHtml(args: {
   table.entries th, table.entries td { border-bottom: 1px solid #ddd; padding: 5px 6px; vertical-align: top; }
   table.entries th { border-bottom: 1px solid #111; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
   table.entries .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  tr.opening td { font-weight: 600; background: #f6f6f6; }
+  table.entries .sub { color: #555; font-size: 10.5px; margin-top: 1px; }
   .totals { margin-top: 5mm; margin-left: auto; width: 78mm; }
   .totals div { display: flex; justify-content: space-between; padding: 3px 0; }
   .totals .grand { border-top: 2px solid #111; margin-top: 3px; padding-top: 5px; font-size: 14px; font-weight: 700; }
