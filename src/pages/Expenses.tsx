@@ -68,6 +68,10 @@ export default function Expenses() {
     try { localStorage.setItem(PAGE_SIZE_KEY, String(n)); } catch {}
   };
   const [filterCat, setFilterCat] = useState<string>("all");
+  const [rangeTotals, setRangeTotals] = useState<{
+    total: number;
+    byCategory: { category_id: string | null; amount: number }[];
+  } | null>(null);
   const [from, setFrom] = useState(format(new Date(new Date().setDate(1)), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [open, setOpen] = useState(false);
@@ -128,12 +132,23 @@ export default function Expenses() {
     if (!currentShop) return;
     setLoading(true);
     try {
-      const { expenses: rows, totalCount: count } = await rpc<{ expenses: Expense[]; totalCount: number }>(
+      const { expenses: rows, totalCount: count, totalAmount, byCategory: sums } = await rpc<{
+        expenses: Expense[];
+        totalCount: number;
+        totalAmount?: number;
+        byCategory?: { category_id: string | null; amount: number }[];
+      }>(
         "listExpensesAction",
         { from, to, categoryId: filterCat, page, pageSize },
       );
       setExpenses(rows ?? []);
       setTotalCount(count ?? 0);
+      // A server without the totals yet: fall back to the page it sent.
+      setRangeTotals(
+        totalAmount === undefined || !sums
+          ? null
+          : { total: totalAmount, byCategory: sums },
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("common.error"));
     } finally {
@@ -153,20 +168,30 @@ export default function Expenses() {
   useEffect(() => { loadCategories(); }, [loadCategories]);
   useEffect(() => { load(); }, [load]);
 
-  const total = useMemo(() => expenses.reduce((a, e) => a + Number(e.amount), 0), [expenses]);
+  // ⚠️ Totalled by the server over the whole date range and category filter.
+  // Summing `expenses` only counted the page on screen, so "Total in range"
+  // dropped every expense past the first page.
+  const total = useMemo(
+    () => rangeTotals?.total ?? expenses.reduce((a, e) => a + Number(e.amount), 0),
+    [rangeTotals, expenses],
+  );
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
-    expenses.forEach((e) => {
-      const key = e.category_id ?? "uncategorized";
-      map.set(key, (map.get(key) ?? 0) + Number(e.amount));
-    });
+    if (rangeTotals) {
+      for (const c of rangeTotals.byCategory) map.set(c.category_id ?? "uncategorized", c.amount);
+    } else {
+      expenses.forEach((e) => {
+        const key = e.category_id ?? "uncategorized";
+        map.set(key, (map.get(key) ?? 0) + Number(e.amount));
+      });
+    }
     return Array.from(map.entries()).map(([id, amt]) => ({
       id, amount: amt,
       name: categories.find((c) => c.id === id)?.name ?? t("expenses.uncategorized"),
       color: categories.find((c) => c.id === id)?.color ?? "#64748b",
     })).sort((a, b) => b.amount - a.amount);
-  }, [expenses, categories, t]);
+  }, [rangeTotals, expenses, categories, t]);
 
   const save = async () => {
     if (!user || !currentShop) return;

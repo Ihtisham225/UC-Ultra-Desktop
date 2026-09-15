@@ -603,15 +603,22 @@ export default function Products() {
       />
 
       {(() => {
-        const totalProducts = items.length;
-        const totalUnits = items.reduce((a, p) => a + totalStock(p), 0);
-        const totalInventoryValue = items.reduce((a, p) => a + Number(p.price) * totalStock(p), 0);
-        const lowStockCount = items.filter((p) => totalStock(p) <= Number(p.low_stock_threshold)).length;
+        // The tiles describe what the table is showing: a category, brand or
+        // search narrows both, so "Inventory value" on an iPhone filter is the
+        // iPhones' value, not the whole shop's. Services hold no stock, so
+        // they never count toward stock, value or low stock (as on the web).
+        const narrowed = filtered.length !== items.length;
+        const totalProducts = filtered.length;
+        const stocked = filtered.filter((p) => !p.is_service);
+        const totalUnits = stocked.reduce((a, p) => a + totalStock(p), 0);
+        const totalInventoryValue = stocked.reduce((a, p) => a + (Number(p.price) || 0) * totalStock(p), 0);
+        const lowStockCount = stocked.filter((p) => totalStock(p) <= (Number(p.low_stock_threshold) || 0)).length;
         return (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card className="p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">{t("products.title")}</div>
               <div className="text-lg sm:text-2xl font-bold tabular-nums mt-1 break-words leading-tight">{totalProducts}</div>
+              {narrowed && <div className="text-[10px] text-muted-foreground mt-0.5">matching · of {items.length} in catalog</div>}
             </Card>
             <Card className="p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Total stock</div>

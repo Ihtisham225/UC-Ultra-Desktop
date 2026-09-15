@@ -18,6 +18,8 @@ import { downloadCsv, CsvColumn } from "@/lib/csv";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { isHandicraft } from "@/lib/handicraft";
 import CraftReports from "@/components/CraftReports";
+import { groupLedgers } from "@/lib/ledger-groups";
+import { derivePaidAmount } from "@/lib/ledger";
 
 type Rng = { from: string; to: string };
 
@@ -110,15 +112,21 @@ function KPI({ label, value, sub }: { label: string; value: string; sub?: string
 
 function ReportToolbar<T>({ title, rows, columns, filename }: { title: string; rows: T[]; columns: CsvColumn<T>[]; filename: string }) {
   return (
-    <div className="flex items-center justify-between gap-2 print:hidden">
+    // ⚠️ Only the buttons are hidden in print. The title used to sit inside the
+    // hidden row, so a saved PDF showed tables with no heading at all — "Top
+    // customers" and "Open debts" were indistinguishable on paper.
+    <div className="flex items-center justify-between gap-2">
       <h3 className="font-semibold">{title}</h3>
-      <div className="flex gap-2">
+      <div className="flex gap-2 print:hidden">
         <Button size="sm" variant="outline" onClick={() => downloadCsv(filename, rows, columns)} disabled={rows.length === 0}><Download className="size-3.5 mr-1.5" />CSV</Button>
         <Button size="sm" variant="outline" onClick={() => window.print()}><Printer className="size-3.5 mr-1.5" />PDF / Print</Button>
       </div>
     </div>
   );
 }
+
+/** The khata's stored direction, in the shop's words rather than "owed_to_me". */
+const directionLabel = (direction: string) => (direction === "owed_to_me" ? "Owes you" : "You owe");
 
 function Empty({ msg }: { msg: string }) {
   return <div className="text-sm text-muted-foreground py-8 text-center">{msg}</div>;
@@ -651,12 +659,17 @@ function CustomersReport({ shopId, range, formatMoney, cur }: ReportProps) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [allSales, allCustomers, allDebts] = await Promise.all([
+      const [allSales, allCustomers, allParties, allDebts, allDebtPayments] = await Promise.all([
         getAll<any>("sales", shopId),
         getAll<any>("customers", shopId),
+        getAll<any>("suppliers", shopId),
         getAll<any>("debts", shopId),
+        getAll<any>("debt_payments", shopId),
       ]);
-      const custById = new Map(allCustomers.map((c) => [c.id, c]));
+      // A sale's customer is a party now (the suppliers table). The old
+      // customers table only holds people added before that change, so a
+      // customer added since showed as "—" when only it was consulted.
+      const custById = new Map([...allCustomers, ...allParties].map((c) => [c.id, c]));
       const map = new Map<string, { name: string; phone: string; spent: number; visits: number }>();
       allSales
         .filter((r) => r.customer_id && r.created_at >= fromISO && r.created_at <= toISO)
@@ -667,7 +680,20 @@ function CustomersReport({ shopId, range, formatMoney, cur }: ReportProps) {
           map.set(r.customer_id, cur);
         });
       setTopCustomers(Array.from(map.values()).sort((a, b) => b.spent - a.spent).slice(0, 50));
-      setDebts(allDebts.filter((d) => d.status === "open"));
+      // Paid is derived from the settlements on this terminal, the same way the
+      // Ledger screen does, so an offline payment not yet synced still counts.
+      const byDebt = new Map<string, any[]>();
+      for (const p of allDebtPayments) byDebt.set(p.debt_id, [...(byDebt.get(p.debt_id) ?? []), p]);
+      // One row per PERSON, the way the Ledger shows them: a customer with two
+      // unpaid bills owes one figure, not two lines that each look like the total.
+      setDebts(
+        groupLedgers(allDebts.map((d) => ({ ...d, paid_amount: derivePaidAmount(byDebt.get(d.id) ?? []) })))
+          .filter((g) => g.status === "open")
+          .map((g) => ({
+            id: g.key, person_name: g.person_name, phone: g.phone, direction: g.direction,
+            amount: g.amount, paid_amount: g.paid, balance: g.remaining, due_date: g.due_date, bills: g.debts.length,
+          })),
+      );
       setLoading(false);
     })();
   }, [shopId, fromISO, toISO]);
@@ -681,17 +707,20 @@ function CustomersReport({ shopId, range, formatMoney, cur }: ReportProps) {
   const debtCols: CsvColumn<any>[] = [
     { header: "Name", value: (r) => r.person_name },
     { header: "Phone", value: (r) => r.phone ?? "" },
-    { header: "Direction", value: (r) => r.direction },
+    { header: "Owed", value: (r) => directionLabel(r.direction) },
+    { header: "Bills", value: (r) => r.bills },
     { header: "Amount", value: (r) => Number(r.amount).toFixed(2) },
     { header: "Paid", value: (r) => Number(r.paid_amount).toFixed(2) },
-    { header: "Balance", value: (r) => (Number(r.amount) - Number(r.paid_amount)).toFixed(2) },
+    { header: "Balance", value: (r) => Number(r.balance).toFixed(2) },
     { header: "Due", value: (r) => r.due_date ?? "" },
   ];
 
   if (loading) return <div className="p-8 text-center text-muted-foreground">Loading…</div>;
 
-  const receivable = debts.filter((d) => d.direction === "receivable").reduce((a, d) => a + (Number(d.amount) - Number(d.paid_amount)), 0);
-  const payable = debts.filter((d) => d.direction === "payable").reduce((a, d) => a + (Number(d.amount) - Number(d.paid_amount)), 0);
+  // The stored values are owed_to_me / i_owe — comparing against "receivable" /
+  // "payable" left both figures at zero (fixed on the web earlier).
+  const receivable = debts.filter((d) => d.direction === "owed_to_me").reduce((a, d) => a + Number(d.balance), 0);
+  const payable = debts.filter((d) => d.direction === "i_owe").reduce((a, d) => a + Number(d.balance), 0);
 
   return (
     <div className="space-y-4">
@@ -727,17 +756,20 @@ function CustomersReport({ shopId, range, formatMoney, cur }: ReportProps) {
           <div className="mt-3 overflow-x-auto">
             <Table>
               <TableHeader><TableRow>
-                <TableHead>Name</TableHead><TableHead>Direction</TableHead><TableHead className="text-right">Amount</TableHead>
+                <TableHead>Name</TableHead><TableHead>Owed</TableHead><TableHead className="text-right">Amount</TableHead>
                 <TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead>Due</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {debts.map((d) => (
                   <TableRow key={d.id}>
-                    <TableCell className="font-medium">{d.person_name}</TableCell>
-                    <TableCell className="capitalize">{d.direction}</TableCell>
+                    <TableCell className="font-medium">
+                      {d.person_name}
+                      {d.bills > 1 && <div className="text-xs text-muted-foreground">{d.bills} bills</div>}
+                    </TableCell>
+                    <TableCell>{directionLabel(d.direction)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatMoney(d.amount, cur)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatMoney(d.paid_amount, cur)}</TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">{formatMoney(Number(d.amount) - Number(d.paid_amount), cur)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{formatMoney(d.balance, cur)}</TableCell>
                     <TableCell className="text-xs">{d.due_date ?? "—"}</TableCell>
                   </TableRow>
                 ))}
