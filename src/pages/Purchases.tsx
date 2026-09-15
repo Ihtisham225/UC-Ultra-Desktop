@@ -38,6 +38,7 @@ import { v4 as uuid } from "uuid";
 import { ProductFormFields, type ProductFormValue } from "@/components/ProductFormFields";
 import { AccountPicker } from "@/components/AccountPicker";
 import { PartySelect } from "@/components/PartySelect";
+import { useAddNew } from "@/hooks/useAddNew";
 
 const PAGE_SIZE_KEY = "pos.pageSize.purchases";
 const DEFAULT_PAGE_SIZE = 20;
@@ -781,6 +782,18 @@ export default function Purchases() {
     void syncNow().catch(() => { /* offline: the next sync catches up */ });
   };
 
+  const onPurchaseDialogChange = (o: boolean) => {
+    setOpen(o);
+    if (!o) reset();
+    else if (!editingId) {
+      if (!reference) setReference(generateReference());
+      // Pool mode: new purchases draw from the shared pool by default.
+      if (investorsEnabled && pool && pool.cash > 0) setInvestorId(pool.id);
+    }
+  };
+
+  useAddNew({ purchase: () => { reset(); onPurchaseDialogChange(true); } });
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -895,19 +908,11 @@ export default function Purchases() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Dialog open={open} onOpenChange={(o) => {
-            setOpen(o);
-            if (!o) reset();
-            else if (!editingId) {
-              if (!reference) setReference(generateReference());
-              // Pool mode: new purchases draw from the shared pool by default.
-              if (investorsEnabled && pool && pool.cash > 0) setInvestorId(pool.id);
-            }
-          }}>
+          <Dialog open={open} onOpenChange={onPurchaseDialogChange}>
             <DialogTrigger asChild>
               <Button><Plus className="size-4 mr-2" /> {t("purchases.newPurchase")}</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-6xl max-h-[calc(100dvh-1rem)] flex flex-col">
+            <DialogContent data-add-new="purchase" className="sm:max-w-6xl max-h-[calc(100dvh-1rem)] flex flex-col">
               <DialogHeader><DialogTitle>{editingId ? t("purchases.editPurchase") : t("purchases.recordPurchase")}</DialogTitle></DialogHeader>
               <div className="space-y-4 py-2 overflow-y-auto flex-1 -mx-4 sm:-mx-6 px-4 sm:px-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

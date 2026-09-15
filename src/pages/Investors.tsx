@@ -14,6 +14,7 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useAddNew } from "@/hooks/useAddNew";
 
 export interface InvestorDto {
   id: string;
@@ -128,6 +129,9 @@ export default function Investors() {
   const mode = currentShop?.investor_mode ?? "individual";
   const showPool = mode === "shared" || mode === "both";
   const showIndividual = mode === "individual" || mode === "both";
+  useAddNew({
+    investor: showIndividual && (() => setEditing({ ...blank, commission_percent: defaultCommission ? String(defaultCommission) : "" })),
+  });
   const defaultCommission = currentShop?.investor_default_commission ?? 0;
 
   const [rows, setRows] = useState<InvestorDto[]>([]);
@@ -664,7 +668,7 @@ export default function Investors() {
 
       {/* Add / edit investor */}
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent data-add-new="investor" className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{editing?.id ? "Edit investor" : "Add investor"}</DialogTitle></DialogHeader>
           {editing && (
             <div className="space-y-3">

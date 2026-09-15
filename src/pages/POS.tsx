@@ -38,6 +38,7 @@ import { STEP, advanceFrom, focusSoon, focusStep, stepsIn } from "@/lib/checkout
 import { isPlainEnter, matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
 import { useIsMac } from "@/hooks/useIsMac";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useAddNew } from "@/hooks/useAddNew";
 
 interface Variant {
   id: string;
@@ -867,6 +868,9 @@ export default function POS() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // Add new → Sale: this is the sale screen, so just put the cursor in search.
+  useAddNew({ sale: () => focusSoon(SEARCH) });
+
   const variantOptions: VariantOption[] = useMemo(() => {
     if (!variantPicker) return [];
     return (variantPicker.variants ?? []).map((v) => ({
@@ -1206,6 +1210,8 @@ export default function POS() {
             would only leave it stranded beside the money. */}
         <DialogContent
           ref={chargeRef}
+          // Checkout keeps its own numbered Enter chain (lib/checkout-keys).
+          data-enter-chain="off"
           className={`max-h-[92vh] overflow-y-auto ${oilShop ? "sm:max-w-4xl" : "sm:max-w-2xl"}`}
           // Land on the customer and open its list, so typing searches at once.
           onOpenAutoFocus={(e) => {

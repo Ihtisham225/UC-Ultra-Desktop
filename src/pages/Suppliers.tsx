@@ -29,6 +29,7 @@ import {
 } from "@/lib/handicraft";
 import { formatMoney } from "@/lib/format";
 import type { PartyBalance } from "@/lib/handicraftTypes";
+import { useAddNew } from "@/hooks/useAddNew";
 
 interface Supplier {
   id: string;
@@ -218,6 +219,20 @@ export default function Suppliers() {
     toast.success(t("bulk.exported", { count: rows.length }));
   };
 
+  const startNewParty = () =>
+    setEditing({
+      name: "",
+      // Adding from a role tab pre-ticks that role. On the customer
+      // tab that means supplier stays OFF, or every customer added
+      // here would also turn up in the purchase form's seller list.
+      is_supplier: craft ? roleTab === "all" || roleTab === "supplier" : true,
+      is_customer: craft && roleTab === "customer",
+      is_maker: craft && roleTab === "maker",
+      is_processor: craft && roleTab === "processor",
+    });
+
+  useAddNew({ supplier: canManage && startNewParty });
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -227,18 +242,7 @@ export default function Suppliers() {
         </div>
         {canManage && (
           <Button
-            onClick={() =>
-              setEditing({
-                name: "",
-                // Adding from a role tab pre-ticks that role. On the customer
-                // tab that means supplier stays OFF, or every customer added
-                // here would also turn up in the purchase form's seller list.
-                is_supplier: craft ? roleTab === "all" || roleTab === "supplier" : true,
-                is_customer: craft && roleTab === "customer",
-                is_maker: craft && roleTab === "maker",
-                is_processor: craft && roleTab === "processor",
-              })
-            }
+            onClick={startNewParty}
             className="bg-gradient-primary hover:opacity-90 text-primary-foreground"
           >
             <Plus className="size-4 mr-2" /> {t("suppliers.addNew")}
@@ -348,7 +352,7 @@ export default function Suppliers() {
       </Card>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent>
+        <DialogContent data-add-new="supplier">
           <DialogHeader><DialogTitle>{editing?.id ? t("suppliers.editSupplier") : t("suppliers.newSupplier")}</DialogTitle></DialogHeader>
           {editing && (
             <div className="space-y-3">

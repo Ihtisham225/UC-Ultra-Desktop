@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { useShop } from "@/contexts/ShopContext";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
+import { useAddNew } from "@/hooks/useAddNew";
 
 export interface AccountRow {
   id: string;
@@ -100,6 +101,8 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
     setEditing(null);
     setCreating(true);
   };
+  useAddNew({ account: canEdit && openCreate });
+
   const openEdit = (r: AccountRow) => {
     setForm({ name: r.name, type: r.type, opening_balance: String(r.opening_balance) });
     setEditing(r);
@@ -268,7 +271,7 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
 
       {/* New / edit account */}
       <Dialog open={creating} onOpenChange={(o) => !o && setCreating(false)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent data-add-new="account" className="sm:max-w-md">
           <DialogHeader><DialogTitle>{editing ? "Edit account" : "New account"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">

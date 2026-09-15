@@ -38,6 +38,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { rpc } from "@/lib/apiClient";
 import { isOil } from "@/lib/oil";
 import { v4 as uuid } from "uuid";
+import { useAddNew } from "@/hooks/useAddNew";
 
 interface Variant {
   id?: string;
@@ -162,6 +163,7 @@ export default function Products() {
   const sel = useRowSelection();
 
   const canEdit = role === "owner" || role === "manager";
+  useAddNew({ product: canEdit && (() => setEditing({ ...blank, variants: [] })) });
 
   useEffect(() => { document.title = "UCU"; }, []);
 
@@ -730,7 +732,7 @@ export default function Products() {
       </Card>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
+        <DialogContent data-add-new="product" className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing?.id ? t("products.edit") : t("products.newProduct")}</DialogTitle></DialogHeader>
           {editing && (
             <ProductFormFields

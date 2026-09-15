@@ -34,6 +34,7 @@ import type { DaybookEntryDto } from "@/lib/daybookTypes";
 import { ChallanPrintDialog } from "@/components/ChallanPrintDialog";
 import { RecordDetailsDialog } from "@/components/RecordDetailsDialog";
 import { JobWorkBillPrintDialog } from "@/components/JobWorkBillPrintDialog";
+import { useAddNew } from "@/hooks/useAddNew";
 
 const ALL = "all";
 
@@ -262,6 +263,9 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
   const paidTotal = payments.reduce((s, p) => s + p.amount, 0);
 
   // ---------------------------------------------------------- challans
+
+  const newChallanId = kind === "making" ? "making-challan" : "job-work-challan";
+  useAddNew({ [newChallanId]: canManage && (() => newChallan()) });
 
   const newChallan = () => {
     setPendingPhotos([]);
@@ -863,7 +867,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         open={!!draft}
         onOpenChange={(o) => { if (!o) { setDraft(null); daybook.abandon(); } }}
       >
-        <DialogContent className="w-[96vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+        <DialogContent data-add-new={newChallanId} className="w-[96vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>
               {draft?.id ? "Edit challan" : making ? "New challan — material going out" : "New challan — goods going out"}

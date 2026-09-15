@@ -16,6 +16,7 @@ import { UserPlus, Trash2, KeyRound, ShieldCheck, Plus, Copy, Ban, CheckCircle2,
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { MODULES, ACTIONS, MODULE_LABEL, ACTION_LABEL, ACTION_HINT, type Module, type Action } from "@/lib/permissions";
+import { useAddNew } from "@/hooks/useAddNew";
 
 type Member = { user_id: string; role: "owner" | "manager" | "cashier"; disabled: boolean; display_name: string | null };
 type Role = { id: string; name: string; is_system: boolean };
@@ -198,6 +199,11 @@ export default function Staff() {
 
   const copy = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copied"); };
 
+  useAddNew({
+    staff: isAdmin && (() => setOpenCreate(true)),
+    role: isAdmin && openCreateRole,
+  });
+
   if (!isAdmin) {
     return <div className="p-8 text-center text-muted-foreground">Only owners and managers can manage staff & roles.</div>;
   }
@@ -306,7 +312,7 @@ export default function Staff() {
 
       {/* Create staff */}
       <Dialog open={openCreate} onOpenChange={setOpenCreate}>
-        <DialogContent>
+        <DialogContent data-add-new="staff">
           <DialogHeader>
             <DialogTitle>Add staff</DialogTitle>
             <DialogDescription>A unique username and temporary password will be generated. Share them securely.</DialogDescription>

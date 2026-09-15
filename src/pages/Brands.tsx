@@ -14,6 +14,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useShop } from "@/contexts/ShopContext";
 import { rpc } from "@/lib/apiClient";
 import { type BrandDto } from "@/components/BrandSelect";
+import { useAddNew } from "@/hooks/useAddNew";
 
 interface EditingBrand {
   id?: string;
@@ -87,6 +88,8 @@ export default function Brands() {
   };
 
   const filtered = items.filter((b) => b.name.toLowerCase().includes(search.trim().toLowerCase()));
+
+  useAddNew({ brand: canEdit && !offline && (() => setEditing({ name: "" })) });
 
   return (
     <div className="space-y-6">
@@ -166,7 +169,7 @@ export default function Brands() {
       </div>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent data-add-new="brand" className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{editing?.id ? "Edit brand" : "New brand"}</DialogTitle>
           </DialogHeader>

@@ -130,7 +130,9 @@ export function ProductFormFields<T extends ProductFormValue>({
             placeholder="Scan or type the product's barcode (optional)"
             inputMode="numeric"
             onChange={(e) => set({ barcode: e.target.value })}
-            onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+            // A scanner ends every code with Enter. The dialog's Enter chain
+            // (lib/form-keys) turns that into "next box", so a scan lands the
+            // cursor on the price rather than being swallowed here.
           />
           {onScanBarcode && (
             <Button type="button" variant="outline" size="icon" title="Scan barcode" onClick={onScanBarcode}>

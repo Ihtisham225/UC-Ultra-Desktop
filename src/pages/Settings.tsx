@@ -22,6 +22,7 @@ import { isHandicraft } from "@/lib/handicraft";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ReceiptPreview } from "@/components/ReceiptPreview";
 import { PosShortcutsGuide } from "@/components/PosShortcutsGuide";
+import { AppShortcutsGuide } from "@/components/shortcuts/AppShortcutsGuide";
 import { AppUpdateCard } from "@/components/AppUpdateCard";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { AppVersionBadge } from "@/components/AppVersionBadge";
@@ -312,10 +313,9 @@ export default function Settings() {
           <TabsTrigger value="shop"><Store className="size-3.5 mr-1.5" />{t("settings.tabs.shop")}</TabsTrigger>
           <TabsTrigger value="receipt"><Receipt className="size-3.5 mr-1.5" />{t("settings.tabs.receipt")}</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="size-3.5 mr-1.5" />{t("settings.tabs.notifications")}</TabsTrigger>
-          {/* Everyone, cashiers most of all. A handicraft shop has no till. */}
-          {!isHandicraft(currentShop) && (
-            <TabsTrigger value="shortcuts"><Keyboard className="size-3.5 mr-1.5" />Shortcuts</TabsTrigger>
-          )}
+          {/* Everyone, cashiers most of all. The till's keys are left out for a
+              handicraft shop, which has no till; the app-wide keys apply to all. */}
+          <TabsTrigger value="shortcuts"><Keyboard className="size-3.5 mr-1.5" />Shortcuts</TabsTrigger>
           {canEdit && <TabsTrigger value="investors"><TrendingUp className="size-3.5 mr-1.5" />Investors</TabsTrigger>}
           {isHandicraft(currentShop) && <TabsTrigger value="processes"><Layers className="size-3.5 mr-1.5" />Processing work</TabsTrigger>}
           <TabsTrigger value="data"><Download className="size-3.5 mr-1.5" />{t("settings.tabs.data")}</TabsTrigger>
@@ -612,11 +612,15 @@ export default function Settings() {
           </div>
         </TabsContent>
 
-        {!isHandicraft(currentShop) && (
-          <TabsContent value="shortcuts">
-            <PosShortcutsGuide platform="desktop" />
-          </TabsContent>
-        )}
+        <TabsContent value="shortcuts" className="space-y-8">
+          <AppShortcutsGuide />
+          {!isHandicraft(currentShop) && (
+            <div className="space-y-3">
+              <h2 className="text-lg font-semibold">Point of sale</h2>
+              <PosShortcutsGuide platform="desktop" />
+            </div>
+          )}
+        </TabsContent>
 
         <TabsContent value="notifications">
           <Card className="shadow-card p-6 space-y-5">

@@ -686,7 +686,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
       {/* Column layout: only the paper scrolls, so Print/WhatsApp/New sale stay
           on screen no matter how many lines the sale has or how short the
           laptop screen is. */}
-      <DialogContent className="sm:max-w-md p-0 sm:p-0 md:p-0 gap-0 overflow-hidden bg-white text-black flex flex-col max-h-[100dvh] sm:max-h-[calc(100dvh-2rem)]">
+      <DialogContent data-enter-chain="off" className="sm:max-w-md p-0 sm:p-0 md:p-0 gap-0 overflow-hidden bg-white text-black flex flex-col max-h-[100dvh] sm:max-h-[calc(100dvh-2rem)]">
         <div className="px-4 pt-10 pb-3 flex justify-center flex-1 min-h-0 overflow-y-auto">
           <ReceiptPaper sale={sale} customer={customer} withTerms={withTerms} />
         </div>

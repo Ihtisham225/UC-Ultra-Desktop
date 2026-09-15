@@ -95,7 +95,7 @@ export function StockAdjustmentDialog({ open, onOpenChange, initialProductId, on
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent data-add-new="stock-adjustment">
         <DialogHeader>
           <DialogTitle>New Stock Adjustment</DialogTitle>
           <DialogDescription>Manually add or remove stock. The change is recorded in the inventory ledger.</DialogDescription>

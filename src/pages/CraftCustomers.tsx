@@ -25,6 +25,7 @@ import type {
   CustomerChallanDto,
   CustomerPaymentDto,
 } from "@/lib/craftCustomerTypes";
+import { useAddNew } from "@/hooks/useAddNew";
 
 /** What every craft-customer action returns over RPC. */
 type Res = {
@@ -158,6 +159,12 @@ export default function CraftCustomers() {
     );
     setChallanOpen(true);
   };
+
+  useAddNew({
+    "customer-challan": canManage && (() => openChallan()),
+    "customer-payment": canManage && (() => openPayment()),
+    customer: canManage && (() => setNewOpen(true)),
+  });
 
   const openPayment = (p?: CustomerPaymentDto, customerId?: string) => {
     setPaymentForm(
@@ -550,7 +557,7 @@ export default function CraftCustomers() {
         open={challanOpen}
         onOpenChange={(o) => { if (!busy) { setChallanOpen(o); if (!o) daybook.abandon(); } }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent data-add-new="customer-challan" className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{challanForm.id ? "Edit challan" : "New challan"}</DialogTitle>
           </DialogHeader>
@@ -620,7 +627,7 @@ export default function CraftCustomers() {
         open={paymentOpen}
         onOpenChange={(o) => { if (!busy) { setPaymentOpen(o); if (!o) daybook.abandon(); } }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent data-add-new="customer-payment" className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{paymentForm.id ? "Edit payment" : "Record payment"}</DialogTitle>
           </DialogHeader>

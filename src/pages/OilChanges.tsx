@@ -22,6 +22,7 @@ import {
 } from "@/components/VehicleFields";
 import { isOil, normalizePlate, tidyPlate } from "@/lib/oil";
 import VehiclesTab from "./VehiclesTab";
+import { useAddNew } from "@/hooks/useAddNew";
 
 /** A synced `oil_changes` row as it sits in the local store. */
 interface OilChange {
@@ -91,6 +92,13 @@ export default function OilChanges() {
   const [busy, setBusy] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [tab, setTab] = useState<"visits" | "vehicles">("visits");
+  /**
+   * Add new asked for a vehicle from the visits tab: switch tabs, and the
+   * Vehicles tab opens its form as it mounts. On the Vehicles tab itself the
+   * tab registers its own handler.
+   */
+  const [newVehicle, setNewVehicle] = useState(false);
+  useAddNew({ vehicle: tab !== "vehicles" && (() => { setTab("vehicles"); setNewVehicle(true); }) });
 
   const canDelete = role === "owner" || role === "manager";
 
@@ -229,7 +237,7 @@ export default function OilChanges() {
           <button
             key={t}
             type="button"
-            onClick={() => setTab(t)}
+            onClick={() => { setTab(t); setNewVehicle(false); }}
             className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
               tab === t ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}
@@ -240,7 +248,7 @@ export default function OilChanges() {
       </div>
 
       {tab === "vehicles" ? (
-        <VehiclesTab onSearchVisits={(plate) => { setTab("visits"); setSearch(plate); }} />
+        <VehiclesTab openNew={newVehicle} onSearchVisits={(plate) => { setTab("visits"); setSearch(plate); }} />
       ) : (
       <>
       <div className="relative max-w-md">

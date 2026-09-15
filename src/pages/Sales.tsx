@@ -27,6 +27,7 @@ import { syncNow } from "@/lib/syncEngine";
 import { ManualSaleDialog, type ManualSaleApi } from "@/components/ManualSaleDialog";
 import { EditSaleDialog, type EditableSale, type EditableProduct } from "@/components/EditSaleDialog";
 import { soldAs, formatSoldQuantity } from "@/lib/sale-units";
+import { useAddNew } from "@/hooks/useAddNew";
 
 /**
  * "Engine Oil 20W-50 ×2 Bottle (4 L)" — how the counter rang it up, not the
@@ -327,6 +328,8 @@ export default function Sales() {
     ]);
     toast.success(t("bulk.exported", { count: rows.length }));
   };
+
+  useAddNew({ "manual-sale": () => setManualOpen(true) });
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
