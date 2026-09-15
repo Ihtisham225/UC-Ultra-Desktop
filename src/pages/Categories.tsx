@@ -17,6 +17,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useShop } from "@/contexts/ShopContext";
 import { rpc } from "@/lib/apiClient";
 import { flattenCategories, type CategoryDto, type CategoryOption } from "@/components/CategorySelect";
+import { useAddNew } from "@/hooks/useAddNew";
 
 const NONE = "__none__";
 
@@ -132,6 +133,8 @@ export default function Categories() {
     return items.filter((c) => keep.has(c.id));
   })();
 
+  useAddNew({ category: canEdit && !offline && (() => setEditing({ name: "", parent_id: null })) });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -218,7 +221,7 @@ export default function Categories() {
       </div>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent data-add-new="category" className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{editing?.id ? "Edit category" : "New category"}</DialogTitle>
           </DialogHeader>

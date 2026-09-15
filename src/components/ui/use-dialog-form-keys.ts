@@ -1,0 +1,219 @@
+import * as React from "react";
+import { runAddNew } from "@/lib/add-new";
+import { hasFields, isPicker, isTextEntry, moveFrom, saveNewButtonIn, submitButtonIn } from "@/lib/form-keys";
+
+/**
+ * The Enter-driven form behaviour every DialogContent carries — see
+ * lib/form-keys for the keys and the attributes a dialog can set.
+ *
+ * Returns a ref callback and an onKeyDown for the dialog's content element.
+ */
+export function useDialogFormKeys(forwarded: React.ForwardedRef<HTMLDivElement>) {
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  /** A picker the chain opened (or Enter opened) — moves on once it closes by Enter. */
+  const armed = React.useRef<HTMLElement | null>(null);
+  const lastInput = React.useRef<{ kind: string; at: number }>({ kind: "", at: 0 });
+  /** Ctrl/Cmd+Shift+Enter was pressed: open this id once the dialog has gone. */
+  const pendingNew = React.useRef<{ id: string; at: number } | null>(null);
+  /** The LAST field was a picker and a choice was just made — the next Enter saves. */
+  const chosenLast = React.useRef<HTMLElement | null>(null);
+  const cleanup = React.useRef<(() => void) | null>(null);
+
+  /** Press the dialog's save button; `andNew` opens a fresh form once it closes. */
+  const submit = React.useCallback((root: HTMLElement, andNew: boolean) => {
+    // A form with its own "Save & add another" button already knows how.
+    const saveNew = andNew ? saveNewButtonIn(root) : null;
+    if (saveNew) {
+      pendingNew.current = null;
+      saveNew.click();
+      return true;
+    }
+    const button = submitButtonIn(root);
+    if (!button) return false;
+    const id = root.dataset.addNew;
+    pendingNew.current = andNew && id ? { id, at: Date.now() } : null;
+    button.click();
+    return true;
+  }, []);
+
+  const attach = React.useCallback((root: HTMLDivElement) => {
+    // Remember how the last thing happened — a picker closed by Enter moves on,
+    // one closed by Escape or a click stays put.
+    const onKey = (e: KeyboardEvent) => {
+      if (["Shift", "Control", "Meta", "Alt"].includes(e.key)) return;
+      lastInput.current = { kind: e.key, at: Date.now() };
+      const target = e.target as HTMLElement;
+      const justChosen = chosenLast.current;
+      chosenLast.current = null;
+
+      // Enter on a picker is handled here, in the capture phase: a Radix Select
+      // button claims Enter for itself (to open) before the dialog's own
+      // handler would ever hear it.
+      if (
+        e.key === "Enter" && !e.isComposing && !e.altKey &&
+        target instanceof HTMLElement && root.contains(target) && isPicker(target) &&
+        !target.closest("[data-enter-chain='off']") && target.getAttribute("aria-expanded") !== "true"
+      ) {
+        const take = () => { e.preventDefault(); e.stopPropagation(); };
+        if (e.ctrlKey || e.metaKey) {
+          if (submit(root, e.shiftKey)) take();
+        } else if (e.shiftKey) {
+          take();
+          moveFrom(target, root, -1);
+        } else if (justChosen === target) {
+          // The last field is a picker and a choice was just made: save.
+          if (submit(root, false)) take();
+        } else {
+          // Let it open as usual; once a choice is made by Enter, move on.
+          armed.current = target;
+        }
+        return;
+      }
+      // Typing in the form again after pressing save & new means the save
+      // failed and they're fixing it — don't reopen a blank form later.
+      if (pendingNew.current && root.contains(e.target as Node)) pendingNew.current = null;
+    };
+    const onPointer = (e: PointerEvent) => {
+      lastInput.current = { kind: "pointer", at: Date.now() };
+      chosenLast.current = null;
+      if (pendingNew.current && root.contains(e.target as Node)) pendingNew.current = null;
+    };
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", onPointer, true);
+
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        const el = m.target as HTMLElement;
+        if (el !== armed.current || m.oldValue !== "true" || el.getAttribute("aria-expanded") !== "false") continue;
+        armed.current = null;
+        const { kind, at } = lastInput.current;
+        if (kind !== "Enter" || Date.now() - at > 2000) continue;
+        advanceWhenSettled(el, root, (next) => {
+          // Landed on another picker: it opened itself, so watch it close too.
+          if (next) { if (isPicker(next)) armed.current = next; }
+          else chosenLast.current = el;
+        });
+      }
+    });
+    observer.observe(root, { subtree: true, attributes: true, attributeFilter: ["aria-expanded"], attributeOldValue: true });
+
+    cleanup.current = () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerdown", onPointer, true);
+      observer.disconnect();
+    };
+  }, [submit]);
+
+  const ref = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node) {
+        if (rootRef.current !== node) {
+          cleanup.current?.();
+          attach(node);
+        }
+        rootRef.current = node;
+      } else {
+        rootRef.current = null;
+        // A ref callback also runs with null when only the ref changed, and is
+        // then called again with the same node straight away. Only a dialog
+        // that is really gone opens the next form.
+        setTimeout(() => {
+          if (rootRef.current) return;
+          cleanup.current?.();
+          cleanup.current = null;
+          const pending = pendingNew.current;
+          pendingNew.current = null;
+          if (pending && Date.now() - pending.at < 20000) runAddNew(pending.id);
+        }, 0);
+      }
+      setRef(forwarded, node);
+    },
+    [attach, forwarded],
+  );
+
+  const onKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Enter" || e.defaultPrevented || e.nativeEvent.isComposing) return;
+    const root = e.currentTarget;
+    const target = e.target as HTMLElement;
+    // Keys from a dropdown's list or a nested dialog bubble here through the
+    // React tree, but they belong to that popup, not to this form.
+    if (!root.contains(target)) return;
+    if (target.closest("[data-enter-chain='off']")) return;
+
+    if (e.ctrlKey || e.metaKey) {
+      if (e.altKey || !hasFields(root)) return;
+      if (submit(root, e.shiftKey)) e.preventDefault();
+      return;
+    }
+    if (e.altKey) return;
+    // Enter is a new line in a notes box — unless nothing has been written in
+    // it, when a new line means nothing and they're just moving past.
+    const editable = target instanceof HTMLTextAreaElement || target.isContentEditable;
+    const blank = target instanceof HTMLTextAreaElement ? target.value.trim() === "" : !target.textContent?.trim();
+    if (editable && !blank) return;
+    // Pickers were dealt with in the capture phase; buttons, switches and
+    // checkboxes keep Enter's usual meaning.
+    if (!editable && !isTextEntry(target)) return;
+
+    e.preventDefault();
+    if (e.shiftKey) {
+      moveFrom(target, root, -1);
+      return;
+    }
+    const next = moveFrom(target, root, 1);
+    if (next) {
+      if (isPicker(next)) armed.current = next;
+      return;
+    }
+    submit(root, false);
+  }, [submit]);
+
+  return { setContent: ref, onKeyDown };
+}
+
+/** Hand a node to a ref the caller passed in, whichever kind it is. */
+function setRef<T>(ref: React.ForwardedRef<T>, value: T | null) {
+  if (typeof ref === "function") ref(value);
+  else if (ref) ref.current = value;
+}
+
+/**
+ * A picker has just closed on a choice. Its popup hands focus back to the
+ * trigger as it goes — moving on before that would be undone a moment later —
+ * so wait for the focus to come home, then step to the next field.
+ *
+ * Driven by the focus event rather than animation frames: frames stall in a
+ * background window, and a quick second Enter would then land on the trigger
+ * before the chain had moved, reopening the dropdown instead.
+ */
+function advanceWhenSettled(trigger: HTMLElement, root: HTMLElement, done: (next: HTMLElement | null) => void) {
+  let finished = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const finish = (advance: boolean) => {
+    if (finished) return;
+    finished = true;
+    root.removeEventListener("focusin", onFocusIn);
+    clearTimeout(timer);
+    if (advance && root.isConnected) done(moveFrom(trigger, root, 1));
+  };
+  const onFocusIn = (e: FocusEvent) => {
+    if (e.target === trigger) finish(true);
+    // Radix parks focus on the dialog itself on the way back; that isn't a choice.
+    else if (e.target !== root) finish(false);
+  };
+  if (document.activeElement === trigger) return finish(true);
+  root.addEventListener("focusin", onFocusIn);
+  // Fallback, checked a few times: focus can stay in the closing list for a
+  // while (its exit animation), and some popups hand it nowhere at all.
+  let checks = 0;
+  const check = () => {
+    const active = document.activeElement;
+    if (!active || active === document.body || active === root || active === trigger) return finish(true);
+    // Clicked into another field meanwhile — leave them there.
+    if (root.contains(active)) return finish(false);
+    // Still inside the closing popup.
+    if (++checks >= 10) return finish(false);
+    timer = setTimeout(check, 300);
+  };
+  timer = setTimeout(check, 300);
+}

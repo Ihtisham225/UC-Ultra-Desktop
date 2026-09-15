@@ -9,6 +9,7 @@ import { MovementHistoryTable } from "@/components/MovementHistoryTable";
 import { ExpiryReportTable } from "@/components/ExpiryReportTable";
 import { StockAdjustmentDialog } from "@/components/StockAdjustmentDialog";
 import { PageTip } from "@/components/PageTip";
+import { useAddNew } from "@/hooks/useAddNew";
 
 export default function Inventory() {
   usePageMeta({ title: "Inventory Movements — UCU", description: "Track stock changes and make manual stock adjustments.", path: "/inventory" });
@@ -18,6 +19,8 @@ export default function Inventory() {
   const [refreshKey, setRefreshKey] = useState(0);
   // Expiry tracking only matters for pharmacies.
   const isPharmacy = currentShop?.store_type === "pharmacy";
+
+  useAddNew({ "stock-adjustment": perms.canManageProducts && (() => setAdjOpen(true)) });
 
   if (!perms.canManageProducts) {
     return <div className="p-12 text-center text-muted-foreground">You don't have access to Inventory.</div>;

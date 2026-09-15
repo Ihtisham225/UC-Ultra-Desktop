@@ -173,3 +173,8 @@ body.kb-open .overflow-y-auto {
   .print\:block { display: block !important; }
   @page { margin: 12mm; }
 }
+
+/* A table row reached with the arrow keys (lib/list-keys). */
+tbody tr[data-kbd-row]:focus { outline: none; }
+tbody tr[data-kbd-row]:focus > td { background-color: hsl(var(--accent)); }
+tbody tr[data-kbd-row]:focus > td:first-child { box-shadow: inset 3px 0 0 hsl(var(--primary)); }

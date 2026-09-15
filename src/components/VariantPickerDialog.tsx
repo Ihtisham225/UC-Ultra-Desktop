@@ -123,7 +123,7 @@ export const VariantPickerDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg md:max-w-2xl lg:max-w-3xl">
+      <DialogContent data-enter-chain="off" className="sm:max-w-lg md:max-w-2xl lg:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="size-5 text-primary" />

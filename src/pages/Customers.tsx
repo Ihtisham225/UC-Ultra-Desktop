@@ -22,6 +22,7 @@ import { useRowSelection } from "@/hooks/useRowSelection";
 import { BulkActionBar } from "@/components/BulkActionBar";
 import { downloadCsv } from "@/lib/csv";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { useAddNew } from "@/hooks/useAddNew";
 
 interface Customer { id: string; name: string; phone: string | null; email: string | null; notes: string | null; is_supplier?: boolean; }
 
@@ -180,6 +181,8 @@ export default function Customers() {
     toast.success(t("bulk.exported", { count: rows.length }));
   };
 
+  useAddNew({ customer: () => setEditing({ name: "" }) });
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -262,7 +265,7 @@ export default function Customers() {
       </Card>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent>
+        <DialogContent data-add-new="customer">
           <DialogHeader><DialogTitle>{editing?.id ? t("customers.editCustomer") : t("customers.newCustomer")}</DialogTitle></DialogHeader>
           {editing && (
             <div className="space-y-3">

@@ -143,7 +143,7 @@ export function ManualSaleDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent data-add-new="manual-sale" className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Record a sale</DialogTitle>
           <p className="text-sm text-muted-foreground">

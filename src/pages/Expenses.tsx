@@ -23,6 +23,7 @@ import { Pagination } from "@/components/Pagination";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
 import { AccountPicker } from "@/components/AccountPicker";
+import { useAddNew } from "@/hooks/useAddNew";
 
 const PAGE_SIZE_KEY = "pos.pageSize.expenses";
 const DEFAULT_PAGE_SIZE = 20;
@@ -105,6 +106,8 @@ export default function Expenses() {
       category_id: categories[0]?.id ?? "",
     });
   };
+
+  useAddNew({ expense: () => { resetForm(); setOpen(true); } });
 
   const cur = currentShop?.currency ?? "USD";
 
@@ -340,7 +343,7 @@ export default function Expenses() {
           <DialogTrigger asChild>
             <Button onClick={resetForm}><Plus className="size-4 mr-2" /> {t("expenses.addNew")}</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent data-add-new="expense">
             <DialogHeader><DialogTitle>{editingId ? t("expenses.editExpense") : t("expenses.newExpense")}</DialogTitle></DialogHeader>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
               <div className="space-y-1.5 col-span-1">

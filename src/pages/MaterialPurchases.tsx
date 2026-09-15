@@ -31,6 +31,7 @@ import { rpc } from "@/lib/apiClient";
 import type {
   PartyOption, MaterialPurchaseDto, PartyPaymentDto, LedgerResult,
 } from "@/lib/handicraftTypes";
+import { useAddNew } from "@/hooks/useAddNew";
 
 const ALL = "all";
 
@@ -195,6 +196,8 @@ export default function MaterialPurchases() {
   });
 
   // ---------------------------------------------------------- purchases
+
+  useAddNew({ "material-purchase": canManage && (() => newPurchase()) });
 
   const newPurchase = () => {
     setPendingPhotos([]);
@@ -614,7 +617,7 @@ export default function MaterialPurchases() {
         open={!!purchaseDraft}
         onOpenChange={(o) => { if (!o) { setPurchaseDraft(null); daybook.abandon(); } }}
       >
-        <DialogContent className="w-[96vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+        <DialogContent data-add-new="material-purchase" className="w-[96vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>{purchaseDraft?.id ? "Edit purchase" : "New purchase"}</DialogTitle>
           </DialogHeader>

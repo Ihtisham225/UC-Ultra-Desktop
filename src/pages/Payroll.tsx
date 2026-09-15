@@ -28,6 +28,7 @@ import {
   type SalaryConfig,
   type SalaryPeriod,
 } from "@/lib/salary-period";
+import { useAddNew } from "@/hooks/useAddNew";
 
 type PaymentType = "advance" | "salary" | "bonus";
 interface StaffPayrollDto {
@@ -205,6 +206,8 @@ export default function Payroll() {
     toast.success("Deleted");
     load();
   };
+
+  useAddNew({ "payroll-payment": canManage && staff.length > 0 && (() => openPay()) });
 
   const openPay = (staffUserId?: string) => {
     const first = staffUserId ?? onPayroll[0]?.user_id ?? staff[0]?.user_id ?? "";
@@ -423,7 +426,7 @@ export default function Payroll() {
 
       {/* Record payment */}
       <Dialog open={!!pay} onOpenChange={(o) => !o && setPay(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent data-add-new="payroll-payment" className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Record payment</DialogTitle></DialogHeader>
           {pay && (
             <div className="space-y-3">

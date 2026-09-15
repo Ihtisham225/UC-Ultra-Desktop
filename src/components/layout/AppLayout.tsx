@@ -1,11 +1,10 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useSyncExternalStore } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
-import { Landmark, LayoutDashboard, ScanBarcode, Package, Users, Receipt, Settings, LogOut, Store, ChevronDown, PackageOpen, Wallet, ShieldCheck, BarChart3, Sparkles, ShieldAlert, Undo2, LifeBuoy, HandCoins, Truck, Factory, Scissors, Calculator, FileBarChart, Boxes, FolderTree, Tag , TrendingUp, BadgeDollarSign, FlaskConical, ClipboardCheck, HeartPulse, Car, BookOpenCheck, ScrollText } from "lucide-react";
+import { LogOut, Store, ChevronDown, Sparkles, ShieldAlert, Calculator, Keyboard, PanelLeft } from "lucide-react";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShop } from "@/contexts/ShopContext";
-import { usePermissions } from "@/hooks/usePermissions";
 import { useProAccess } from "@/hooks/useProAccess";
 import { useIsSuperAdmin } from "@/hooks/useIsSuperAdmin";
 import { Button } from "@/components/ui/button";
@@ -22,16 +21,38 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { InstallPwaButton } from "@/components/InstallPwaButton";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { Logo } from "@/components/Logo";
-import { isLabEnabled } from "@/lib/lab";
-import { isHandicraft } from "@/lib/handicraft";
-import { isOil } from "@/lib/oil";
+import { AppShortcuts } from "@/components/shortcuts/AppShortcuts";
+import { useAppNav } from "@/hooks/useAppNav";
+import { useIsMac } from "@/hooks/useIsMac";
+import type { NavPage } from "@/lib/app-nav";
+import { appShortcutLabel, openShortcutPopup } from "@/lib/shortcuts";
 
-type NavItem = { to: string; label: string; icon: any; show: boolean };
+type NavItem = Pick<NavPage, "to" | "label" | "icon">;
+
+/**
+ * Whether Ctrl/Cmd+B has hidden the sidebar. Remembered on this machine; read
+ * through useSyncExternalStore so every screen agrees the moment it flips.
+ */
+const SIDEBAR_KEY = "ucu.sidebarHidden";
+const sidebarListeners = new Set<() => void>();
+let sidebarHiddenFallback = false;
+const readSidebarHidden = () => {
+  try { return localStorage.getItem(SIDEBAR_KEY) === "1"; } catch { return sidebarHiddenFallback; }
+};
+const subscribeSidebar = (listener: () => void) => {
+  sidebarListeners.add(listener);
+  return () => { sidebarListeners.delete(listener); };
+};
+const toggleSidebar = () => {
+  const next = !readSidebarHidden();
+  sidebarHiddenFallback = next;
+  try { localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0"); } catch { /* storage blocked — kept in memory */ }
+  sidebarListeners.forEach((l) => l());
+};
 
 export const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, signOut } = useAuth();
-  const { shops, currentShop, setCurrentShopId, role, hasPerm } = useShop();
-  const perms = usePermissions();
+  const { shops, currentShop, setCurrentShopId, role } = useShop();
   const { isPro, daysLeft } = useProAccess();
   const { isSuperAdmin } = useIsSuperAdmin();
   const { t } = useTranslation();
@@ -39,57 +60,12 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcState, setCalcState] = useState<CalculatorState>({ expr: "", display: "0" });
 
-  // Handicraft shops don't sell through the app and hold no stock in it, so
-  // every selling- and product-shaped screen comes off their nav. Nothing is
-  // deleted — switching the store type back shows them all again.
-  const craft = isHandicraft(currentShop);
-  // Oil shops keep a service register beside the till — the free oil change is
-  // the reason the customer came in, so it gets its own screen.
-  const oil = isOil(currentShop);
-
-  const nav: NavItem[] = [
-    { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
-    // The shawl trade's daily book: every movement is written here as it
-    // happens, then raised as a real record at the end of the day. It sits
-    // first because it is the screen they are on all day.
-    { to: "/daybook", label: "Roznamcha", icon: BookOpenCheck, show: craft && perms.canManagePurchases },
-    { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: !craft },
-    { to: "/products", label: t("nav.products"), icon: Package, show: !craft },
-    { to: "/categories", label: "Categories", icon: FolderTree, show: !craft && perms.canManageProducts },
-    { to: "/brands", label: "Brands", icon: Tag, show: !craft && perms.canManageProducts },
-    { to: "/inventory", label: "Inventory", icon: Boxes, show: !craft && perms.canManageProducts },
-    { to: "/lab", label: "Lab", icon: FlaskConical, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
-    { to: "/lab-results", label: "Results", icon: ClipboardCheck, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
-    { to: "/patients", label: "Patients", icon: HeartPulse, show: isLabEnabled(currentShop) && hasPerm("lab", "view") },
-    { to: "/oil-changes", label: "Oil Changes", icon: Car, show: oil },
-    { to: "/sales", label: t("nav.sales"), icon: Receipt, show: !craft },
-    { to: "/returns", label: t("nav.returns"), icon: Undo2, show: !craft },
-    { to: "/customers", label: t("nav.customers"), icon: Users, show: !craft },
-    // Craft shops sell on a challan, not through the till, so they get their
-    // own Customers screen rather than the sales-shaped one.
-    { to: "/customers", label: t("nav.customers"), icon: Users, show: craft && perms.canManageSuppliers },
-    { to: "/analytics", label: t("nav.analytics"), icon: BarChart3, show: !craft && perms.canManageExpenses },
-    { to: "/reports", label: "Reports", icon: FileBarChart, show: perms.canManageExpenses },
-    { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, show: !craft && perms.canManagePurchases },
-    { to: "/material-purchases", label: t("nav.purchases"), icon: PackageOpen, show: craft && perms.canManagePurchases },
-    { to: "/making", label: "Making", icon: Scissors, show: craft && perms.canManagePurchases },
-    { to: "/job-work", label: "Job Work", icon: Factory, show: craft && perms.canManagePurchases },
-    { to: "/suppliers", label: craft ? "Parties" : t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
-    { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },
-    { to: "/accounts", label: "Accounts", icon: Landmark, show: perms.canManageExpenses || hasPerm("accounts", "view") },
-    // A craft shop keeps two books already — what it owes each party, on the
-    // Parties page, and what customers owe it, on Customers — so the general
-    // khata would be a third place for the same money.
-    { to: "/debts", label: `${t("nav.debts")} (Khata)`, icon: HandCoins, show: !craft && perms.canManageExpenses },
-    { to: "/investors", label: t("nav.investors"), icon: TrendingUp, show: perms.canManageExpenses && !!currentShop?.investors_enabled },
-    { to: "/payroll", label: t("nav.payroll"), icon: BadgeDollarSign, show: perms.canManageExpenses },
-    { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, show: perms.canManageStaff },
-    // Who did what in this store. Owner/manager only, matching the action's
-    // own guard — a cashier must not be able to audit their own trail.
-    { to: "/activity", label: "Activity", icon: ScrollText, show: role === "owner" || role === "manager" },
-    { to: "/settings", label: t("nav.settings"), icon: Settings, show: true },
-    { to: "/support", label: t("nav.support"), icon: LifeBuoy, show: true },
-  ].filter((n) => n.show);
+  // The one page list — shared with Go to (Ctrl/Cmd+G) and Add new (Ctrl/Cmd+E),
+  // so the sidebar and the popups can't disagree about what this user may open.
+  const { pages: nav, actions } = useAppNav();
+  const isMac = useIsMac();
+  // Ctrl/Cmd+B hides the sidebar.
+  const sidebarHidden = useSyncExternalStore(subscribeSidebar, readSidebarHidden, () => false);
 
   const renderItem = (item: NavItem, mobile = false) => {
     // Match the exact route or a real sub-path — plain startsWith would light
@@ -135,6 +111,16 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
               <div className="font-bold text-sm">{t("app.name")}</div>
               <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{t("app.tagline")}</div>
             </div>
+          </div>
+
+          <div className="no-drag-region hidden lg:block shrink-0 -ms-2">
+            <Button
+              variant="ghost" size="icon" onClick={toggleSidebar}
+              aria-label={sidebarHidden ? "Show sidebar" : "Hide sidebar"}
+              title={`${sidebarHidden ? "Show" : "Hide"} sidebar (${appShortcutLabel("sidebar", isMac)})`}
+            >
+              <PanelLeft className="size-4.5" />
+            </Button>
           </div>
 
           {/* Mobile brand */}
@@ -184,6 +170,13 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
 
           {/* Right actions */}
           <div className="no-drag-region flex items-center gap-0.5 shrink-0 pr-3 ml-auto lg:ml-0">
+            <Button
+              variant="ghost" size="icon" onClick={() => openShortcutPopup("shortcuts")}
+              className="hidden lg:inline-flex" aria-label="Keyboard shortcuts"
+              title={`Keyboard shortcuts (${appShortcutLabel("shortcuts", isMac)})`}
+            >
+              <Keyboard className="size-4.5" />
+            </Button>
             <Button variant="ghost" size="icon" onClick={() => setCalcOpen(true)} aria-label="Calculator">
               <Calculator className="size-4.5" />
             </Button>
@@ -213,7 +206,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
       {/* ── Body: sidebar + main ── */}
       <div className="flex flex-1 min-h-0">
       {/* Sidebar */}
-      <aside className="hidden lg:flex flex-col w-56 bg-sidebar text-sidebar-foreground border-r border-sidebar-border shrink-0">
+      <aside className={cn("hidden flex-col w-56 bg-sidebar text-sidebar-foreground border-r border-sidebar-border shrink-0", !sidebarHidden && "lg:flex")}>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {nav.map((item) => renderItem(item))}
           {isSuperAdmin && (
@@ -228,6 +221,15 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
         </nav>
 
         <div className="p-3 border-t border-sidebar-border space-y-2">
+          {/* The two shortcuts worth learning first, where the eye already goes. */}
+          <div className="flex items-center justify-between gap-2 px-3 text-[11px] text-sidebar-foreground/60">
+            <button type="button" onClick={() => openShortcutPopup("goTo")} className="flex items-center gap-1.5 hover:text-sidebar-foreground">
+              <kbd className="font-mono rounded border border-sidebar-border px-1">{appShortcutLabel("goTo", isMac)}</kbd> Go to
+            </button>
+            <button type="button" onClick={() => openShortcutPopup("addNew")} className="flex items-center gap-1.5 hover:text-sidebar-foreground">
+              <kbd className="font-mono rounded border border-sidebar-border px-1">{appShortcutLabel("addNew", isMac)}</kbd> Add new
+            </button>
+          </div>
           {isPro && role === "owner" && (
             <Link to="/billing" className="block rounded-lg p-3 bg-success/10 border border-success/20 hover:bg-success/15 transition-colors">
               <div className="flex items-center gap-1.5 text-xs font-bold text-success"><Sparkles className="size-3.5" /> {t("layout.subscriptionActive")}</div>
@@ -250,6 +252,14 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
 
       {/* Mobile bottom navigation */}
       <MobileBottomNav />
+
+      <AppShortcuts
+        pages={nav}
+        actions={actions}
+        onToggleSidebar={toggleSidebar}
+        calculatorOpen={calcOpen}
+        platform="desktop"
+      />
 
       <FloatingCalculator
         open={calcOpen}

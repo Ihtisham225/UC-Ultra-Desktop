@@ -32,6 +32,7 @@ import type { PartyOption } from "@/lib/handicraftTypes";
 import type {
   DaybookEntryDto, DaybookEntryInput, DaybookFilters, DaybookSummary,
 } from "@/lib/daybookTypes";
+import { useAddNew } from "@/hooks/useAddNew";
 
 /**
  * Every action lives on the server — the daybook is not a synced table.
@@ -179,6 +180,8 @@ export default function Daybook() {
   };
 
   // ------------------------------------------------------------- entries
+
+  useAddNew({ "daybook-entry": canManage && (() => newEntry("in", "money")) });
 
   const newEntry = (direction: DaybookDirectionValue, kind: DaybookKindValue) => {
     setDraft({ ...emptyDraft(from && from === to ? from : today), direction, kind });
@@ -664,7 +667,7 @@ export default function Daybook() {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setDraft(null)} disabled={busy}>Cancel</Button>
             {!draft?.id && (
-              <Button variant="secondary" onClick={() => save(true)} disabled={busy}>
+              <Button variant="secondary" data-enter-save-new onClick={() => save(true)} disabled={busy}>
                 Save &amp; add another
               </Button>
             )}

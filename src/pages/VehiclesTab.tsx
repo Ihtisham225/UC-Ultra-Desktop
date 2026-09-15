@@ -16,6 +16,7 @@ import { downloadCsv } from "@/lib/csv";
 import { format } from "date-fns";
 import { normalizePlate, tidyPlate } from "@/lib/oil";
 import type { LocalVehicle } from "@/components/VehiclePicker";
+import { useAddNew } from "@/hooks/useAddNew";
 
 type Draft = { id?: string; vehicle_number: string; make: string; model_number: string; notes: string };
 const blank: Draft = { vehicle_number: "", make: "", model_number: "", notes: "" };
@@ -33,16 +34,24 @@ interface LocalVisit {
  * terminal — the whole register is synced, so it lists, searches and registers
  * with no connection.
  */
-export default function VehiclesTab({ onSearchVisits }: { onSearchVisits: (plate: string) => void }) {
+export default function VehiclesTab({
+  onSearchVisits, openNew = false,
+}: {
+  onSearchVisits: (plate: string) => void;
+  /** Open the register form as the tab mounts (Add new → Vehicle from the visits tab). */
+  openNew?: boolean;
+}) {
   const { currentShop, role } = useShop();
   const { data: vehicles, save, remove } = useLocalStore<LocalVehicle>("vehicles", currentShop?.id);
   const { data: visits } = useLocalStore<LocalVisit>("oil_changes", currentShop?.id);
   const [search, setSearch] = useState("");
-  const [editing, setEditing] = useState<Draft | null>(null);
+  const [editing, setEditing] = useState<Draft | null>(openNew ? { ...blank } : null);
   const [busy, setBusy] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
 
   const canDelete = role === "owner" || role === "manager";
+
+  useAddNew({ vehicle: () => setEditing({ ...blank }) });
 
   // Visits per car, and the most recent one, straight off the local ledger.
   const stats = useMemo(() => {
@@ -240,7 +249,7 @@ export default function VehiclesTab({ onSearchVisits }: { onSearchVisits: (plate
       )}
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent data-add-new="vehicle" className="max-w-md">
           <DialogHeader>
             <DialogTitle>{editing?.id ? "Edit vehicle" : "Register vehicle"}</DialogTitle>
           </DialogHeader>

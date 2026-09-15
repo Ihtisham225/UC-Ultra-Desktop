@@ -1,4 +1,4 @@
-import { Card } from "@/components/ui/card";
+import { Arrow, Key, Row, Section } from "@/components/shortcuts/guide-parts";
 import { BROWSER_RESERVED, shortcutLabel, type PosShortcut } from "@/lib/pos-shortcuts";
 import { useIsMac } from "@/hooks/useIsMac";
 
@@ -10,36 +10,6 @@ import { useIsMac } from "@/hooks/useIsMac";
  * shortcut that no longer works. Only the Enter chain is written out by hand;
  * its order is `STEP` in lib/checkout-keys.
  */
-
-const Key = ({ children }: { children: React.ReactNode }) => (
-  <kbd className="inline-flex min-w-7 items-center justify-center rounded-md border bg-muted px-2 py-0.5 font-mono text-xs font-medium shadow-sm">
-    {children}
-  </kbd>
-);
-
-function Row({ keys, action, detail }: { keys: React.ReactNode; action: string; detail?: string }) {
-  return (
-    <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:gap-6">
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 sm:w-44">{keys}</div>
-      <div className="min-w-0">
-        <div className="text-sm font-medium">{action}</div>
-        {detail && <div className="text-xs text-muted-foreground">{detail}</div>}
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
-  return (
-    <Card className="shadow-card p-6">
-      <h3 className="font-semibold">{title}</h3>
-      <p className="text-xs text-muted-foreground">{hint}</p>
-      <div className="mt-2 divide-y">{children}</div>
-    </Card>
-  );
-}
-
-const Arrow = () => <span className="text-muted-foreground">→</span>;
 
 /**
  * `platform` decides how Ctrl/Cmd+W and Ctrl/Cmd+N are described: a browser

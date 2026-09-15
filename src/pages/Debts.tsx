@@ -36,6 +36,7 @@ import { LedgerEntriesTable } from "@/components/LedgerEntriesLog";
 import { PageTip } from "@/components/PageTip";
 import { AccountPicker } from "@/components/AccountPicker";
 import { LedgerPersonPicker, type LedgerPerson } from "@/components/LedgerPersonPicker";
+import { useAddNew } from "@/hooks/useAddNew";
 
 type Direction = "owed_to_me" | "i_owe";
 type Status = "open" | "settled";
@@ -298,6 +299,8 @@ export default function Debts() {
   });
 
   const selectedRemaining = selectedGroup?.remaining ?? 0;
+
+  useAddNew({ "ledger-entry": canManage && (() => startCreate()) });
 
   const startCreate = () => {
     setEditing(null);
@@ -787,7 +790,7 @@ export default function Debts() {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent data-add-new="ledger-entry">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit debt" : "Add debt"}</DialogTitle>
           </DialogHeader>

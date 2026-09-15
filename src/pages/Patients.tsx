@@ -19,6 +19,7 @@ import { BulkActionBar } from "@/components/BulkActionBar";
 import { downloadCsv } from "@/lib/csv";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { isLabEnabled } from "@/lib/lab";
+import { useAddNew } from "@/hooks/useAddNew";
 
 interface Patient {
   id: string;
@@ -131,6 +132,8 @@ export default function Patients() {
     toast.success(`Exported ${rows.length}`);
   };
 
+  useAddNew({ patient: isLabEnabled(currentShop) && (() => setEditing({ name: "" })) });
+
   if (!isLabEnabled(currentShop)) {
     return (
       <div className="p-12 text-center text-muted-foreground">
@@ -224,7 +227,7 @@ export default function Patients() {
       </Card>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent data-add-new="patient" className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{editing?.id ? "Edit patient" : "New patient"}</DialogTitle></DialogHeader>
           {editing && (
             <div className="space-y-3">
