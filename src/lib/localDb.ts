@@ -50,6 +50,9 @@ export const SYNC_TABLES = [
   // Alternate sale units (oil sold by the bottle). Pull-only — edited on the
   // Products page through an online action, but the till needs them offline.
   'product_units',
+  // Shelves and racks. Pull-only like product_units: the till shows where a
+  // product is kept offline, but places are edited through online actions.
+  'storage_locations',
   // The vehicle register. Two-way: a terminal with no connection still takes
   // the car's details at the counter and pushes them with the sale.
   'oil_changes',

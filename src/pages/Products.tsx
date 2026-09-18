@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Search, Edit2, Trash2, ScanBarcode, Package as PackageIcon, Printer, RefreshCw, Eye, Layers, Upload, ArrowUpDown } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, ScanBarcode, Package as PackageIcon, Printer, RefreshCw, Eye, Layers, Upload, ArrowUpDown, MapPin } from "lucide-react";
 import { ImportProductsDialog } from "@/components/ImportProductsDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
@@ -39,6 +39,8 @@ import { rpc } from "@/lib/apiClient";
 import { isOil } from "@/lib/oil";
 import { v4 as uuid } from "uuid";
 import { useAddNew } from "@/hooks/useAddNew";
+import { useLocalStore } from "@/hooks/useLocalStore";
+import { flattenLocations, locationAndDescendants, whereKept, type LocationRow } from "@/lib/storage-locations";
 
 interface Variant {
   id?: string;
@@ -49,6 +51,8 @@ interface Variant {
   stock: number;
   imei1?: string | null;
   imei2?: string | null;
+  /** Its own shelf; null = kept with the product. */
+  location_id?: string | null;
   // local-only flag for new rows that aren't persisted yet
   _new?: boolean;
 }
@@ -71,6 +75,9 @@ interface Product {
   imei2?: string | null;
   /** Phone shops: false for accessories, so POS skips the IMEI prompt. */
   tracks_imei?: boolean;
+  /** Where it's kept (lib/storage-locations). */
+  location_id?: string | null;
+  shelf_location?: string | null;
   created_at?: string;
   is_service?: boolean;
   is_lab_test?: boolean;
@@ -190,6 +197,10 @@ export default function Products() {
   const { data: items, loading, refresh: load } = useProductsWithVariants<Product>(
     currentShop?.id,
   );
+  // Shelves come from the synced store, so the picker and the 📍 labels work offline.
+  const { data: locations } = useLocalStore<LocationRow>("storage_locations", currentShop?.id);
+  /** A shelf id, "__none__" for products on no shelf yet, or null for all. */
+  const [shelfFilter, setShelfFilter] = useState<string | null>(null);
 
   // Categories & brands feed the filter dropdowns (online-only; the products
   // themselves keep working offline).
@@ -293,6 +304,7 @@ export default function Products() {
       batch_no: !wantsVariants ? ((editing as any).batch_no?.trim() || null) : null,
       generic_name: (editing as any).generic_name?.trim() || null,
       shelf_location: (editing as any).shelf_location?.trim() || null,
+      location_id: editing.location_id ?? null,
       is_service: (editing as any).is_service ?? false,
       is_lab_test: (editing as any).is_lab_test ?? false,
       is_active: editing.is_active !== false,
@@ -343,6 +355,7 @@ export default function Products() {
           imei2: (v as { imei2?: string | null }).imei2?.toString().trim() || null,
           expiry_date: (v as { expiry_date?: string | null }).expiry_date || null,
           batch_no: (v as { batch_no?: string | null }).batch_no?.toString().trim() || null,
+          location_id: v.location_id ?? null,
           updated_at: now,
         }, true);
       }
@@ -422,9 +435,17 @@ export default function Products() {
     return ids;
   })();
 
+  // Filtering by a rack includes every shelf on it.
+  const shelfIds = shelfFilter && shelfFilter !== "__none__" ? locationAndDescendants(shelfFilter, locations) : null;
+
   const filtered = items.filter((p) => {
     if (categoryIds && (!p.category_id || !categoryIds.has(p.category_id))) return false;
     if (brandFilter && p.brand_id !== brandFilter) return false;
+    if (shelfFilter) {
+      // A product is "on" a shelf when it, or any of its variants, is kept there.
+      const places = [p.location_id, ...(p.product_variants ?? []).map((v) => v.location_id)].filter(Boolean);
+      if (shelfFilter === "__none__" ? places.length > 0 : !places.some((id) => shelfIds?.has(id as string))) return false;
+    }
     const q = search.toLowerCase();
     if (!q) return true;
     if (p.name.toLowerCase().includes(q)) return true;
@@ -460,7 +481,7 @@ export default function Products() {
 
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(
     sorted,
-    { key: "products", defaultSize: 20, resetDeps: [search, categoryFilter, brandFilter, sortBy, items.length] },
+    { key: "products", defaultSize: 20, resetDeps: [search, categoryFilter, brandFilter, shelfFilter, sortBy, items.length] },
   );
 
   const cur = currentShop?.currency ?? "USD";
@@ -582,6 +603,23 @@ export default function Products() {
             ))}
           </SelectContent>
         </Select>
+        {locations.length > 0 && (
+          <Select value={shelfFilter ?? "__all__"} onValueChange={(v) => setShelfFilter(v === "__all__" ? null : v)}>
+            <SelectTrigger className="w-full sm:w-44" aria-label="Filter by shelf">
+              <MapPin className="size-4 me-1 shrink-0 text-muted-foreground" />
+              <SelectValue placeholder="All shelves" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All shelves</SelectItem>
+              <SelectItem value="__none__">Not on a shelf</SelectItem>
+              {flattenLocations(locations).map(({ row, depth }) => (
+                <SelectItem key={row.id} value={row.id}>
+                  {`${"   ".repeat(depth)}${depth > 0 ? "↳ " : ""}${row.name}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={sortBy} onValueChange={(v) => changeSort(v as SortKey)}>
           <SelectTrigger className="w-full sm:w-44" aria-label="Sort products">
             <ArrowUpDown className="size-4 me-1 shrink-0 text-muted-foreground" />
@@ -694,6 +732,14 @@ export default function Products() {
                             {[p.category, p.brand].filter(Boolean).join(" · ")}
                           </div>
                         )}
+                        {(() => {
+                          const place = whereKept(p, null, locations);
+                          return place ? (
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                              <MapPin className="size-3" /> {place}
+                            </div>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="p-3 hidden md:table-cell font-mono text-xs text-muted-foreground">
                         {p.sku || "—"} {p.barcode && <span className="ms-2">· {p.barcode}</span>}
@@ -746,6 +792,7 @@ export default function Products() {
               value={editing}
               onChange={setEditing}
               onScanBarcode={() => { setScanTarget("field"); setScannerOpen(true); }}
+              locations={locations}
             />
           )}
           <DialogFooter>

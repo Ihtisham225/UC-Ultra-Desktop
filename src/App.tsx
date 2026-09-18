@@ -68,6 +68,9 @@ const Support = lazy(() => import("./pages/Support"));
 const Debts = lazy(() => import("./pages/Debts"));
 const Investors = lazy(() => import("./pages/Investors"));
 const Payroll = lazy(() => import("./pages/Payroll"));
+const Shelves = lazy(() => import("./pages/Shelves"));
+const Assets = lazy(() => import("./pages/Assets"));
+const Zakat = lazy(() => import("./pages/Zakat"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const PlanRequired = lazy(() => import("./pages/PlanRequired"));
 const Pricing = lazy(() => import("./pages/Pricing"));
@@ -190,6 +193,9 @@ const App = () => {
               <Route path="/debts" element={<SubShell><RequireRole roles={["owner", "manager"]}><Debts /></RequireRole></SubShell>} />
               <Route path="/investors" element={<SubShell><RequireRole roles={["owner", "manager"]}><Investors /></RequireRole></SubShell>} />
               <Route path="/payroll" element={<SubShell><RequireRole roles={["owner", "manager"]}><Payroll /></RequireRole></SubShell>} />
+              <Route path="/shelves" element={<SubShell><RequireRole roles={["owner", "manager"]}><Shelves /></RequireRole></SubShell>} />
+              <Route path="/assets" element={<SubShell><RequireRole roles={["owner", "manager"]}><Assets /></RequireRole></SubShell>} />
+              <Route path="/zakat" element={<SubShell><RequireRole roles={["owner", "manager"]}><Zakat /></RequireRole></SubShell>} />
               <Route path="/purchases" element={<SubShell><RequireRole roles={["owner", "manager"]}><Purchases /></RequireRole></SubShell>} />
               <Route path="/daybook" element={<SubShell><RequireRole roles={["owner", "manager"]}><Daybook /></RequireRole></SubShell>} />
               <Route path="/material-purchases" element={<SubShell><RequireRole roles={["owner", "manager"]}><MaterialPurchases /></RequireRole></SubShell>} />

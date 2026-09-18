@@ -24,11 +24,13 @@ const pageDialogOpen = () =>
  * (the till, the receipt) gets it first and wins by calling preventDefault.
  */
 export function AppShortcuts({
-  pages, actions, onToggleSidebar, calculatorOpen, platform,
+  pages, actions, onToggleSidebar, onToggleCalculator, onToggleTheme, calculatorOpen, platform,
 }: {
   pages: NavPage[];
   actions: NewAction[];
   onToggleSidebar: () => void;
+  onToggleCalculator: () => void;
+  onToggleTheme: () => void;
   calculatorOpen: boolean;
   platform: "web" | "desktop";
 }) {
@@ -45,9 +47,9 @@ export function AppShortcuts({
     if (page) pushRecentPage(page);
   }, [pathname, pages]);
 
-  const state = useRef({ popup, onToggleSidebar, calculatorOpen });
+  const state = useRef({ popup, onToggleSidebar, onToggleCalculator, onToggleTheme, calculatorOpen });
   useEffect(() => {
-    state.current = { popup, onToggleSidebar, calculatorOpen };
+    state.current = { popup, onToggleSidebar, onToggleCalculator, onToggleTheme, calculatorOpen };
   });
 
   useEffect(() => {
@@ -62,6 +64,18 @@ export function AppShortcuts({
         if (target?.isContentEditable) return;
         e.preventDefault();
         toggleSidebar();
+        return;
+      }
+      // The calculator floats beside whatever is open and the theme is
+      // cosmetic, so both work anywhere — over a form included.
+      if (hit === "calculator") {
+        e.preventDefault();
+        state.current.onToggleCalculator();
+        return;
+      }
+      if (hit === "theme") {
+        e.preventDefault();
+        state.current.onToggleTheme();
         return;
       }
       if (hit === "shortcuts") {

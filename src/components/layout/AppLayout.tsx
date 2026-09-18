@@ -4,6 +4,7 @@ import { LogOut, Store, ChevronDown, Sparkles, ShieldAlert, Calculator, Keyboard
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useShop } from "@/contexts/ShopContext";
 import { useProAccess } from "@/hooks/useProAccess";
 import { useIsSuperAdmin } from "@/hooks/useIsSuperAdmin";
@@ -54,6 +55,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, signOut } = useAuth();
   const { shops, currentShop, setCurrentShopId, role } = useShop();
   const { isPro, daysLeft } = useProAccess();
+  const { setTheme, resolved: resolvedTheme } = useTheme();
   const { isSuperAdmin } = useIsSuperAdmin();
   const { t } = useTranslation();
   const loc = useLocation();
@@ -177,7 +179,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
             >
               <Keyboard className="size-4.5" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => setCalcOpen(true)} aria-label="Calculator">
+            <Button variant="ghost" size="icon" onClick={() => setCalcOpen(true)} aria-label="Calculator" title={`Calculator (${appShortcutLabel("calculator", isMac)})`}>
               <Calculator className="size-4.5" />
             </Button>
             <LanguageToggle />
@@ -257,6 +259,8 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
         pages={nav}
         actions={actions}
         onToggleSidebar={toggleSidebar}
+        onToggleCalculator={() => setCalcOpen((o) => !o)}
+        onToggleTheme={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
         calculatorOpen={calcOpen}
         platform="desktop"
       />

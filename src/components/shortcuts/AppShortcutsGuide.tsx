@@ -28,6 +28,8 @@ export function AppShortcutsGuide() {
         <Row keys={k("search")} action="Search products, sales, customers and suppliers" />
         <Row keys={k("shortcuts")} action="Show these shortcuts" />
         <Row keys={k("sidebar")} action="Show or hide the sidebar" detail="On a wide screen." />
+        <Row keys={k("calculator")} action="Open or minimise the calculator" />
+        <Row keys={k("theme")} action="Switch between light and dark" />
         <Row keys={<Key>Esc</Key>} action="Close a popup or form without saving" />
       </Section>
 

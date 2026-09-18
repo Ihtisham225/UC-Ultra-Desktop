@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getAll, onLocalChange } from '@/lib/localDb'
 import { syncNow } from '@/lib/syncEngine'
 import type { CachedProduct, CachedVariant } from '@/lib/offlineDb'
+import { locationPath, type LocationRow } from '@/lib/storage-locations'
 
 // Raw synced rows (snake_case, from /api/sync/pull) as they land in the local store.
 interface ProductRow { id: string; name: string; barcode: string | null; price: number | string; stock: number | string; shop_id: string; is_active?: boolean }
@@ -31,10 +32,12 @@ export function useOfflineProducts(shopId: string | undefined) {
 
   const loadFromStore = useCallback(async () => {
     if (!shopId) { setProducts([]); return }
-    const [prods, vars, unitRows] = await Promise.all([
+    const [prods, vars, unitRows, places] = await Promise.all([
       getAll<ProductRow>('products', shopId),
       getAll<VariantRow>('product_variants', shopId),
       getAll<UnitRow>('product_units', shopId),
+      // Shelves, so the card can say where to fetch it — synced, so offline too.
+      getAll<LocationRow>('storage_locations', shopId),
     ])
     // Alternate sale units (oil sold by the bottle), so an offline till can
     // still offer them.
@@ -64,6 +67,7 @@ export function useOfflineProducts(shopId: string | undefined) {
         imei2: (v as { imei2?: string | null }).imei2 ?? null,
         expiry_date: (v as { expiry_date?: string | null }).expiry_date ?? null,
         batch_no: (v as { batch_no?: string | null }).batch_no ?? null,
+        location: locationPath((v as { location_id?: string | null }).location_id, places),
       })
       variantsByProduct.set(v.product_id, arr)
     }
@@ -84,7 +88,10 @@ export function useOfflineProducts(shopId: string | undefined) {
         expiry_date: (p as { expiry_date?: string | null }).expiry_date ?? null,
         batch_no: (p as { batch_no?: string | null }).batch_no ?? null,
         generic_name: (p as { generic_name?: string | null }).generic_name ?? null,
-        shelf_location: (p as { shelf_location?: string | null }).shelf_location ?? null,
+        // The shelf it's on; the old typed label only when it has none.
+        shelf_location:
+          locationPath((p as { location_id?: string | null }).location_id, places) ??
+          (p as { shelf_location?: string | null }).shelf_location ?? null,
         is_service: (p as { is_service?: boolean }).is_service ?? false,
         is_lab_test: (p as { is_lab_test?: boolean }).is_lab_test ?? false,
         unit: (p as { unit?: string | null }).unit ?? null,

@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, X, Sparkles, Layers, ChevronDown, ChevronUp, Tag } from "lucide-react";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useShop } from "@/contexts/ShopContext";
+import { LocationSelect } from "@/components/LocationSelect";
+import type { LocationRow } from "@/lib/storage-locations";
 
 /**
  * Public shape used by the parent (Products page).
@@ -23,6 +25,8 @@ export interface BuilderVariant {
   imei2?: string | null;
   expiry_date?: string | null;
   batch_no?: string | null;
+  /** Its own shelf; null/undefined = kept with the product. */
+  location_id?: string | null;
   _new?: boolean;
 }
 
@@ -41,6 +45,8 @@ interface Props {
   /** Existing variants when editing. */
   value: BuilderVariant[];
   onChange: (variants: BuilderVariant[]) => void;
+  /** When given, each variant can be put on its own shelf. */
+  locations?: LocationRow[];
 }
 
 const SEPARATOR = " / ";
@@ -78,7 +84,7 @@ const cartesian = (groups: AttributeGroup[]): string[] => {
   ).filter(Boolean);
 };
 
-export const VariantsBuilder = ({ productName, basePrice, value, onChange }: Props) => {
+export const VariantsBuilder = ({ productName, basePrice, value, onChange, locations }: Props) => {
   const { t } = useTranslation();
   const formatMoney = useFormatMoney();
   const { currentShop } = useShop();
@@ -362,6 +368,18 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange }: Pro
                         <div className="grid grid-cols-2 gap-2 mt-1.5">
                           <Input type="date" value={v.expiry_date ?? ""} onChange={(e) => updateVariantField(idx, "expiry_date", e.target.value)} title="Expiry date" className="h-8 text-xs" />
                           <Input value={v.batch_no ?? ""} onChange={(e) => updateVariantField(idx, "batch_no", e.target.value)} placeholder="Batch no." className="h-8 text-xs" />
+                        </div>
+                      )}
+                      {locations && locations.length > 0 && (
+                        <div className="mt-1.5">
+                          <LocationSelect
+                            value={v.location_id ?? null}
+                            onChange={(id) => onChange(value.map((x, i) => (i === idx ? { ...x, location_id: id } : x)))}
+                            locations={locations}
+                            placeholder="Same shelf as the product"
+                            emptyLabel="Same shelf as the product"
+                            className="h-8 text-xs"
+                          />
                         </div>
                       )}
                       {imeiOnProduct && (
