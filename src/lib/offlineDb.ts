@@ -36,6 +36,8 @@ export interface CachedVariant {
   imei2?: string | null
   expiry_date?: string | null
   batch_no?: string | null
+  /** "Rack A › Shelf 3" when kept apart from its product. */
+  location?: string | null
 }
 
 export interface PendingSale {

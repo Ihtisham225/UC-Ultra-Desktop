@@ -6,6 +6,8 @@
  *   Ctrl/Cmd+K         Search (SearchContext owns it)
  *   Ctrl/Cmd+/         The shortcut sheet
  *   Ctrl/Cmd+B         Show or hide the sidebar
+ *   Ctrl/Cmd+J         Open or minimise the calculator
+ *   Ctrl/Cmd+Shift+L   Switch between light and dark
  *   /                  Jump to the page's search box
  *   ↑ ↓ Enter          Move through a list and open a row
  *
@@ -25,7 +27,7 @@
  * two in step.
  */
 
-export type AppShortcut = "goTo" | "addNew" | "shortcuts" | "sidebar";
+export type AppShortcut = "goTo" | "addNew" | "shortcuts" | "sidebar" | "calculator" | "theme";
 
 /** The three popups the app-wide keys open (components/shortcuts/AppShortcuts). */
 export type ShortcutPopup = "goTo" | "addNew" | "shortcuts";
@@ -51,10 +53,12 @@ export const isLetter = (e: KeyLike, letter: string) =>
   e.code === `Key${letter.toUpperCase()}` || e.key.toLowerCase() === letter;
 
 export function matchAppShortcut(e: KeyLike): AppShortcut | null {
-  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return null;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return null;
+  if (e.shiftKey) return isLetter(e, "l") ? "theme" : null;
   if (isLetter(e, "g")) return "goTo";
   if (isLetter(e, "e")) return "addNew";
   if (isLetter(e, "b")) return "sidebar";
+  if (isLetter(e, "j")) return "calculator";
   // "/" is Shift+7 on some layouts, so the physical key is checked too.
   if (e.key === "/" || e.code === "Slash") return "shortcuts";
   return null;
@@ -83,6 +87,8 @@ const LABELS: Record<AppShortcut | "search" | "saveNow" | "saveNew", { mac: stri
   shortcuts: { mac: "⌘/", other: "Ctrl+/" },
   search: { mac: "⌘K", other: "Ctrl+K" },
   sidebar: { mac: "⌘B", other: "Ctrl+B" },
+  calculator: { mac: "⌘J", other: "Ctrl+J" },
+  theme: { mac: "⌘⇧L", other: "Ctrl+Shift+L" },
   saveNow: { mac: "⌘↵", other: "Ctrl+Enter" },
   saveNew: { mac: "⌘⇧↵", other: "Ctrl+Shift+Enter" },
 };

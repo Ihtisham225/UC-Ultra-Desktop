@@ -3,7 +3,7 @@ import {
   BadgeDollarSign, BarChart3, BookOpenCheck, Boxes, Car, ClipboardCheck, Factory, FileBarChart, FlaskConical,
   FolderTree, HandCoins, HeartPulse, Landmark, LayoutDashboard, LifeBuoy, Package, PackageOpen, Receipt,
   ScanBarcode, Scissors, ScrollText, Settings, ShieldCheck, Tag, TrendingUp, Truck, Undo2, UserPlus, Users,
-  Wallet, FileText, Banknote, SlidersHorizontal, KeyRound,
+  Wallet, FileText, Banknote, SlidersHorizontal, KeyRound, MapPin, Building2, HandHeart,
 } from "lucide-react";
 
 /**
@@ -71,6 +71,8 @@ export function navPages(ctx: NavContext): NavPage[] {
     { to: "/categories", label: "Categories", icon: FolderTree, section: "Stock", show: !craft && perms.canManageProducts },
     { to: "/brands", label: "Brands", icon: Tag, section: "Stock", show: !craft && perms.canManageProducts },
     { to: "/inventory", label: "Inventory", icon: Boxes, section: "Stock", show: !craft && perms.canManageProducts, keywords: ["stock", "adjustment"] },
+    // Where goods are kept. Not for handicraft shops: they hold no catalogue.
+    { to: "/shelves", label: "Shelves & racks", icon: MapPin, section: "Stock", show: !craft && perms.canManageProducts, keywords: ["shelf", "rack", "location", "godown", "count"] },
     { to: "/lab", label: "Lab", icon: FlaskConical, section: "Lab", show: labView, keywords: ["tests"] },
     { to: "/lab-results", label: "Results", icon: ClipboardCheck, section: "Lab", show: labView, keywords: ["lab results", "reports"] },
     { to: "/patients", label: "Patients", icon: HeartPulse, section: "Lab", show: labView },
@@ -96,6 +98,10 @@ export function navPages(ctx: NavContext): NavPage[] {
     { to: "/debts", label: `${t("nav.debts")} (Khata)`, icon: HandCoins, section: "Money", show: !craft && perms.canManageExpenses, keywords: ["ledger", "khata", "debts", "udhaar"] },
     { to: "/investors", label: t("nav.investors"), icon: TrendingUp, section: "Money", show: perms.canManageExpenses && ctx.investorsEnabled },
     { to: "/payroll", label: t("nav.payroll"), icon: BadgeDollarSign, section: "Money", show: perms.canManageExpenses, keywords: ["salary", "wages"] },
+    // Things the shop uses (fridge, generator, shelving) — cost spread as depreciation.
+    { to: "/assets", label: "Assets", icon: Building2, section: "Money", show: perms.canManageExpenses, keywords: ["equipment", "depreciation", "furniture", "generator", "fixed assets"] },
+    // Every store type: zakat is on the owner's wealth, whatever the shop sells.
+    { to: "/zakat", label: "Zakat", icon: HandHeart, section: "Money", show: ownerOrManager(ctx), keywords: ["nisab", "charity"] },
     { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, section: "Store", show: perms.canManageStaff, keywords: ["users", "roles", "employees"] },
     // Who did what in this store. Owner/manager only, matching the action's
     // own guard — a cashier must not be able to read their own trail.
@@ -137,11 +143,13 @@ export function newActions(ctx: NavContext): NewAction[] {
     { id: "stock-adjustment", label: "Stock adjustment", icon: SlidersHorizontal, to: "/inventory", show: !craft && perms.canManageProducts, keywords: ["inventory", "count"] },
     { id: "category", label: "Category", icon: FolderTree, to: "/categories", show: !craft && perms.canManageProducts },
     { id: "brand", label: "Brand", icon: Tag, to: "/brands", show: !craft && perms.canManageProducts },
+    { id: "storage-location", label: "Shelf / rack", icon: MapPin, to: "/shelves", show: !craft && perms.canManageProducts, keywords: ["location", "godown"] },
 
     // Money
     { id: "expense", label: "Expense", icon: Wallet, to: "/expenses", show: perms.canManageExpenses },
     { id: "ledger-entry", label: "Ledger entry", icon: HandCoins, to: "/debts", show: !craft && perms.canManageExpenses, keywords: ["khata", "debt", "udhaar"] },
     { id: "account", label: "Money account", icon: Landmark, to: "/accounts", show: edit || ctx.hasPerm("accounts", "edit"), keywords: ["cash", "bank", "wallet"] },
+    { id: "asset", label: "Asset", icon: Building2, to: "/assets", show: perms.canManageExpenses, keywords: ["equipment", "fridge", "generator", "furniture"] },
     { id: "payroll-payment", label: "Salary payment", icon: BadgeDollarSign, to: "/payroll", show: perms.canManageExpenses, keywords: ["payroll", "advance", "bonus", "wages"] },
     { id: "investor", label: "Investor", icon: TrendingUp, to: "/investors", show: perms.canManageExpenses && ctx.investorsEnabled },
 

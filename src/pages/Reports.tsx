@@ -470,16 +470,19 @@ function InventoryReport({ shopId, formatMoney, cur }: Omit<ReportProps, "range"
 
 function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
   const { fromISO, toISO, fromDate, toDate } = useRange(range);
-  const [data, setData] = useState<{ revenue: number; subtotal: number; tax: number; cogs: number; expenses: number; expByCat: { name: string; total: number }[] } | null>(null);
+  const [data, setData] = useState<{ revenue: number; subtotal: number; tax: number; cogs: number; expenses: number; payroll: number; depreciation: number; assetGain: number; expByCat: { name: string; total: number }[] } | null>(null);
 
   useEffect(() => {
     (async () => {
-      const [allSales, allSaleItems, allExpenses, pi, cats] = await Promise.all([
+      const [allSales, allSaleItems, allExpenses, pi, cats, extras] = await Promise.all([
         getAll<any>("sales", shopId),
         getAll<any>("sale_items", shopId),
         getAll<any>("expenses", shopId),
         getAll<any>("purchase_items", shopId),
         rpc<{ id: string; name: string }[]>("listExpenseCategoriesAction").catch(() => [] as { id: string; name: string }[]),
+        // Wages and asset depreciation live only on the server (0 offline).
+        rpc<{ payroll: number; depreciation: number; asset_gain: number }>("pnlExtrasAction", fromDate, toDate)
+          .catch(() => ({ payroll: 0, depreciation: 0, asset_gain: 0 })),
       ]);
       const itemsBySale = new Map<string, any[]>();
       for (const it of allSaleItems) { const arr = itemsBySale.get(it.sale_id) ?? []; arr.push(it); itemsBySale.set(it.sale_id, arr); }
@@ -513,6 +516,9 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
         tax: sales.reduce((a, x) => a + Number(x.tax), 0),
         cogs,
         expenses: exps.reduce((a, x) => a + Number(x.amount), 0),
+        payroll: extras.payroll ?? 0,
+        depreciation: extras.depreciation ?? 0,
+        assetGain: extras.asset_gain ?? 0,
         expByCat: Array.from(byCat.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total),
       });
     })();
@@ -522,7 +528,7 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
 
   const grossProfit = data.subtotal - data.cogs;
   const margin = data.subtotal > 0 ? (grossProfit / data.subtotal) * 100 : 0;
-  const netProfit = grossProfit - data.expenses;
+  const netProfit = grossProfit - data.expenses - data.payroll - data.depreciation + data.assetGain;
 
   const rows = [
     { label: "Revenue (incl. tax)", value: data.revenue },
@@ -532,6 +538,9 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
     { label: "Gross profit", value: grossProfit, strong: true },
     ...data.expByCat.map((c) => ({ label: `Expense — ${c.name}`, value: -c.total })),
     { label: "Total expenses", value: -data.expenses },
+    ...(data.payroll ? [{ label: "Salaries & wages", value: -data.payroll }] : []),
+    ...(data.depreciation ? [{ label: "Depreciation of assets", value: -data.depreciation }] : []),
+    ...(data.assetGain ? [{ label: data.assetGain > 0 ? "Gain on assets sold" : "Loss on assets sold / written off", value: data.assetGain }] : []),
     { label: "Net profit", value: netProfit, strong: true },
   ];
 

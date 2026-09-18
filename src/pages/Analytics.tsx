@@ -30,6 +30,7 @@ export default function Analytics() {
   const [products, setProducts] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [payroll, setPayroll] = useState<any[]>([]);
+  const [assetEffects, setAssetEffects] = useState({ depreciation: 0, disposal_gain: 0 });
   /** Weighted average cost per product_id or variant_id, derived from all purchase_items. */
   const [avgCost, setAvgCost] = useState<Map<string, number>>(new Map());
   const [customerCount, setCustomerCount] = useState(0);
@@ -71,8 +72,15 @@ export default function Analytics() {
       if (perms.canManageExpenses && navigator.onLine) {
         try { setPayroll(await rpc<any[]>("listPayrollForAnalyticsAction", range)); }
         catch { setPayroll([]); }
+        // Fixed-asset depreciation, likewise server-only.
+        try {
+          setAssetEffects(await rpc<{ depreciation: number; disposal_gain: number }>(
+            "assetEffectsAction", since.slice(0, 10), new Date().toISOString().slice(0, 10),
+          ));
+        } catch { setAssetEffects({ depreciation: 0, disposal_gain: 0 }); }
       } else {
         setPayroll([]);
+        setAssetEffects({ depreciation: 0, disposal_gain: 0 });
       }
 
       // Build weighted average cost: key = variant_id || product_id.
@@ -116,8 +124,11 @@ export default function Analytics() {
     const avgTicket = txnCount > 0 ? revenue / txnCount : 0;
     const totalExpenses = expenses.reduce((a, e) => a + Number(e.amount), 0);
     const totalPayroll = payroll.reduce((a, p) => a + Number(p.amount), 0);
-    const netProfit = revenue - totalExpenses - totalPayroll;
-    return { revenue, subtotal, profit, margin, txnCount, avgTicket, totalExpenses, totalPayroll, netProfit, cogs };
+    // The slice of fixed assets used up in the range is a cost too; selling one
+    // above or below its book value is a one-off gain or loss.
+    const depreciation = assetEffects.depreciation;
+    const netProfit = revenue - totalExpenses - totalPayroll - depreciation + assetEffects.disposal_gain;
+    return { revenue, subtotal, profit, margin, txnCount, avgTicket, totalExpenses, totalPayroll, depreciation, netProfit, cogs };
   }, [sales, items, expenses, payroll, avgCost]);
 
   const dailySeries = useMemo(() => {
@@ -216,7 +227,7 @@ export default function Analytics() {
         <KPI icon={DollarSign} label={t("analytics.revenue")} value={formatMoney(stats.revenue, cur)} tone="primary" />
         <KPI icon={TrendingUp} label={t("analytics.grossProfit")} value={formatMoney(stats.profit, cur)} sub={t("analytics.margin", { value: stats.margin.toFixed(1) })} tone="accent" />
         <KPI icon={ShoppingCart} label={t("analytics.transactions")} value={String(stats.txnCount)} sub={t("analytics.avg", { value: formatMoney(stats.avgTicket, cur) })} tone="default" />
-        <KPI icon={Users} label={t("analytics.netProfit")} value={formatMoney(stats.netProfit, cur)} sub={t("analytics.expBrief", { value: formatMoney(stats.totalExpenses + stats.totalPayroll, cur) })} tone={stats.netProfit >= 0 ? "primary" : "warning"} />
+        <KPI icon={Users} label={t("analytics.netProfit")} value={formatMoney(stats.netProfit, cur)} sub={t("analytics.expBrief", { value: formatMoney(stats.totalExpenses + stats.totalPayroll + stats.depreciation, cur) })} tone={stats.netProfit >= 0 ? "primary" : "warning"} />
       </div>
 
       <Tabs defaultValue="trends" className="space-y-4">

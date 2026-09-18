@@ -56,6 +56,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const KIND_LABEL: Record<string, string> = {
   deposit: "Deposit", withdrawal: "Withdrawal", transfer: "Transfer",
   adjustment: "Adjustment", sale: "Sale", purchase: "Purchase", expense: "Expense",
+  payroll: "Payroll", refund: "Refund", debt: "Khata", asset: "Asset", zakat: "Zakat",
 };
 
 export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: boolean }) {

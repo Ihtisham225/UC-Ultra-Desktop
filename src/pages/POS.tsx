@@ -52,6 +52,8 @@ interface Variant {
   imei2?: string | null;
   expiry_date?: string | null;
   batch_no?: string | null;
+  /** "Rack A › Shelf 3" when kept apart from its product. */
+  location?: string | null;
 }
 interface Product {
   id: string;
@@ -878,6 +880,8 @@ export default function POS() {
       price_override: v.price_override, stock: Number(v.stock),
       imei1: v.imei1, imei2: v.imei2,
       expiry_date: v.expiry_date, batch_no: v.batch_no,
+      // Kept apart from the product? Say where; otherwise the card already did.
+      location: v.location ?? null,
     }));
   }, [variantPicker]);
 
@@ -995,6 +999,9 @@ export default function POS() {
                     )}
                     {imeiOnProduct && !hasVariants && (p.imei1 || p.imei2) && (
                       <div className="text-[10px] font-mono text-muted-foreground mt-0.5 truncate">IMEI {imeiTail(p.imei1 || p.imei2)}</div>
+                    )}
+                    {p.shelf_location && (
+                      <div className="text-[10px] text-muted-foreground mt-0.5 truncate">📍 {p.shelf_location}</div>
                     )}
                   </button>
                 );

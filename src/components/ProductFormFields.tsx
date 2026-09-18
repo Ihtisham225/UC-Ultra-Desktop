@@ -12,8 +12,10 @@ import { LabParametersBuilder, type LabParameterDraft } from "@/components/LabPa
 import { BatchesBuilder } from "@/components/BatchesBuilder";
 import { SaleUnitsBuilder, type SaleUnitDraft } from "@/components/SaleUnitsBuilder";
 import { generateSku } from "@/lib/sku";
-import { isOil, OIL_UNIT_SUGGESTIONS } from "@/lib/oil";
 import { isLabEnabled } from "@/lib/lab";
+import { isOil, OIL_UNIT_SUGGESTIONS } from "@/lib/oil";
+import { LocationSelect } from "@/components/LocationSelect";
+import type { LocationRow } from "@/lib/storage-locations";
 
 /**
  * Shape the shared fields read/write. Deliberately loose so both the Products
@@ -35,6 +37,8 @@ export interface ProductFormValue {
   batch_no?: string | null;
   generic_name?: string | null;
   shelf_location?: string | null;
+  /** Where it's kept (lib/storage-locations). */
+  location_id?: string | null;
   is_service?: boolean;
   is_lab_test?: boolean;
   /** Factors this lab test measures (only for service items in a lab-enabled pharmacy). */
@@ -52,6 +56,11 @@ interface Props<T extends ProductFormValue> {
   onScanBarcode?: () => void;
   /** Hide the variants section (not currently used, kept for callers that need it). */
   hideVariants?: boolean;
+  /**
+   * The shop's shelves and racks. When given, the form offers a shelf for the
+   * product (and each variant); omitted, the field isn't shown.
+   */
+  locations?: LocationRow[];
 }
 
 /**
@@ -63,6 +72,7 @@ export function ProductFormFields<T extends ProductFormValue>({
   onChange,
   onScanBarcode,
   hideVariants = false,
+  locations,
 }: Props<T>) {
   const { t } = useTranslation();
   const { currentShop } = useShop();
@@ -196,6 +206,24 @@ export function ProductFormFields<T extends ProductFormValue>({
         )}
       </div>
 
+      {/* Where it's kept. A service sits on no shelf. */}
+      {locations && !isService && (
+        <div className="space-y-1.5">
+          <Label>Shelf / rack</Label>
+          <LocationSelect
+            value={value.location_id ?? null}
+            onChange={(id) => set({ location_id: id })}
+            locations={locations}
+          />
+          <p className="text-xs text-muted-foreground">
+            Shown at POS so staff can fetch it fast.
+            {!value.location_id && value.shelf_location?.trim() && (
+              <> Old label: <span className="font-medium">{value.shelf_location}</span> — turn old labels into shelves on the Shelves page.</>
+            )}
+          </p>
+        </div>
+      )}
+
       {isPhone && !isService && (
         <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
           <div>
@@ -247,15 +275,19 @@ export function ProductFormFields<T extends ProductFormValue>({
               />
               <p className="text-xs text-muted-foreground">Also searched at POS, so staff can find it by salt.</p>
             </div>
-            <div className="space-y-1.5">
-              <Label>Shelf / rack</Label>
-              <Input
-                value={value.shelf_location ?? ""}
-                onChange={(e) => set({ shelf_location: e.target.value })}
-                placeholder="e.g. Rack B-4"
-              />
-              <p className="text-xs text-muted-foreground">Shown at POS so staff can find the box fast.</p>
-            </div>
+            {/* The typed shelf label lived here before shelves were real places.
+                With the Shelves page it's only offered where no places exist. */}
+            {!locations && (
+              <div className="space-y-1.5">
+                <Label>Shelf / rack</Label>
+                <Input
+                  value={value.shelf_location ?? ""}
+                  onChange={(e) => set({ shelf_location: e.target.value })}
+                  placeholder="e.g. Rack B-4"
+                />
+                <p className="text-xs text-muted-foreground">Shown at POS so staff can find the box fast.</p>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -382,6 +414,7 @@ export function ProductFormFields<T extends ProductFormValue>({
               basePrice={Number(value.price) || 0}
               value={(value.variants ?? []) as BuilderVariant[]}
               onChange={(variants) => set({ variants })}
+              locations={locations}
             />
           )}
         </div>

@@ -18,6 +18,8 @@ export interface VariantOption {
   imei2?: string | null;
   expiry_date?: string | null;
   batch_no?: string | null;
+  /** "Rack A › Shelf 3" — where to fetch this one, when it has its own place. */
+  location?: string | null;
 }
 
 /** Last 5 digits of an IMEI, e.g. "…87847". */
@@ -207,6 +209,9 @@ export const VariantPickerDialog = ({
                         {v.sku || "—"}
                         {v.barcode && <span className="ms-2">· {v.barcode}</span>}
                       </div>
+                    )}
+                    {v.location && (
+                      <div className="text-[10px] text-muted-foreground mt-0.5">📍 {v.location}</div>
                     )}
                     {(v.imei1 || v.imei2) && (
                       <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
