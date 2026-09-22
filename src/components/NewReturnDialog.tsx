@@ -116,6 +116,12 @@ export function NewReturnDialog({
     setPickerOpen(false);
   };
 
+  // The ledger option needs someone's ledger: a picked customer, or the bill's.
+  const canLedger = !!customerId || !!bill?.customer_id;
+  useEffect(() => {
+    if (!canLedger && toLedger) setToLedger(false);
+  }, [canLedger, toLedger]);
+
   const itemsTotal = useMemo(
     () => lines.reduce((a, l) => a + (parseFloat(l.qty) || 0) * (parseFloat(l.price) || 0), 0),
     [lines],
@@ -272,6 +278,14 @@ export function NewReturnDialog({
                       <CommandList>
                         <CommandEmpty>No bill matches.</CommandEmpty>
                         <CommandGroup>
+                          {/* First, so Enter-ing past the field keeps "no bill"
+                              rather than grabbing the latest bill in the list. */}
+                          {!billQuery.trim() && (
+                            <CommandItem value="__none" onSelect={() => { setBill(null); setBillOpen(false); }}>
+                              <Check className={`size-4 me-2 shrink-0 ${bill ? "opacity-0" : "opacity-100"}`} />
+                              <span className="text-muted-foreground">No bill</span>
+                            </CommandItem>
+                          )}
                           {bills.map((b) => (
                             <CommandItem key={b.id} value={b.id} onSelect={() => { setBill(b); setBillOpen(false); }}>
                               <Check className={`size-4 me-2 shrink-0 ${bill?.id === b.id ? "opacity-100" : "opacity-0"}`} />
@@ -310,7 +324,11 @@ export function NewReturnDialog({
             </div>
           </div>
 
-          <RefundToToggle toLedger={toLedger} onChange={setToLedger} />
+          <RefundToToggle
+            toLedger={toLedger}
+            onChange={setToLedger}
+            ledgerDisabledReason={canLedger ? null : "Choose a customer (or a bill with a customer) to put the refund on their ledger."}
+          />
           {toLedger ? (
             <p className="text-xs text-muted-foreground -mt-2">
               Nothing leaves the till: the amount comes off what the customer owes, and anything beyond that is a balance the shop owes them.
@@ -352,13 +370,22 @@ export function NewReturnDialog({
  * Where a refund goes: paid out of an account, or onto the customer's khata.
  * Shared by both return forms.
  */
-export function RefundToToggle({ toLedger, onChange }: { toLedger: boolean; onChange: (v: boolean) => void }) {
-  const opt = (on: boolean, label: string) => (
+export function RefundToToggle({
+  toLedger, onChange, ledgerDisabledReason = null,
+}: {
+  toLedger: boolean;
+  onChange: (v: boolean) => void;
+  /** Set when there is no customer to credit — the ledger option is then off, and this says why. */
+  ledgerDisabledReason?: string | null;
+}) {
+  const opt = (on: boolean, label: string, disabled = false) => (
     <button
       type="button"
       data-enter-skip
+      disabled={disabled}
+      title={disabled ? ledgerDisabledReason ?? undefined : undefined}
       onClick={() => onChange(on)}
-      className={`flex-1 rounded-md border px-3 py-2 text-sm transition-colors ${toLedger === on ? "border-primary bg-primary/10 font-medium" : "hover:bg-muted/50"}`}
+      className={`flex-1 rounded-md border px-3 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${toLedger === on ? "border-primary bg-primary/10 font-medium" : "enabled:hover:bg-muted/50"}`}
     >
       {label}
     </button>
@@ -368,8 +395,9 @@ export function RefundToToggle({ toLedger, onChange }: { toLedger: boolean; onCh
       <Label>Refund to</Label>
       <div className="flex gap-2">
         {opt(false, "Cash / account")}
-        {opt(true, "Customer's ledger")}
+        {opt(true, "Customer's ledger", !!ledgerDisabledReason)}
       </div>
+      {ledgerDisabledReason && <p className="text-xs text-muted-foreground">{ledgerDisabledReason}</p>}
     </div>
   );
 }

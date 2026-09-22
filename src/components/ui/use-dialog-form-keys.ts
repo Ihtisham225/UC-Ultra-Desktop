@@ -17,6 +17,12 @@ export function useDialogFormKeys(forwarded: React.ForwardedRef<HTMLDivElement>)
   const pendingNew = React.useRef<{ id: string; at: number } | null>(null);
   /** The LAST field was a picker and a choice was just made — the next Enter saves. */
   const chosenLast = React.useRef<HTMLElement | null>(null);
+  /**
+   * A picker that just closed on a CLICKED choice. Enter on it next means
+   * "done here, move on" — reopening it (what a button does with Enter) is
+   * what made every dropdown feel like a dead end.
+   */
+  const pickedByPointer = React.useRef<{ el: HTMLElement; at: number } | null>(null);
   const cleanup = React.useRef<(() => void) | null>(null);
 
   /** Press the dialog's save button; `andNew` opens a fresh form once it closes. */
@@ -45,6 +51,31 @@ export function useDialogFormKeys(forwarded: React.ForwardedRef<HTMLDivElement>)
       const target = e.target as HTMLElement;
       const justChosen = chosenLast.current;
       chosenLast.current = null;
+      const clicked = pickedByPointer.current;
+      pickedByPointer.current = null;
+
+      // ⚠️ The list is open but focus stayed on its button (a Radix Select
+      // moves focus in on the next frame, which a busy or background window
+      // may not have yet). The Enter would go to the button and pick nothing,
+      // so pick the highlighted — else the current — option ourselves.
+      if (
+        e.key === "Enter" && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+        target instanceof HTMLElement && root.contains(target) && isPicker(target) &&
+        target.getAttribute("aria-expanded") === "true" && !target.closest("[data-enter-chain='off']")
+      ) {
+        const listId = target.getAttribute("aria-controls");
+        const list = listId ? document.getElementById(listId) : null;
+        const option = list?.querySelector<HTMLElement>("[role='option'][data-highlighted]") ??
+          list?.querySelector<HTMLElement>("[role='option'][data-state='checked']") ??
+          list?.querySelector<HTMLElement>("[role='option']:not([data-disabled])");
+        if (option) {
+          e.preventDefault();
+          e.stopPropagation();
+          option.focus();
+          option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+          return;
+        }
+      }
 
       // Enter on a picker is handled here, in the capture phase: a Radix Select
       // button claims Enter for itself (to open) before the dialog's own
@@ -63,6 +94,10 @@ export function useDialogFormKeys(forwarded: React.ForwardedRef<HTMLDivElement>)
         } else if (justChosen === target) {
           // The last field is a picker and a choice was just made: save.
           if (submit(root, false)) take();
+        } else if (clicked && clicked.el === target && Date.now() - clicked.at < 60_000) {
+          // A choice was just clicked here: Enter moves on, like after typing.
+          take();
+          if (!moveFrom(target, root, 1)) submit(root, false);
         } else {
           // Let it open as usual; once a choice is made by Enter, move on.
           armed.current = target;
@@ -84,9 +119,17 @@ export function useDialogFormKeys(forwarded: React.ForwardedRef<HTMLDivElement>)
     const observer = new MutationObserver((mutations) => {
       for (const m of mutations) {
         const el = m.target as HTMLElement;
-        if (el !== armed.current || m.oldValue !== "true" || el.getAttribute("aria-expanded") !== "false") continue;
-        armed.current = null;
+        if (m.oldValue !== "true" || el.getAttribute("aria-expanded") !== "false") continue;
+        // ⚠️ ANY picker in the form, not only one the chain opened itself: a
+        // dropdown opened by a click (or by Enter on it) and chosen with Enter
+        // used to leave focus sitting on it, and the next Enter reopened it.
+        if (!isPicker(el) || el.hasAttribute("cmdk-input") || el.closest("[data-enter-chain='off']")) continue;
+        if (el === armed.current) armed.current = null;
         const { kind, at } = lastInput.current;
+        if (kind === "pointer" && Date.now() - at < 2000) {
+          pickedByPointer.current = { el, at: Date.now() };
+          continue;
+        }
         if (kind !== "Enter" || Date.now() - at > 2000) continue;
         advanceWhenSettled(el, root, (next) => {
           // Landed on another picker: it opened itself, so watch it close too.
