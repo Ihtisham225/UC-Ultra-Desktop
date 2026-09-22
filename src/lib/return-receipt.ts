@@ -20,6 +20,8 @@ export interface ReturnSlip {
   previous_balance?: number | null;
   /** Settings → Receipt → previous balance. */
   show_previous_balance?: boolean;
+  /** The refund went onto the customer's khata, not out of the till. */
+  credited_to_ledger?: boolean;
   customer: { name: string; phone: string | null } | null;
   items: { product_name: string; quantity: number; unit_price: number; line_total: number }[];
   shop: {
@@ -50,8 +52,29 @@ export function returnSlipBalance(r: Pick<ReturnSlip, "previous_balance" | "show
   return r.previous_balance == null || !Number.isFinite(n) || n <= 0 ? null : Math.round(n * 100) / 100;
 }
 
+/**
+ * A return credited to the khata moves the customer's balance, so the slip
+ * says where it now stands (with the toggle on): what they owed before, and
+ * what they owe after — or what the shop owes them, when the return was worth
+ * more than their balance.
+ */
+export function returnSlipLedger(
+  r: Pick<ReturnSlip, "previous_balance" | "show_previous_balance" | "credited_to_ledger" | "total_refund">,
+): { previous: number; after: number } | null {
+  if (!r.show_previous_balance || !r.credited_to_ledger || r.previous_balance == null) return null;
+  const previous = Math.round(Number(r.previous_balance) * 100) / 100;
+  if (!Number.isFinite(previous)) return null;
+  return { previous, after: Math.round((previous - Number(r.total_refund)) * 100) / 100 };
+}
+
+/** "Balance now" or, below zero, what the shop owes them. */
+export function balanceAfterLabel(after: number): { label: string; amount: number } {
+  return after >= 0 ? { label: "Balance now", amount: after } : { label: "Shop owes you", amount: -after };
+}
+
 /** How the refund went out: the account when one was chosen, else the method. */
-export function refundedVia(r: Pick<ReturnSlip, "account_name" | "refund_method">): string {
+export function refundedVia(r: Pick<ReturnSlip, "account_name" | "refund_method" | "credited_to_ledger">): string {
+  if (r.credited_to_ledger) return "Customer's ledger";
   if (r.account_name) return r.account_name;
   const m = r.refund_method;
   return m === "other" ? "Store credit / other" : m.charAt(0).toUpperCase() + m.slice(1);
@@ -69,8 +92,12 @@ export function buildReturnMessage(r: ReturnSlip, money: Money, date: string): s
   out.push("");
   if (r.deduction > 0) out.push(`Items: ${m(r.items_total)}`, `Deduction: -${m(r.deduction)}`);
   out.push(`*Refunded: ${m(r.total_refund)}*`, `Via: ${refundedVia(r)}`);
-  const owed = returnSlipBalance(r);
-  if (owed !== null) out.push("", `Previous balance: ${m(owed)}`);
+  const led = returnSlipLedger(r);
+  const owed = led ? null : returnSlipBalance(r);
+  if (led) {
+    const after = balanceAfterLabel(led.after);
+    out.push("", `Previous balance: ${m(led.previous)}`, `*${after.label}: ${m(after.amount)}*`);
+  } else if (owed !== null) out.push("", `Previous balance: ${m(owed)}`);
   if (r.reason) out.push(`Reason: ${r.reason}`);
   if (r.shop.receipt_footer) out.push("", r.shop.receipt_footer);
   return out.join("\n");
@@ -125,7 +152,15 @@ export function buildReturnPrintHtml(r: ReturnSlip, money: Money, date: string):
   ${r.deduction > 0 ? row("Items", m(r.items_total)) + row("Deduction", `-${m(r.deduction)}`) : ""}
   <div class="total"><span>REFUNDED</span><span>${m(r.total_refund)}</span></div>
   ${row("Via", esc(refundedVia(r)))}
-  ${returnSlipBalance(r) !== null ? `<div class="rule"></div>${row("Previous balance", m(returnSlipBalance(r) as number))}` : ""}
+  ${(() => {
+    const led = returnSlipLedger(r);
+    if (led) {
+      const after = balanceAfterLabel(led.after);
+      return `<div class="rule"></div>${row("Previous balance", m(led.previous))}${row(after.label, m(after.amount))}`;
+    }
+    const owed = returnSlipBalance(r);
+    return owed !== null ? `<div class="rule"></div>${row("Previous balance", m(owed))}` : "";
+  })()}
   ${r.reason ? `<div class="s">Reason: ${esc(r.reason)}</div>` : ""}
   ${r.notes ? `<div class="s">Note: ${esc(r.notes)}</div>` : ""}
   ${r.shop.receipt_footer ? `<div class="rule"></div><div class="c s">${esc(r.shop.receipt_footer)}</div>` : ""}

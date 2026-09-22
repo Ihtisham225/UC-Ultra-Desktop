@@ -34,6 +34,8 @@ export interface NewReturnInput {
   customerId: string | null;
   /** Optional: the bill the goods came from. Recorded, not enforced. */
   saleId: string | null;
+  /** Put the refund on the customer's khata instead of paying it out. */
+  toLedger: boolean;
   accountId: string | null;
   reason: string | null;
   notes: string | null;
@@ -90,6 +92,7 @@ export function NewReturnDialog({
   const [lines, setLines] = useState<Line[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [toLedger, setToLedger] = useState(false);
   const [deduction, setDeduction] = useState("");
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
@@ -98,7 +101,7 @@ export function NewReturnDialog({
 
   useEffect(() => {
     if (!open) return;
-    setLines([]); setCustomerId(null); setDeduction(""); setReason(""); setNotes(""); setBill(null); setBillQuery("");
+    setLines([]); setCustomerId(null); setDeduction(""); setReason(""); setNotes(""); setBill(null); setBillQuery(""); setToLedger(false);
     // The picker is the first thing anyone needs.
     setTimeout(() => setPickerOpen(true), 150);
   }, [open]);
@@ -126,9 +129,13 @@ export function NewReturnDialog({
       .filter((x) => x.qty > 0);
     if (valid.length === 0) return toast.error("Add at least one product being returned");
     if (valid.some((x) => !Number.isFinite(x.price) || x.price < 0)) return toast.error("Every line needs a price");
+    if (toLedger && !customerId && !bill?.customer_id) {
+      return toast.error("Choose the customer (or a bill with a customer) whose ledger gets the refund");
+    }
     setBusy(true);
     try {
       const res = await submit({
+        toLedger,
         customerId,
         saleId: bill?.id ?? null,
         accountId,
@@ -303,7 +310,14 @@ export function NewReturnDialog({
             </div>
           </div>
 
-          <AccountPicker value={accountId} onChange={setAccountId} label="Refund from" />
+          <RefundToToggle toLedger={toLedger} onChange={setToLedger} />
+          {toLedger ? (
+            <p className="text-xs text-muted-foreground -mt-2">
+              Nothing leaves the till: the amount comes off what the customer owes, and anything beyond that is a balance the shop owes them.
+            </p>
+          ) : (
+            <AccountPicker value={accountId} onChange={setAccountId} label="Refund from" />
+          )}
 
           <div className="rounded-lg border bg-muted/30 p-3 space-y-1 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Items total</span><span className="tabular-nums">{formatMoney(itemsTotal, currency)}</span></div>
@@ -331,5 +345,31 @@ export function NewReturnDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Where a refund goes: paid out of an account, or onto the customer's khata.
+ * Shared by both return forms.
+ */
+export function RefundToToggle({ toLedger, onChange }: { toLedger: boolean; onChange: (v: boolean) => void }) {
+  const opt = (on: boolean, label: string) => (
+    <button
+      type="button"
+      data-enter-skip
+      onClick={() => onChange(on)}
+      className={`flex-1 rounded-md border px-3 py-2 text-sm transition-colors ${toLedger === on ? "border-primary bg-primary/10 font-medium" : "hover:bg-muted/50"}`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="space-y-1.5">
+      <Label>Refund to</Label>
+      <div className="flex gap-2">
+        {opt(false, "Cash / account")}
+        {opt(true, "Customer's ledger")}
+      </div>
+    </div>
   );
 }

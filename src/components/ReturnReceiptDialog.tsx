@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatMoney } from "@/lib/format";
 import { buildWaReminderUrl } from "@/lib/debt-reminder";
-import { buildReturnMessage, buildReturnPrintHtml, refundedVia, returnSlipBalance, type ReturnSlip } from "@/lib/return-receipt";
+import { buildReturnMessage, buildReturnPrintHtml, balanceAfterLabel, refundedVia, returnSlipBalance, returnSlipLedger, type ReturnSlip } from "@/lib/return-receipt";
 import { matchPosShortcut } from "@/lib/pos-shortcuts";
 
 /** Print a standalone HTML page through a hidden frame, like the sale receipt. */
@@ -94,11 +94,24 @@ export function ReturnReceiptDialog({ slip, onClose }: { slip: ReturnSlip | null
             )}
             <div className="flex justify-between font-bold text-sm"><span>REFUNDED</span><span>{formatMoney(slip.total_refund, cur)}</span></div>
             <div className="flex justify-between"><span>Via</span><span>{refundedVia(slip)}</span></div>
-            {returnSlipBalance(slip) !== null && (
-              <div className="flex justify-between border-t border-gray-300 pt-2">
-                <span>Previous balance</span><span>{formatMoney(returnSlipBalance(slip) as number, cur)}</span>
-              </div>
-            )}
+            {(() => {
+              const led = returnSlipLedger(slip);
+              if (led) {
+                const after = balanceAfterLabel(led.after);
+                return (
+                  <div className="border-t border-gray-300 pt-2 space-y-1">
+                    <div className="flex justify-between"><span>Previous balance</span><span>{formatMoney(led.previous, cur)}</span></div>
+                    <div className="flex justify-between font-bold"><span>{after.label}</span><span>{formatMoney(after.amount, cur)}</span></div>
+                  </div>
+                );
+              }
+              const owed = returnSlipBalance(slip);
+              return owed !== null ? (
+                <div className="flex justify-between border-t border-gray-300 pt-2">
+                  <span>Previous balance</span><span>{formatMoney(owed, cur)}</span>
+                </div>
+              ) : null;
+            })()}
             {slip.reason && <div>Reason: {slip.reason}</div>}
           </div>
         )}

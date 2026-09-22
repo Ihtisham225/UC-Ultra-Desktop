@@ -13,6 +13,8 @@ import { Undo2 } from "lucide-react";
 import { formatMoney } from "@/lib/format";
 import { AccountPicker } from "@/components/AccountPicker";
 import { ReturnReceiptDialog } from "@/components/ReturnReceiptDialog";
+import { RefundToToggle } from "@/components/NewReturnDialog";
+import { bulkUpsertLocal, notifyChange } from "@/lib/localDb";
 import type { ReturnSlip } from "@/lib/return-receipt";
 
 interface SaleItem {
@@ -50,6 +52,9 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
   const [accountId, setAccountId] = useState<string | null>(null);
   /** The slip of the return just taken — shown once the form closes. */
   const [slip, setSlip] = useState<ReturnSlip | null>(null);
+  /** The bill's customer, when it has one — the ledger a refund can go onto. */
+  const [customerName, setCustomerName] = useState<string | null>(null);
+  const [toLedger, setToLedger] = useState(false);
 
   const cur = currentShop?.currency ?? "USD";
 
@@ -59,12 +64,14 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
       setLoading(true);
       setQtyMap({}); setReason(""); setNotes(""); setDeduction(""); setRefundMethod("cash");
       try {
-        const ctx = await rpc<{ receipt_number: string | null; items: SaleItem[]; alreadyReturned: Record<string, number> } | null>(
+        const ctx = await rpc<{ receipt_number: string | null; customer_name?: string | null; items: SaleItem[]; alreadyReturned: Record<string, number> } | null>(
           "getReturnContextAction",
           saleId,
         );
         setItems(ctx?.items ?? []);
         setReceipt(ctx?.receipt_number ?? null);
+        setCustomerName(ctx?.customer_name ?? null);
+        setToLedger(false);
         setAlreadyReturned(ctx?.alreadyReturned ?? {});
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to load");
@@ -96,7 +103,8 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
     setBusy(true);
     let returnId: string | undefined;
     try {
-      const res = await rpc<{ ok: boolean; error?: string; returnId?: string }>("createReturnAction", {
+      const res = await rpc<{ ok: boolean; error?: string; returnId?: string; rows?: { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] } }>("createReturnAction", {
+        toLedger,
         saleId,
         refundMethod,
         accountId: accountId || null,
@@ -114,6 +122,14 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
       returnId = res.returnId;
+      // Onto the khata: apply the rows the server wrote, so this till's ledger
+      // shows the credit now rather than after a pull.
+      if (res.rows) {
+        await bulkUpsertLocal("debts", res.rows.debts);
+        await bulkUpsertLocal("debt_payments", res.rows.debt_payments);
+        notifyChange("debts");
+        notifyChange("debt_payments");
+      }
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -200,7 +216,7 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
+              <div className={`space-y-1.5 ${toLedger ? "hidden" : ""}`}>
                 <Label>Refund method</Label>
                 <Select value={refundMethod} onValueChange={(v: any) => setRefundMethod(v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -243,7 +259,14 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
               </div>
             </div>
 
-            <AccountPicker value={accountId} onChange={setAccountId} label="Refund from" />
+            {customerName && <RefundToToggle toLedger={toLedger} onChange={setToLedger} />}
+            {toLedger ? (
+              <p className="text-xs text-muted-foreground">
+                Nothing leaves the till: the amount comes off what {customerName} owes, and anything beyond that is a balance the shop owes them.
+              </p>
+            ) : (
+              <AccountPicker value={accountId} onChange={setAccountId} label="Refund from" />
+            )}
 
             <div className="space-y-1.5">
               <Label>Reason</Label>
