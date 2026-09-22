@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { format } from "date-fns";
 import { toast } from "sonner";
-import { Check, ChevronsUpDown, Plus, Trash2, Undo2 } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Receipt, Trash2, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,8 +20,20 @@ export interface ReturnProductOption {
   unit: string | null;
 }
 
+/** A bill offered in the form's optional "Bill" field. */
+export interface ReturnBillOption {
+  id: string;
+  receipt_number: string | null;
+  created_at: string;
+  total: number;
+  customer_id: string | null;
+  customer_name: string | null;
+}
+
 export interface NewReturnInput {
   customerId: string | null;
+  /** Optional: the bill the goods came from. Recorded, not enforced. */
+  saleId: string | null;
   accountId: string | null;
   reason: string | null;
   notes: string | null;
@@ -46,7 +59,7 @@ const optionKey = (o: ReturnProductOption) => `${o.product_id}:${o.variant_id ??
  * the customer picker, saving), so the two apps share this form.
  */
 export function NewReturnDialog({
-  open, onClose, currency, products, renderCustomer, submit, onSaved,
+  open, onClose, currency, products, renderCustomer, submit, onSaved, searchBills,
 }: {
   open: boolean;
   onClose: () => void;
@@ -59,7 +72,21 @@ export function NewReturnDialog({
   submit: (input: NewReturnInput) => Promise<{ ok: boolean; error?: string; returnId?: string; totalRefund?: number }>;
   /** Called with the saved return's id — the page opens its receipt. */
   onSaved: (returnId: string) => void;
+  /** Bills for the optional Bill field — latest first, or matching the search. */
+  searchBills?: (query: string) => Promise<ReturnBillOption[]>;
 }) {
+  const [bill, setBill] = useState<ReturnBillOption | null>(null);
+  const [billOpen, setBillOpen] = useState(false);
+  const [billQuery, setBillQuery] = useState("");
+  const [bills, setBills] = useState<ReturnBillOption[]>([]);
+  useEffect(() => {
+    if (!billOpen || !searchBills) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      searchBills(billQuery).then((r) => { if (!cancelled) setBills(r); }).catch(() => {});
+    }, 200);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [billOpen, billQuery, searchBills]);
   const [lines, setLines] = useState<Line[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -71,7 +98,7 @@ export function NewReturnDialog({
 
   useEffect(() => {
     if (!open) return;
-    setLines([]); setCustomerId(null); setDeduction(""); setReason(""); setNotes("");
+    setLines([]); setCustomerId(null); setDeduction(""); setReason(""); setNotes(""); setBill(null); setBillQuery("");
     // The picker is the first thing anyone needs.
     setTimeout(() => setPickerOpen(true), 150);
   }, [open]);
@@ -103,6 +130,7 @@ export function NewReturnDialog({
     try {
       const res = await submit({
         customerId,
+        saleId: bill?.id ?? null,
         accountId,
         reason: reason.trim() || null,
         notes: notes.trim() || null,
@@ -210,6 +238,57 @@ export function NewReturnDialog({
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {searchBills && (
+            <div className="space-y-1.5">
+              <Label>Bill (optional)</Label>
+              <div className="flex gap-2">
+                <Popover open={billOpen} onOpenChange={setBillOpen} modal>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="outline" role="combobox" aria-expanded={billOpen} className="flex-1 justify-between font-normal min-w-0">
+                      <span className={`flex items-center gap-2 truncate ${bill ? "" : "text-muted-foreground"}`}>
+                        <Receipt className="size-4 shrink-0" />
+                        <span className="truncate">
+                          {bill
+                            ? `${bill.receipt_number ?? "Pending sync"} · ${format(new Date(bill.created_at), "dd MMM yyyy")}${bill.customer_name ? ` · ${bill.customer_name}` : ""}`
+                            : "No bill — search by number, customer or phone"}
+                        </span>
+                      </span>
+                      <ChevronsUpDown className="size-4 opacity-50 shrink-0" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 w-[--radix-popover-trigger-width] min-w-72" align="start">
+                    <Command shouldFilter={false}>
+                      <CommandInput placeholder="Bill number, customer or phone…" value={billQuery} onValueChange={setBillQuery} />
+                      <CommandList>
+                        <CommandEmpty>No bill matches.</CommandEmpty>
+                        <CommandGroup>
+                          {bills.map((b) => (
+                            <CommandItem key={b.id} value={b.id} onSelect={() => { setBill(b); setBillOpen(false); }}>
+                              <Check className={`size-4 me-2 shrink-0 ${bill?.id === b.id ? "opacity-100" : "opacity-0"}`} />
+                              <span className="flex-1 min-w-0 truncate">
+                                <span className="font-mono">{b.receipt_number ?? "Pending sync"}</span>
+                                <span className="text-muted-foreground"> · {format(new Date(b.created_at), "dd MMM")}{b.customer_name ? ` · ${b.customer_name}` : ""}</span>
+                              </span>
+                              <span className="ms-2 text-xs tabular-nums">{formatMoney(b.total, currency)}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {bill && (
+                  <Button type="button" variant="ghost" size="icon" title="No bill" onClick={() => setBill(null)}>
+                    <X className="size-4" />
+                  </Button>
+                )}
+              </div>
+              {bill?.customer_name && !customerId && (
+                <p className="text-xs text-muted-foreground">The bill&apos;s customer, {bill.customer_name}, goes on the return unless you pick another below.</p>
+              )}
             </div>
           )}
 

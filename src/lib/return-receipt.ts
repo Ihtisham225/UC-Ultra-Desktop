@@ -16,6 +16,10 @@ export interface ReturnSlip {
   items_total: number;
   deduction: number;
   total_refund: number;
+  /** The customer's khata balance when the return was taken (snapshot). */
+  previous_balance?: number | null;
+  /** Settings → Receipt → previous balance. */
+  show_previous_balance?: boolean;
   customer: { name: string; phone: string | null } | null;
   items: { product_name: string; quantity: number; unit_price: number; line_total: number }[];
   shop: {
@@ -34,6 +38,17 @@ const esc = (v: string) =>
   v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 const qtyText = (n: number) => String(Number(n.toFixed(3)));
+
+/**
+ * The khata line on the slip: printed only when the shop has "previous
+ * balance" on AND the customer owed something — the same rule as the sale
+ * receipt (lib/receipt-ledger), so a walk-in or a settled customer prints none.
+ */
+export function returnSlipBalance(r: Pick<ReturnSlip, "previous_balance" | "show_previous_balance">): number | null {
+  if (!r.show_previous_balance) return null;
+  const n = Number(r.previous_balance);
+  return r.previous_balance == null || !Number.isFinite(n) || n <= 0 ? null : Math.round(n * 100) / 100;
+}
 
 /** How the refund went out: the account when one was chosen, else the method. */
 export function refundedVia(r: Pick<ReturnSlip, "account_name" | "refund_method">): string {
@@ -54,6 +69,8 @@ export function buildReturnMessage(r: ReturnSlip, money: Money, date: string): s
   out.push("");
   if (r.deduction > 0) out.push(`Items: ${m(r.items_total)}`, `Deduction: -${m(r.deduction)}`);
   out.push(`*Refunded: ${m(r.total_refund)}*`, `Via: ${refundedVia(r)}`);
+  const owed = returnSlipBalance(r);
+  if (owed !== null) out.push("", `Previous balance: ${m(owed)}`);
   if (r.reason) out.push(`Reason: ${r.reason}`);
   if (r.shop.receipt_footer) out.push("", r.shop.receipt_footer);
   return out.join("\n");
@@ -108,6 +125,7 @@ export function buildReturnPrintHtml(r: ReturnSlip, money: Money, date: string):
   ${r.deduction > 0 ? row("Items", m(r.items_total)) + row("Deduction", `-${m(r.deduction)}`) : ""}
   <div class="total"><span>REFUNDED</span><span>${m(r.total_refund)}</span></div>
   ${row("Via", esc(refundedVia(r)))}
+  ${returnSlipBalance(r) !== null ? `<div class="rule"></div>${row("Previous balance", m(returnSlipBalance(r) as number))}` : ""}
   ${r.reason ? `<div class="s">Reason: ${esc(r.reason)}</div>` : ""}
   ${r.notes ? `<div class="s">Note: ${esc(r.notes)}</div>` : ""}
   ${r.shop.receipt_footer ? `<div class="rule"></div><div class="c s">${esc(r.shop.receipt_footer)}</div>` : ""}

@@ -117,3 +117,32 @@ describe("overpaying a khata", () => {
     expect(() => splitOverpayment(1000, 0, 1500)).toThrow();
   });
 });
+
+import { returnSlipBalance, buildReturnPrintHtml } from "@/lib/return-receipt";
+
+describe("previous balance on the return slip", () => {
+  const slip: ReturnSlip = {
+    return_number: "RET-2", created_at: "2026-09-22T10:00:00Z", sale_receipt_number: "B-2056",
+    refund_method: "cash", account_name: null, reason: null, notes: null,
+    items_total: 300, deduction: 0, total_refund: 300,
+    previous_balance: 12435, show_previous_balance: true,
+    customer: { name: "Khurshaid", phone: null },
+    items: [{ product_name: "Filter", quantity: 1, unit_price: 300, line_total: 300 }],
+    shop: { name: "Shop", address: null, phone: null, currency: "PKR", receipt_header: null, receipt_footer: null },
+  };
+
+  it("prints only with the toggle on and something owed", () => {
+    expect(returnSlipBalance(slip)).toBe(12435);
+    expect(returnSlipBalance({ ...slip, show_previous_balance: false })).toBeNull();
+    expect(returnSlipBalance({ ...slip, previous_balance: 0 })).toBeNull();
+    expect(returnSlipBalance({ ...slip, previous_balance: null })).toBeNull();
+  });
+
+  it("appears on the printed slip and in the WhatsApp text, with the bill", () => {
+    expect(buildReturnPrintHtml(slip, money, "22/09/2026")).toContain("Previous balance");
+    const msg = buildReturnMessage(slip, money, "22/09/2026");
+    expect(msg).toContain("Previous balance: PKR 12435.00");
+    expect(msg).toContain("Against receipt #B-2056");
+    expect(buildReturnMessage({ ...slip, show_previous_balance: false }, money, "x")).not.toContain("Previous balance");
+  });
+});
