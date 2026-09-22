@@ -175,3 +175,22 @@ describe("a return refunded to the customer's ledger", () => {
     expect(refundedVia({ account_name: "Cash", refund_method: "other", credited_to_ledger: true })).toBe("Customer's ledger");
   });
 });
+
+import { ACTIONS, MODULES, moduleSupportsAction } from "@/lib/permissions";
+
+describe("the Profit & cost permission", () => {
+  it("is offered in the role editor, view only", () => {
+    expect(MODULES).toContain("profit");
+    expect(moduleSupportsAction("profit", "view")).toBe(true);
+    for (const a of ACTIONS.filter((x) => x !== "view")) {
+      expect(moduleSupportsAction("profit", a)).toBe(false);
+    }
+  });
+
+  it("leaves every other module with all four actions — including the new Accounts one", () => {
+    expect(MODULES).toContain("accounts");
+    for (const m of MODULES.filter((x) => x !== "profit")) {
+      for (const a of ACTIONS) expect(moduleSupportsAction(m, a)).toBe(true);
+    }
+  });
+});

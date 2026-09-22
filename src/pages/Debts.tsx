@@ -480,7 +480,6 @@ export default function Debts() {
       if (!paymentForm.cheque_number.trim()) return toast.error("Enter the cheque number");
       if (!paymentForm.cheque_date) return toast.error("Enter the date on the cheque");
       if (!(amt > 0)) return toast.error("Amount must be greater than 0");
-      if (amt > selectedGroup.remaining + 0.001) return toast.error("The cheque can't be for more than the remaining balance");
       if (!navigator.onLine) return toast.error("Recording a cheque needs a connection.");
       setPaymentSaving(true);
       try {
@@ -1108,6 +1107,16 @@ export default function Debts() {
                         onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                       />
                     </div>
+                    {paymentForm.kind === "payment" && paymentForm.byCheque &&
+                      Number(paymentForm.amount || 0) > selectedRemaining + 0.001 && (
+                      <p className="sm:col-span-2 text-xs rounded-md border border-primary/30 bg-primary/5 p-2">
+                        {formatMoney(Number(paymentForm.amount || 0) - selectedRemaining, selectedGroup.currency ?? cur)}{" "}
+                        more than is owed —{" "}
+                        {selectedGroup.direction === "owed_to_me"
+                          ? `the balance is cleared and the shop will owe ${selectedGroup.person_name} the rest once the cheque clears.`
+                          : `the balance is cleared and ${selectedGroup.person_name} will owe the shop the rest once the cheque clears.`}
+                      </p>
+                    )}
                     {paymentForm.kind === "payment" && !paymentForm.byCheque &&
                       Number(paymentForm.amount || 0) + Number(paymentForm.discount || 0) > selectedRemaining + 0.001 && (
                       <p className="sm:col-span-2 text-xs rounded-md border border-primary/30 bg-primary/5 p-2">

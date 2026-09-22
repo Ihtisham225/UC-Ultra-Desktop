@@ -1,6 +1,6 @@
 // Per-shop module permissions definition (mirrors UHMS structure).
 export const MODULES = [
-  "pos","products","sales","customers","suppliers","purchases","returns","expenses","debts","analytics","lab","staff","settings",
+  "pos","products","sales","customers","suppliers","purchases","returns","expenses","debts","analytics","lab","accounts","profit","staff","settings",
 ] as const;
 export const ACTIONS = ["view","create","edit","delete"] as const;
 export type Module = typeof MODULES[number];
@@ -17,6 +17,8 @@ export const MODULE_LABEL: Record<Module, string> = {
   expenses: "Expenses",
   debts: "Debts",
   analytics: "Analytics",
+  accounts: "Money accounts",
+  profit: "Profit & cost",
   lab: "Lab & Results",
   staff: "Staff & Roles",
   settings: "Settings",
@@ -36,4 +38,13 @@ export const ACTION_HINT: Record<Action, string> = {
   delete: "Remove records",
 };
 
-export const moduleSupportsAction = (_m: Module, _a: Action): boolean => true;
+/**
+ * "Profit & cost" is a thing you either see or you don't — there is nothing to
+ * create, edit or delete — so only its View cell is offered.
+ */
+export const moduleSupportsAction = (m: Module, a: Action): boolean => m !== "profit" || a === "view";
+
+/** What a module's View cell really means, where it isn't a page. */
+export const MODULE_HINT: Partial<Record<Module, string>> = {
+  profit: "See gross profit on the dashboard and each product's cost at the till",
+};

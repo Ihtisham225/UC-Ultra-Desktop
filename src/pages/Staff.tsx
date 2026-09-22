@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserPlus, Trash2, KeyRound, ShieldCheck, Plus, Copy, Ban, CheckCircle2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { MODULES, ACTIONS, MODULE_LABEL, ACTION_LABEL, ACTION_HINT, type Module, type Action } from "@/lib/permissions";
+import { MODULES, ACTIONS, MODULE_LABEL, ACTION_LABEL, ACTION_HINT, type Module, type Action, moduleSupportsAction, MODULE_HINT } from "@/lib/permissions";
 import { useAddNew } from "@/hooks/useAddNew";
 
 type Member = { user_id: string; role: "owner" | "manager" | "cashier"; disabled: boolean; display_name: string | null };
@@ -164,9 +164,10 @@ export default function Staff() {
     setRoleMatrix(next);
   };
   const toggleRow = (m: Module) => {
-    const allOn = ACTIONS.every((a) => roleMatrix.has(`${m}:${a}`));
+    const usable = ACTIONS.filter((a) => moduleSupportsAction(m, a));
+    const allOn = usable.every((a) => roleMatrix.has(`${m}:${a}`));
     const next = new Set(roleMatrix);
-    ACTIONS.forEach((a) => allOn ? next.delete(`${m}:${a}`) : next.add(`${m}:${a}`));
+    usable.forEach((a) => allOn ? next.delete(`${m}:${a}`) : next.add(`${m}:${a}`));
     setRoleMatrix(next);
   };
 
@@ -389,14 +390,24 @@ export default function Staff() {
                 <tbody className="divide-y">
                   {MODULES.map((m) => (
                     <tr key={m}>
-                      <td className="px-3 py-2 font-medium">{MODULE_LABEL[m]}</td>
+                      <td className="px-3 py-2 font-medium">
+                        {MODULE_LABEL[m]}
+                        {MODULE_HINT[m] && (
+                          <span className="block text-xs font-normal text-muted-foreground">{MODULE_HINT[m]}</span>
+                        )}
+                      </td>
                       {ACTIONS.map((a) => (
                         <td key={a} className="px-3 py-2 text-center">
-                          <Checkbox
-                            checked={roleMatrix.has(`${m}:${a}`)}
-                            onCheckedChange={() => toggleCell(m, a)}
-                          
-                          />
+                          {/* Some modules have only one thing to permit — see
+                              moduleSupportsAction (Profit & cost is view-only). */}
+                          {moduleSupportsAction(m, a) ? (
+                            <Checkbox
+                              checked={roleMatrix.has(`${m}:${a}`)}
+                              onCheckedChange={() => toggleCell(m, a)}
+                            />
+                          ) : (
+                            <span className="text-muted-foreground/40">—</span>
+                          )}
                         </td>
                       ))}
                       <td className="px-3 py-2 text-center">
