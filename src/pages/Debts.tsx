@@ -4,7 +4,7 @@ import { derivePaidAmount } from "@/lib/ledger";
 import { syncNow } from "@/lib/syncEngine";
 import { rpc } from "@/lib/apiClient";
 import { v4 as uuid } from "uuid";
-import { upsertLocal, deleteLocal, notifyChange, getById } from "@/lib/localDb";
+import { upsertLocal, deleteLocal, notifyChange, getById, bulkUpsertLocal } from "@/lib/localDb";
 import { allocateSettlement, groupLedgers, increaseTarget, oppositeDirection, splitOverpayment, type LedgerGroup } from "@/lib/ledger-groups";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -486,7 +486,7 @@ export default function Debts() {
       try {
         // The server must hold every khata row this cheque is spread over.
         await syncNow();
-        const res = await rpc<{ ok: boolean; error?: string }>("takeChequeAction", {
+        const res = await rpc<{ ok: boolean; error?: string; rows?: { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] } }>("takeChequeAction", {
           debt_ids: selectedGroup.debts.map((d) => d.id),
           cheque_number: paymentForm.cheque_number.trim(),
           bank_name: paymentForm.bank_name.trim() || null,
@@ -495,8 +495,15 @@ export default function Debts() {
           notes: paymentForm.notes.trim() || null,
         });
         if (!res.ok) return toast.error(res.error ?? "Failed");
-        // Pull the settlement rows the server just wrote.
-        await syncNow().catch(() => {});
+        // ⚠️ Write the settlement rows the server just made straight into the
+        // local store. Waiting for the pull alone lost them: a background pull
+        // landing mid-transaction took a watermark past their timestamp, and
+        // the ledger on this till never showed the cheque.
+        if (res.rows) {
+          await bulkUpsertLocal("debts", res.rows.debts);
+          await bulkUpsertLocal("debt_payments", res.rows.debt_payments);
+        }
+        void syncNow().catch(() => {});
         notifyChange("debt_payments");
         notifyChange("debts");
       } catch (e) {

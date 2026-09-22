@@ -3,10 +3,10 @@ import { ChequesScreen } from "@/components/ChequesScreen";
 import { useShop } from "@/contexts/ShopContext";
 import { rpc } from "@/lib/apiClient";
 import { syncNow } from "@/lib/syncEngine";
-import { notifyChange } from "@/lib/localDb";
+import { bulkUpsertLocal, notifyChange } from "@/lib/localDb";
 import type { ChequeDto } from "@/lib/cheques";
 
-type Result = { ok: boolean; error?: string };
+type Result = { ok: boolean; error?: string; rows?: { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] } };
 
 /**
  * Cheques live on the server (like the rest of the money-side registers), so
@@ -22,6 +22,11 @@ export default function Cheques() {
   );
   const after = async (res: Result) => {
     if (res.ok) {
+      // A bounce writes khata rows: apply them now rather than trusting the pull.
+      if (res.rows) {
+        await bulkUpsertLocal("debts", res.rows.debts);
+        await bulkUpsertLocal("debt_payments", res.rows.debt_payments);
+      }
       await syncNow().catch(() => {});
       notifyChange("debts");
       notifyChange("debt_payments");
