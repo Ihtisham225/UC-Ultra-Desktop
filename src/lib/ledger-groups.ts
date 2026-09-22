@@ -172,6 +172,38 @@ export function allocateSettlement(
 }
 
 /**
+ * Split a settlement that may be MORE than is owed.
+ *
+ * A customer who owes 50,000 and hands over 100,000 clears the 50,000 and
+ * leaves 50,000 with the shop — which the shop now owes back. Same the other
+ * way: overpaying a supplier leaves them owing the shop. `settle` is the cash
+ * that goes against what is owed (with the discount), `excess` the cash that
+ * opens a row in the OPPOSITE direction.
+ *
+ * Only cash can be excess. A discount is money given away, so there is no
+ * such thing as writing off more than is owed — that still throws.
+ *
+ * A copy lives in the desktop's `src/lib/ledger-groups.ts` — keep in step.
+ */
+export function splitOverpayment(
+  owed: number,
+  cash: number,
+  discount: number,
+): { settle: number; excess: number } {
+  const o = round2(Math.max(0, owed));
+  const c = round2(Math.max(0, cash));
+  const d = round2(Math.max(0, discount));
+  if (d > o + 0.001) throw new Error("The discount cannot be more than the remaining balance");
+  const room = round2(o - d);
+  const excess = round2(Math.max(0, c - room));
+  return { settle: round2(c - excess), excess };
+}
+
+/** The direction an overpayment's excess opens. */
+export const oppositeDirection = (d: "owed_to_me" | "i_owe"): "owed_to_me" | "i_owe" =>
+  d === "owed_to_me" ? "i_owe" : "owed_to_me";
+
+/**
  * Where "add more to this person's account" is recorded: the newest row still
  * owed, else the newest row. It reopens that row if it was settled, which is
  * what adding to a person's account means.

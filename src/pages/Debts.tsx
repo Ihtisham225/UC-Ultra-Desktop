@@ -5,7 +5,7 @@ import { syncNow } from "@/lib/syncEngine";
 import { rpc } from "@/lib/apiClient";
 import { v4 as uuid } from "uuid";
 import { upsertLocal, deleteLocal, notifyChange, getById } from "@/lib/localDb";
-import { allocateSettlement, groupLedgers, increaseTarget, type LedgerGroup } from "@/lib/ledger-groups";
+import { allocateSettlement, groupLedgers, increaseTarget, oppositeDirection, splitOverpayment, type LedgerGroup } from "@/lib/ledger-groups";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -522,8 +522,10 @@ export default function Debts() {
     if (paymentForm.kind === "payment" && amount + discount <= 0) {
       return toast.error("Enter an amount, a discount, or both");
     }
-    if (paymentForm.kind === "payment" && amount + discount > remaining + 0.001) {
-      return toast.error("Payment and discount together can't be more than the remaining balance");
+    // Paying more than is owed is fine — the rest goes on their account the
+    // other way (see splitOverpayment). Only a discount can't exceed it.
+    if (paymentForm.kind === "payment" && discount > remaining + 0.001) {
+      return toast.error("The discount can't be more than the remaining balance");
     }
 
     const remainingOf = (d: Debt) => getRemainingAmount(d);
@@ -531,13 +533,19 @@ export default function Debts() {
     // settlement row per bill — the same split the server makes online, so
     // each bill's balance (and what its edit or void reverses) stays its own.
     let parts: { debt_id: string; amount: number; discount: number }[];
+    /** Cash beyond what is owed — opens a row the other way (see splitOverpayment). */
+    let excess = 0;
     try {
       if (paymentForm.kind === "payment") {
-        parts = allocateSettlement(
-          selectedGroup.debts.map((d) => ({ id: d.id, created_at: d.created_at, remaining: remainingOf(d) })),
-          amount,
-          discount,
-        );
+        const split = splitOverpayment(remaining, amount, discount);
+        excess = split.excess;
+        parts = split.settle + discount > 0
+          ? allocateSettlement(
+              selectedGroup.debts.map((d) => ({ id: d.id, created_at: d.created_at, remaining: remainingOf(d) })),
+              split.settle,
+              discount,
+            )
+          : [];
       } else {
         const target = increaseTarget(selectedGroup.debts, remainingOf);
         if (!target) return toast.error("This ledger has no bills");
@@ -553,6 +561,36 @@ export default function Debts() {
     // so the counter can take payment with no connection.
     try {
       const now = new Date().toISOString();
+      // The overpaid excess: a khata row facing the other way. Its money is
+      // booked by the server when the row is pushed (advance_account_id), the
+      // same as online — the terminal never writes account rows itself.
+      if (excess > 0) {
+        const last = selectedGroup.debts[selectedGroup.debts.length - 1];
+        await upsertLocal(
+          "debts",
+          {
+            id: uuid(),
+            shop_id: currentShop.id,
+            created_by: user.id,
+            direction: oppositeDirection(selectedGroup.direction as Direction),
+            person_name: last.person_name,
+            phone: last.phone ?? null,
+            party_id: last.party_id ?? null,
+            amount: excess,
+            paid_amount: 0,
+            currency: currentShop.currency ?? null,
+            status: "open",
+            advance_account_id: payAccountId || null,
+            due_date: null,
+            notes: `Paid ${currentShop.currency ?? ""} ${excess.toLocaleString()} more than was owed on ${paymentForm.payment_date}`.replace("  ", " ") +
+              (paymentForm.notes.trim() ? ` — ${paymentForm.notes.trim()}` : ""),
+            created_at: now,
+            updated_at: now,
+          },
+          true,
+        );
+        notifyChange("debts");
+      }
       for (const part of parts) {
         await upsertLocal(
           "debt_payments",
@@ -1059,11 +1097,20 @@ export default function Debts() {
                         inputMode="decimal"
                         min="0"
                         step="0.01"
-                        max={paymentForm.kind === "payment" ? selectedRemaining : undefined}
                         value={paymentForm.amount}
                         onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                       />
                     </div>
+                    {paymentForm.kind === "payment" && !paymentForm.byCheque &&
+                      Number(paymentForm.amount || 0) + Number(paymentForm.discount || 0) > selectedRemaining + 0.001 && (
+                      <p className="sm:col-span-2 text-xs rounded-md border border-primary/30 bg-primary/5 p-2">
+                        {formatMoney(Math.max(0, Number(paymentForm.amount || 0) - Math.max(0, selectedRemaining - Number(paymentForm.discount || 0))), selectedGroup.currency ?? cur)}{" "}
+                        more than is owed —{" "}
+                        {selectedGroup.direction === "owed_to_me"
+                          ? `the balance is cleared and the shop will owe ${selectedGroup.person_name} the rest.`
+                          : `the balance is cleared and ${selectedGroup.person_name} will owe the shop the rest.`}
+                      </p>
+                    )}
                     {/* Settling often comes with "take something off" — that
                         clears the balance like cash but was never collected,
                         so it is recorded apart from the amount. */}

@@ -90,3 +90,30 @@ describe("return slip", () => {
     expect(msg).not.toContain("Against receipt");
   });
 });
+
+import { oppositeDirection, splitOverpayment } from "@/lib/ledger-groups";
+
+describe("overpaying a khata", () => {
+  it("clears what is owed and turns the rest into a balance the other way", () => {
+    expect(splitOverpayment(50000, 100000, 0)).toEqual({ settle: 50000, excess: 50000 });
+    expect(oppositeDirection("owed_to_me")).toBe("i_owe");
+    expect(oppositeDirection("i_owe")).toBe("owed_to_me");
+  });
+
+  it("leaves an ordinary payment alone", () => {
+    expect(splitOverpayment(50000, 20000, 0)).toEqual({ settle: 20000, excess: 0 });
+  });
+
+  it("counts the discount against what is owed before any excess", () => {
+    // Owes 1,000, 100 written off, hands over 1,500 → 900 settles, 600 over.
+    expect(splitOverpayment(1000, 1500, 100)).toEqual({ settle: 900, excess: 600 });
+  });
+
+  it("lets someone who owes nothing leave money as an advance", () => {
+    expect(splitOverpayment(0, 5000, 0)).toEqual({ settle: 0, excess: 5000 });
+  });
+
+  it("never writes off more than is owed", () => {
+    expect(() => splitOverpayment(1000, 0, 1500)).toThrow();
+  });
+});
