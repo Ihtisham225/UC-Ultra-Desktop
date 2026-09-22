@@ -1,168 +1,85 @@
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
-
 interface PaginationProps {
-  page: number;            // 1-indexed
+  /** Batches shown so far (1 = the first batch). */
+  page: number;
+  /** Rows per batch. */
   pageSize: number;
   totalItems: number;
+  /** Called with `page + 1` when the end of the list comes into view. */
   onPageChange: (page: number) => void;
-  onPageSizeChange: (size: number) => void;
+  /** Kept so existing call sites compile; there is no per-page picker any more. */
+  onPageSizeChange?: (size: number) => void;
+  /** A server-fetched list is loading its next batch — don't ask again yet. */
+  loading?: boolean;
   className?: string;
-  pageSizeOptions?: number[];
 }
 
 /**
- * Reusable pagination control with page number jumps and a "per page" selector.
- * Hides itself when there's nothing to paginate AND the user hasn't customized
- * the page size away from the default.
+ * The foot of every list: infinite scroll instead of page numbers.
+ *
+ * An invisible sentinel sits under the last row; when it scrolls into view
+ * the next batch is asked for. The observer is rebuilt after every batch, so
+ * a short batch that still leaves the sentinel on screen asks again straight
+ * away rather than waiting for a scroll that will never come. A "Load more"
+ * button stays as a fallback for anything the observer can't see.
+ *
+ * The name is kept (it replaced the numbered pager in place) so every table
+ * switched over without touching its markup.
  */
-export function Pagination({
-  page,
-  pageSize,
-  totalItems,
-  onPageChange,
-  onPageSizeChange,
-  className,
-  pageSizeOptions = PAGE_SIZE_OPTIONS,
-}: PaginationProps) {
+export function Pagination({ page, pageSize, totalItems, onPageChange, loading, className }: PaginationProps) {
   const { t } = useTranslation();
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const current = Math.min(Math.max(1, page), totalPages);
-  const from = totalItems === 0 ? 0 : (current - 1) * pageSize + 1;
-  const to = Math.min(current * pageSize, totalItems);
+  const shown = Math.min(page * pageSize, totalItems);
+  const more = shown < totalItems;
+  const sentinel = useRef<HTMLDivElement | null>(null);
+  const ask = useRef(onPageChange);
+  useEffect(() => { ask.current = onPageChange; });
 
-  // Build a compact list of page numbers: first, last, current ± 1, with ellipses.
-  const pageNumbers: (number | "ellipsis")[] = [];
-  const add = (n: number) => {
-    if (!pageNumbers.includes(n) && n >= 1 && n <= totalPages) pageNumbers.push(n);
-  };
-  if (totalPages <= 7) {
-    for (let i = 1; i <= totalPages; i++) add(i);
-  } else {
-    add(1);
-    if (current > 3) pageNumbers.push("ellipsis");
-    for (let i = current - 1; i <= current + 1; i++) add(i);
-    if (current < totalPages - 2) pageNumbers.push("ellipsis");
-    add(totalPages);
-  }
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !more || loading || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect();
+          ask.current(page + 1);
+        }
+      },
+      // Start fetching a little before the end is actually reached.
+      { rootMargin: "0px 0px 300px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [page, more, loading, totalItems]);
+
+  if (totalItems === 0) return null;
 
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t bg-muted/20",
+        "flex flex-wrap items-center justify-center gap-3 px-4 py-3 border-t bg-muted/20 text-xs text-muted-foreground",
         className,
       )}
     >
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="tabular-nums">
-          {t("pagination.range", { from, to, total: totalItems })}
-        </span>
-        <span className="hidden sm:inline">·</span>
-        <span className="hidden sm:flex items-center gap-1.5">
-          {t("pagination.perPage")}
-          <Select
-            value={String(pageSize)}
-            onValueChange={(v) => onPageSizeChange(Number(v))}
-          >
-            <SelectTrigger className="h-7 w-[72px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {pageSizeOptions.map((n) => (
-                <SelectItem key={n} value={String(n)} className="text-xs">
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </span>
-      </div>
-
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          onClick={() => onPageChange(1)}
-          disabled={current <= 1}
-          aria-label={t("pagination.first")}
-        >
-          <ChevronsLeft className="size-4 rtl-flip" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          onClick={() => onPageChange(current - 1)}
-          disabled={current <= 1}
-          aria-label={t("pagination.prev")}
-        >
-          <ChevronLeft className="size-4 rtl-flip" />
-        </Button>
-
-        <div className="flex items-center gap-0.5">
-          {pageNumbers.map((p, i) =>
-            p === "ellipsis" ? (
-              <span key={`e-${i}`} className="px-1.5 text-xs text-muted-foreground">
-                …
-              </span>
-            ) : (
-              <Button
-                key={p}
-                variant={p === current ? "default" : "ghost"}
-                size="sm"
-                className="size-8 px-0 text-xs tabular-nums"
-                onClick={() => onPageChange(p)}
-              >
-                {p}
-              </Button>
-            ),
-          )}
-        </div>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          onClick={() => onPageChange(current + 1)}
-          disabled={current >= totalPages}
-          aria-label={t("pagination.next")}
-        >
-          <ChevronRight className="size-4 rtl-flip" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          onClick={() => onPageChange(totalPages)}
-          disabled={current >= totalPages}
-          aria-label={t("pagination.last")}
-        >
-          <ChevronsRight className="size-4 rtl-flip" />
-        </Button>
-      </div>
-
-      {/* Mobile per-page */}
-      <div className="sm:hidden w-full flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
-        {t("pagination.perPage")}
-        <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-          <SelectTrigger className="h-7 w-[72px] text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {pageSizeOptions.map((n) => (
-              <SelectItem key={n} value={String(n)} className="text-xs">
-                {n}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <div ref={sentinel} aria-hidden className="h-px w-px" />
+      <span className="tabular-nums">
+        {t("pagination.showing", { shown, total: totalItems, defaultValue: "Showing {{shown}} of {{total}}" })}
+      </span>
+      {more && (
+        loading ? (
+          <span className="inline-flex items-center gap-1.5">
+            <Loader2 className="size-3.5 animate-spin" /> {t("pagination.loading", { defaultValue: "Loading…" })}
+          </span>
+        ) : (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onPageChange(page + 1)}>
+            {t("pagination.loadMore", { defaultValue: "Load more" })}
+          </Button>
+        )
+      )}
     </div>
   );
 }

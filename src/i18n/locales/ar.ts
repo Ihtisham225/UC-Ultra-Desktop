@@ -121,6 +121,9 @@ const ar: Translations = {
     partialDelete: "تم حذف {{ok}} من {{total}} — فشل {{failed}}",
   },
   pagination: {
+    showing: "عرض {{shown}} من {{total}}",
+    loadMore: "تحميل المزيد",
+    loading: "جارٍ التحميل…",
     perPage: "لكل صفحة",
     range: "{{from}}–{{to}} من {{total}}",
     prev: "الصفحة السابقة",

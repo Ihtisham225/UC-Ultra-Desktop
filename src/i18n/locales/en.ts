@@ -118,6 +118,9 @@ const en = {
     partialDelete: "Deleted {{ok}} of {{total}} — {{failed}} failed",
   },
   pagination: {
+    showing: "Showing {{shown}} of {{total}}",
+    loadMore: "Load more",
+    loading: "Loading…",
     perPage: "Per page",
     range: "{{from}}–{{to}} of {{total}}",
     prev: "Previous page",

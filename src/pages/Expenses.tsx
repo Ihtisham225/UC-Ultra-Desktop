@@ -20,13 +20,13 @@ import { toast } from "sonner";
 import { DetailsDialog } from "@/components/DetailsDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
+import { SCROLL_BATCH } from "@/hooks/usePagination";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
 import { AccountPicker } from "@/components/AccountPicker";
+import { useDaybookHandoff } from "@/hooks/useDaybookHandoff";
 import { useAddNew } from "@/hooks/useAddNew";
 
-const PAGE_SIZE_KEY = "pos.pageSize.expenses";
-const DEFAULT_PAGE_SIZE = 20;
 
 interface Category { id: string; name: string; color: string; }
 interface Expense {
@@ -57,16 +57,9 @@ export default function Expenses() {
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSizeState] = useState<number>(() => {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(PAGE_SIZE_KEY) : null;
-    const n = raw ? parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_PAGE_SIZE;
-  });
-  const setPageSize = (n: number) => {
-    setPageSizeState(n);
-    setPage(1);
-    try { localStorage.setItem(PAGE_SIZE_KEY, String(n)); } catch {}
-  };
+  // Infinite scroll: `page` counts the batches of SCROLL_BATCH shown so far.
+  const pageSize = SCROLL_BATCH;
+  const setPageSize = (_n: number) => { setPage(1); };
   const [filterCat, setFilterCat] = useState<string>("all");
   const [rangeTotals, setRangeTotals] = useState<{
     total: number;
@@ -100,6 +93,22 @@ export default function Expenses() {
     setDetails(null);
     setOpen(true);
   };
+
+  // A Roznamcha line raised as an expense: open the form filled in from it,
+  // and point the line at the expense once it is saved.
+  const daybook = useDaybookHandoff({
+    expense: (e) => {
+      resetForm();
+      setForm((f) => ({
+        ...f,
+        amount: e.amount ? String(e.amount) : "",
+        paid_to: e.party_name,
+        description: [e.description, e.notes].filter(Boolean).join(" — "),
+        expense_date: e.date,
+      }));
+      setOpen(true);
+    },
+  });
 
   const resetForm = () => {
     setEditingId(null);
@@ -139,7 +148,7 @@ export default function Expenses() {
         byCategory?: { category_id: string | null; amount: number }[];
       }>(
         "listExpensesAction",
-        { from, to, categoryId: filterCat, page, pageSize },
+        { from, to, categoryId: filterCat, page: 1, pageSize: page * pageSize },
       );
       setExpenses(rows ?? []);
       setTotalCount(count ?? 0);
@@ -159,11 +168,6 @@ export default function Expenses() {
   // Reset to page 1 whenever filters change.
   useEffect(() => { setPage(1); }, [filterCat, from, to]);
 
-  // Clamp page if totals shrink.
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-    if (page > totalPages) setPage(totalPages);
-  }, [totalCount, pageSize, page]);
 
   useEffect(() => { loadCategories(); }, [loadCategories]);
   useEffect(() => { load(); }, [load]);
@@ -203,21 +207,23 @@ export default function Expenses() {
       paid_to: form.paid_to || null,
       description: form.description || null,
       expense_date: form.expense_date,
-      payment_method: form.payment_method,
       account_id: accountId,
       category_id: form.category_id || null,
     };
+    let createdId: string | undefined;
     try {
       const res = editingId
-        ? await rpc<{ ok: boolean; error?: string }>("updateExpenseAction", editingId, payload)
-        : await rpc<{ ok: boolean; error?: string }>("createExpenseAction", payload);
+        ? await rpc<{ ok: boolean; error?: string; id?: string }>("updateExpenseAction", editingId, payload)
+        : await rpc<{ ok: boolean; error?: string; id?: string }>("createExpenseAction", payload);
       if (!res.ok) return toast.error(res.error || t("common.error"));
+      createdId = editingId ? undefined : res.id;
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : t("common.error"));
     } finally {
       setBusy(false);
     }
     toast.success(editingId ? t("expenses.expenseUpdated") : t("expenses.expenseSaved"));
+    if (createdId && daybook.entry) await daybook.link(createdId, `Expense${form.paid_to ? ` — ${form.paid_to}` : ""}`);
     setOpen(false);
     resetForm();
     load();
@@ -364,7 +370,7 @@ export default function Expenses() {
             </div>
           </DialogContent>
         </Dialog>
-        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
+        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { resetForm(); daybook.abandon(); } }}>
           <DialogTrigger asChild>
             <Button onClick={resetForm}><Plus className="size-4 mr-2" /> {t("expenses.addNew")}</Button>
           </DialogTrigger>
@@ -393,18 +399,6 @@ export default function Expenses() {
               <div className="space-y-1.5 col-span-1">
                 <AccountPicker value={accountId} onChange={setAccountId} label="Paid from" />
               </div>
-              <div className="space-y-1.5 col-span-1">
-                <Label>{t("expenses.paymentMethod")}</Label>
-                <Select value={form.payment_method} onValueChange={(v: any) => setForm({ ...form, payment_method: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">{t("pos.cash")}</SelectItem>
-                    <SelectItem value="card">{t("pos.card")}</SelectItem>
-                    <SelectItem value="mobile">{t("pos.mobile")}</SelectItem>
-                    <SelectItem value="other">{t("pos.other")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="space-y-1.5 col-span-2">
                 <Label>{t("expenses.paidTo")}</Label>
                 <Input value={form.paid_to} onChange={(e) => setForm({ ...form, paid_to: e.target.value })}
@@ -417,7 +411,7 @@ export default function Expenses() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
+              <Button variant="outline" onClick={() => { setOpen(false); daybook.abandon(); }}>{t("common.cancel")}</Button>
               <Button onClick={save} disabled={busy}>{busy ? t("common.saving") : t("common.save")}</Button>
             </DialogFooter>
           </DialogContent>
@@ -486,7 +480,7 @@ export default function Expenses() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
+            {loading && expenses.length === 0 ? (
               <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
             ) : expenses.length === 0 ? (
               <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">{t("expenses.empty")}</TableCell></TableRow>
@@ -524,6 +518,7 @@ export default function Expenses() {
           totalItems={totalCount}
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
+          loading={loading}
         />
       </Card>
 
@@ -537,7 +532,6 @@ export default function Expenses() {
             subtitle={format(new Date(details.expense_date), "PPP")}
             rows={[
               { label: t("expenses.category"), value: cat?.name ?? t("expenses.uncategorized") },
-              { label: t("expenses.paymentMethod"), value: <span className="capitalize">{details.payment_method}</span> },
               { label: t("expenses.paidTo"), value: details.paid_to ?? "—" },
               { label: t("common.date"), value: format(new Date(details.expense_date), "PPP") },
               { label: t("common.description"), value: details.description ?? "—", full: true },

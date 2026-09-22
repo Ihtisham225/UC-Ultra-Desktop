@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Pagination } from "@/components/Pagination";
+import { SCROLL_BATCH } from "@/hooks/usePagination";
 import { rpc } from "@/lib/apiClient";
 import type { AuditLogRow, AuditPage, AuditVocabulary } from "@/lib/adminTypes";
 import { Button } from "@/components/ui/button";
@@ -13,11 +15,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  ScrollText, Search, RotateCcw, Laptop, Globe, ChevronLeft, ChevronRight,
+  ScrollText, Search, RotateCcw, Laptop, Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const PAGE_SIZE = 50;
+// Infinite scroll: each batch is appended as the end of the list comes into view.
+const PAGE_SIZE = SCROLL_BATCH;
 const ANY = "__any__";
 
 function Dot({ severity }: { severity: string }) {
@@ -83,7 +86,8 @@ export default function Activity() {
     setLoading(true);
     try {
       const res = await rpc<AuditPage>("listShopActivityAction", query);
-      setRows(res.rows);
+      // The first batch replaces (a new filter); later ones are appended.
+      setRows((prev) => ((query.page ?? 1) > 1 ? [...prev, ...res.rows.filter((r) => !prev.some((p) => p.id === r.id))] : res.rows));
       setTotal(res.total);
     } catch (e) {
       toast.error(
@@ -106,7 +110,6 @@ export default function Activity() {
     setSeverity(ANY); setFrom(""); setTo(""); setPage(1);
   };
 
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="max-w-6xl mx-auto space-y-4">
@@ -199,19 +202,6 @@ export default function Activity() {
           <span className="text-sm font-medium">
             {loading ? "Loading…" : `${total.toLocaleString()} entr${total === 1 ? "y" : "ies"}`}
           </span>
-          {pages > 1 && (
-            <div className="flex items-center gap-1">
-              <Button variant="outline" size="icon" className="size-8" disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                <ChevronLeft className="size-4" />
-              </Button>
-              <span className="text-xs text-muted-foreground tabular-nums px-1">{page} / {pages}</span>
-              <Button variant="outline" size="icon" className="size-8" disabled={page >= pages}
-                onClick={() => setPage((p) => Math.min(pages, p + 1))}>
-                <ChevronRight className="size-4" />
-              </Button>
-            </div>
-          )}
         </div>
         <CardContent className="p-0">
           {rows.length === 0 && !loading ? (
@@ -247,6 +237,7 @@ export default function Activity() {
               ))}
             </ul>
           )}
+          <Pagination page={page} pageSize={PAGE_SIZE} totalItems={total} onPageChange={setPage} loading={loading} />
         </CardContent>
       </Card>
 

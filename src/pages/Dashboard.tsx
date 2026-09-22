@@ -17,6 +17,8 @@ import { rpc } from "@/lib/apiClient";
 import { isHandicraft } from "@/lib/handicraft";
 import HandicraftDashboard from "@/components/HandicraftDashboard";
 import type { CraftDashboard } from "@/lib/handicraftTypes";
+import { DueChequesCard } from "@/components/DueChequesCard";
+import type { ChequeDto } from "@/lib/cheques";
 
 export default function Dashboard() {
   usePageMeta({ title: "Dashboard — UCU", description: "Real-time overview of your shop sales, top products, low-stock alerts and revenue trends." });
@@ -40,6 +42,18 @@ export default function Dashboard() {
       .catch((e) => { if (!cancelled) setCraftError(e instanceof Error ? e.message : "Failed to load"); });
     return () => { cancelled = true; };
   }, [craft, currentShop]);
+
+  // Cheques falling due within the shop's reminder window. Cheques live on the
+  // server, so offline the card simply doesn't show.
+  const [dueCheques, setDueCheques] = useState<ChequeDto[]>([]);
+  useEffect(() => {
+    if (!currentShop?.cheques_enabled || craft) { setDueCheques([]); return; }
+    let cancelled = false;
+    rpc<ChequeDto[]>("dueChequesAction")
+      .then((d) => { if (!cancelled) setDueCheques(d ?? []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentShop?.id, currentShop?.cheques_enabled, craft]);
 
   const { data: allSales, loading: salesLoading } = useLocalStore<any>("sales", currentShop?.id);
   const { data: allProducts, loading: productsLoading } = useProductsWithVariants<any>(currentShop?.id);
@@ -201,6 +215,13 @@ export default function Dashboard() {
           <Link to="/pos"><ScanBarcode className="size-4 me-2" /> {t("nav.pos")}</Link>
         </Button>
       </header>
+
+      <DueChequesCard
+        cheques={dueCheques}
+        currency={currentShop?.currency ?? "USD"}
+        reminderDays={currentShop?.cheque_reminder_days ?? 10}
+        renderLink={(children) => <Link to="/cheques">{children}</Link>}
+      />
 
       <PageTip id="dashboard.flow" title="The 4-step flow of UCU">
         Add <b>Products</b> → record <b>Purchases</b> when stock arrives → ring up sales at <b>POS</b> → review <b>Analytics</b>.

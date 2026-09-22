@@ -53,6 +53,8 @@ interface Variant {
   imei2?: string | null;
   /** Its own shelf; null = kept with the product. */
   location_id?: string | null;
+  /** Its own low-stock alert. */
+  low_stock_threshold?: number | null;
   // local-only flag for new rows that aren't persisted yet
   _new?: boolean;
 }
@@ -349,7 +351,12 @@ export default function Products() {
             v.price_override === null || v.price_override === undefined || (v.price_override as unknown as string) === ""
               ? null
               : Number(v.price_override),
-          low_stock_threshold,
+          // The variant's own alert; blank falls back to the product's.
+          // ⚠️ It used to be overwritten with the product's on every save.
+          low_stock_threshold:
+            v.low_stock_threshold === null || v.low_stock_threshold === undefined || (v.low_stock_threshold as unknown as string) === ""
+              ? low_stock_threshold
+              : Number(v.low_stock_threshold),
           sort_order: i,
           imei1: (v as { imei1?: string | null }).imei1?.toString().trim() || null,
           imei2: (v as { imei2?: string | null }).imei2?.toString().trim() || null,
@@ -488,6 +495,16 @@ export default function Products() {
   const imeiOnProduct = currentShop?.store_type === "phone" && currentShop?.imei_capture_mode === "product";
 
   const visibleIds = visible.map((p) => p.id);
+
+  /** A product with variants is low when ANY variant is at or under its own alert. */
+  const isLowStock = (p: Product) => {
+    if (p.is_service) return false;
+    const vs = p.product_variants ?? [];
+    if (vs.length > 0) {
+      return vs.some((v) => Number(v.stock) <= Number(v.low_stock_threshold ?? p.low_stock_threshold ?? 0));
+    }
+    return Number(p.stock) <= Number(p.low_stock_threshold ?? 0);
+  };
 
   const totalStock = (p: Product) => {
     const variants = p.product_variants ?? [];
@@ -650,7 +667,7 @@ export default function Products() {
         const stocked = filtered.filter((p) => !p.is_service);
         const totalUnits = stocked.reduce((a, p) => a + totalStock(p), 0);
         const totalInventoryValue = stocked.reduce((a, p) => a + (Number(p.price) || 0) * totalStock(p), 0);
-        const lowStockCount = stocked.filter((p) => totalStock(p) <= (Number(p.low_stock_threshold) || 0)).length;
+        const lowStockCount = stocked.filter(isLowStock).length;
         return (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card className="p-4">
@@ -708,7 +725,7 @@ export default function Products() {
                   const stock = totalStock(p);
                   // Services (lab tests, labour) hold no stock — a 0 here reads
                   // as "out of stock", which is wrong and alarming.
-                  const low = !p.is_service && stock <= Number(p.low_stock_threshold);
+                  const low = isLowStock(p);
                   return (
                     <tr key={p.id} className={`border-t hover:bg-muted/30 ${sel.has(p.id) ? "bg-primary/5" : ""}`}>
                       <td className="p-3">

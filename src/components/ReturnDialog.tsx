@@ -11,6 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Undo2 } from "lucide-react";
 import { formatMoney } from "@/lib/format";
+import { AccountPicker } from "@/components/AccountPicker";
+import { ReturnReceiptDialog } from "@/components/ReturnReceiptDialog";
+import type { ReturnSlip } from "@/lib/return-receipt";
 
 interface SaleItem {
   id: string;
@@ -43,6 +46,10 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [receipt, setReceipt] = useState<string | null>(null);
+  /** Where the refund is paid out from, so the account's balance follows it. */
+  const [accountId, setAccountId] = useState<string | null>(null);
+  /** The slip of the return just taken — shown once the form closes. */
+  const [slip, setSlip] = useState<ReturnSlip | null>(null);
 
   const cur = currentShop?.currency ?? "USD";
 
@@ -87,10 +94,12 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
     if (lines.length === 0) return toast.error("Pick at least one item to return");
 
     setBusy(true);
+    let returnId: string | undefined;
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("createReturnAction", {
+      const res = await rpc<{ ok: boolean; error?: string; returnId?: string }>("createReturnAction", {
         saleId,
         refundMethod,
+        accountId: accountId || null,
         reason: reason || null,
         notes: notes || null,
         deduction: deductionNum > 0 ? deductionNum : null,
@@ -104,6 +113,7 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
         })),
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
+      returnId = res.returnId;
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -112,9 +122,16 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
     toast.success(`Refund of ${formatMoney(totalRefund, cur)} processed — stock restored`);
     onDone?.();
     onClose();
+    // Open the return's receipt, the way checkout opens the sale's. A server
+    // older than this build sends no id, and then there is simply no slip.
+    if (returnId) {
+      rpc<ReturnSlip | null>("getReturnReceiptAction", returnId).then((r) => r && setSlip(r)).catch(() => {});
+    }
   };
 
   return (
+    <>
+    <ReturnReceiptDialog slip={slip} onClose={() => setSlip(null)} />
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -226,6 +243,8 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
               </div>
             </div>
 
+            <AccountPicker value={accountId} onChange={setAccountId} label="Refund from" />
+
             <div className="space-y-1.5">
               <Label>Reason</Label>
               <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Defective, wrong item, customer changed mind…" />
@@ -248,5 +267,6 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 };

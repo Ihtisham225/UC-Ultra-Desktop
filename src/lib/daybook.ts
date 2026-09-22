@@ -1,5 +1,6 @@
 /**
- * The Roznamcha (daybook) — a shawl shop's rough register of the day.
+ * The Roznamcha (daybook) — a rough register of the day. It started with the
+ * shawl shops (where it is always on) and is a Settings switch for the rest.
  *
  * ⚠️ Nothing here posts to a balance. A daybook line is what the clerk scribbles
  * as it happens; the real record is raised afterwards and the line is ticked
@@ -41,6 +42,53 @@ export const DAYBOOK_UNITS = ["kg", "lb", "pieces", "bags", "than", "metres"];
  * coming in can only become a purchase or a bill for work done.
  */
 export const DAYBOOK_LINK_TARGETS = [
+  // ── Every store type except handicraft (Settings → Roznamcha) ───────────
+  {
+    value: "ledger_payment_in",
+    label: "Payment received on the ledger",
+    hint: "They paid towards what they owe",
+    href: "/debts",
+    kinds: ["money"],
+    directions: ["in"],
+    craft: false,
+  },
+  {
+    value: "ledger_payment_out",
+    label: "Payment made on the ledger",
+    hint: "The shop paid towards what it owes them",
+    href: "/debts",
+    kinds: ["money"],
+    directions: ["out"],
+    craft: false,
+  },
+  {
+    value: "ledger_entry",
+    label: "New ledger entry",
+    hint: "Put the amount on their khata",
+    href: "/debts",
+    kinds: ["money", "material"],
+    directions: ["in", "out"],
+    craft: false,
+  },
+  {
+    value: "expense",
+    label: "Expense",
+    hint: "Money spent on running the shop",
+    href: "/expenses",
+    kinds: ["money"],
+    directions: ["out"],
+    craft: false,
+  },
+  {
+    value: "purchase",
+    label: "Purchase",
+    hint: "Stock bought in",
+    href: "/purchases",
+    kinds: ["material", "money"],
+    directions: ["in", "out"],
+    craft: false,
+  },
+  // ── Handicraft ───────────────────────────────────────────────────────────
   {
     value: "material_purchase",
     label: "Purchase bill",
@@ -48,6 +96,7 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/material-purchases",
     kinds: ["material"],
     directions: ["in"],
+    craft: true,
   },
   {
     value: "making_receipt",
@@ -56,6 +105,7 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/making",
     kinds: ["material"],
     directions: ["in"],
+    craft: true,
   },
   {
     value: "job_work_receipt",
@@ -64,6 +114,7 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/job-work",
     kinds: ["material"],
     directions: ["in"],
+    craft: true,
   },
   {
     value: "making_challan",
@@ -72,6 +123,7 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/making",
     kinds: ["material"],
     directions: ["out"],
+    craft: true,
   },
   {
     value: "job_work_challan",
@@ -80,6 +132,7 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/job-work",
     kinds: ["material"],
     directions: ["out"],
+    craft: true,
   },
   {
     value: "customer_challan",
@@ -88,6 +141,7 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/customers",
     kinds: ["material"],
     directions: ["out"],
+    craft: true,
   },
   {
     value: "customer_payment",
@@ -96,6 +150,7 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/customers",
     kinds: ["money"],
     directions: ["in"],
+    craft: true,
   },
   {
     value: "party_payment_material",
@@ -104,6 +159,7 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/material-purchases",
     kinds: ["money"],
     directions: ["out"],
+    craft: true,
   },
   {
     value: "party_payment_making",
@@ -112,6 +168,7 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/making",
     kinds: ["money"],
     directions: ["out"],
+    craft: true,
   },
   {
     value: "party_payment_processing",
@@ -120,6 +177,7 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/job-work",
     kinds: ["money"],
     directions: ["out"],
+    craft: true,
   },
 ] as const satisfies readonly {
   value: string;
@@ -128,6 +186,8 @@ export const DAYBOOK_LINK_TARGETS = [
   href: string;
   kinds: readonly DaybookKindValue[];
   directions: readonly DaybookDirectionValue[];
+  /** Handicraft shops raise their own records; every other shop the general ones. */
+  craft: boolean;
 }[];
 
 export type DaybookLinkTarget = (typeof DAYBOOK_LINK_TARGETS)[number]["value"];
@@ -139,9 +199,10 @@ export function daybookTarget(value?: string | null) {
 }
 
 /** The records that make sense for a line — a money line is never a challan. */
-export function targetsFor(kind: DaybookKindValue, direction: DaybookDirectionValue) {
+export function targetsFor(kind: DaybookKindValue, direction: DaybookDirectionValue, craft = true) {
   return DAYBOOK_LINK_TARGETS.filter(
     (t) =>
+      t.craft === craft &&
       (t.kinds as readonly string[]).includes(kind) &&
       (t.directions as readonly string[]).includes(direction),
   );

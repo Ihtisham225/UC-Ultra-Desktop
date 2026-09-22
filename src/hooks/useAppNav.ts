@@ -22,6 +22,8 @@ export function useAppNav() {
       role,
       hasPerm,
       investorsEnabled: !!currentShop?.investors_enabled,
+      chequesEnabled: !!currentShop?.cheques_enabled,
+      daybookEnabled: !!currentShop?.daybook_enabled,
       perms,
     };
     return { pages: navPages(ctx), actions: newActions(ctx) };

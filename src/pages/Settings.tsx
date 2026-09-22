@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { leaveDeletedShop } from "@/lib/deviceSession";
+import { leaveDeletedShop, refreshShops } from "@/lib/deviceSession";
 import { useTranslation } from "react-i18next";
 import { rpc, uploadShopLogo } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
@@ -53,6 +53,9 @@ export default function Settings() {
   const [showTax, setShowTax] = useState(true);
   const [storeType, setStoreType] = useState("other");
   const [allowNegative, setAllowNegative] = useState(false);
+  const [chequesOn, setChequesOn] = useState(false);
+  const [chequeDays, setChequeDays] = useState("10");
+  const [daybookOn, setDaybookOn] = useState(false);
   const [showCostInPos, setShowCostInPos] = useState(false);
   // Custom order numbering. A blank next-number keeps the automatic code, so
   // shops that never configure this are untouched.
@@ -93,6 +96,9 @@ export default function Settings() {
       setStoreType(currentShop.store_type ?? "other");
       setLabTests(!!currentShop.lab_tests_enabled);
       setAllowNegative(!!currentShop.allow_negative_stock);
+      setChequesOn(!!currentShop.cheques_enabled);
+      setChequeDays(String(currentShop.cheque_reminder_days ?? 10));
+      setDaybookOn(!!currentShop.daybook_enabled);
       setShowCostInPos(!!currentShop.show_cost_in_pos);
       setReceiptPrefix(currentShop.receipt_prefix ?? "");
       setReceiptNext(currentShop.receipt_next_number == null ? "" : String(currentShop.receipt_next_number));
@@ -110,10 +116,18 @@ export default function Settings() {
     }
   }, [currentShop]);
 
+  // The display name is in the cached device session, which is refreshed on
+  // focus and every minute (refreshShops) — each refresh is a new `user`
+  // object. ⚠️ Keyed on the NAME, and only while the box still shows what the
+  // session last said, or a refresh wiped whatever was being typed.
+  const sessionName = user?.display_name ?? "";
+  const syncedName = useRef("");
   useEffect(() => {
-    // The display name is already in the cached device session.
-    if (user) setDisplayName(user.display_name ?? "");
-  }, [user]);
+    if (!sessionName) return;
+    const previous = syncedName.current;
+    syncedName.current = sessionName;
+    setDisplayName((current) => (current === previous || current === "" ? sessionName : current));
+  }, [sessionName]);
 
   const canEdit = role === "owner";
   const canEditShop = role === "owner" || role === "manager";
@@ -124,6 +138,8 @@ export default function Settings() {
     try {
       const res = await rpc<{ ok: boolean; error?: string }>("updateProfileAction", displayName);
       if (!res.ok) return toast.error(res.error ?? "Failed");
+      // Re-read the user so the sidebar shows the new name now, not in a minute.
+      await refreshShops();
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -147,6 +163,9 @@ export default function Settings() {
         receipt_prefix: receiptPrefix.trim() || null,
         receipt_next_number: receiptNext.trim() === "" ? null : (parseInt(receiptNext, 10) || null),
         imei_capture_mode: imeiMode,
+        cheques_enabled: chequesOn,
+        cheque_reminder_days: Math.min(90, Math.max(0, parseInt(chequeDays, 10) || 0)),
+        daybook_enabled: daybookOn,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
     } catch (e) {
@@ -447,6 +466,42 @@ export default function Settings() {
               </div>
               <Switch checked={allowNegative} onCheckedChange={setAllowNegative} disabled={!canEditShop} />
             </div>
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <Label>Cheques</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Take post-dated cheques on the Ledger. The amount comes off the customer&apos;s
+                    balance straight away; mark the cheque cleared once the bank pays it, or
+                    bounced to put the amount back.
+                  </p>
+                </div>
+                <Switch checked={chequesOn} onCheckedChange={setChequesOn} disabled={!canEditShop} />
+              </div>
+              {chequesOn && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span>Remind me</span>
+                  <Input
+                    type="number" min="0" max="90" className="w-20 h-8"
+                    value={chequeDays} onChange={(e) => setChequeDays(e.target.value)} disabled={!canEditShop}
+                  />
+                  <span>days before a cheque&apos;s date</span>
+                </div>
+              )}
+            </div>
+            {storeType !== "handicraft" && (
+              <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                <div>
+                  <Label>Roznamcha (daybook)</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    A rough register for the day: jot down money and goods coming in and going out as
+                    they happen, then at the end of the day turn each line into a ledger entry, an
+                    expense or a purchase.
+                  </p>
+                </div>
+                <Switch checked={daybookOn} onCheckedChange={setDaybookOn} disabled={!canEditShop} />
+              </div>
+            )}
             <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
               <div>
                 <Label>Show purchase price in POS</Label>
