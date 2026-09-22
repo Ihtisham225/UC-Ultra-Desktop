@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BadgeDollarSign, BarChart3, BookOpenCheck, Boxes, Car, ClipboardCheck, Factory, FileBarChart, FlaskConical,
   FolderTree, HandCoins, HeartPulse, Landmark, LayoutDashboard, LifeBuoy, Package, PackageOpen, Receipt,
-  ScanBarcode, Scissors, ScrollText, Settings, ShieldCheck, Tag, TrendingUp, Truck, Undo2, UserPlus, Users,
+  FileCheck2, ScanBarcode, Scissors, ScrollText, Settings, ShieldCheck, Tag, TrendingUp, Truck, Undo2, UserPlus, Users,
   Wallet, FileText, Banknote, SlidersHorizontal, KeyRound, MapPin, Building2, HandHeart,
 } from "lucide-react";
 
@@ -46,6 +46,10 @@ export interface NavContext {
   role: string | null | undefined;
   hasPerm: (module: string, action: string) => boolean;
   investorsEnabled: boolean;
+  /** Settings → Cheques. */
+  chequesEnabled?: boolean;
+  /** Settings → Roznamcha (handicraft shops always have it). */
+  daybookEnabled?: boolean;
   perms: {
     canManageProducts: boolean;
     canManagePurchases: boolean;
@@ -65,7 +69,7 @@ export function navPages(ctx: NavContext): NavPage[] {
     // The shawl trade's daily book: every movement is written here as it
     // happens, then raised as a real record at the end of the day. It sits
     // first because it is the screen they are on all day.
-    { to: "/daybook", label: "Roznamcha", icon: BookOpenCheck, section: "Workshop", show: craft && perms.canManagePurchases, keywords: ["daybook"] },
+    { to: "/daybook", label: "Roznamcha", icon: BookOpenCheck, section: craft ? "Workshop" : "Money", show: craft ? perms.canManagePurchases : !!ctx.daybookEnabled && ownerOrManager(ctx), keywords: ["daybook", "rough book"] },
     { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, section: "Selling", show: !craft, keywords: ["till", "point of sale", "bill", "checkout"] },
     { to: "/products", label: t("nav.products"), icon: Package, section: "Stock", show: !craft, keywords: ["items"] },
     { to: "/categories", label: "Categories", icon: FolderTree, section: "Stock", show: !craft && perms.canManageProducts },
@@ -96,6 +100,7 @@ export function navPages(ctx: NavContext): NavPage[] {
     // Parties page, and what customers owe it, on Customers — so the general
     // khata would be a third place for the same money.
     { to: "/debts", label: `${t("nav.debts")} (Khata)`, icon: HandCoins, section: "Money", show: !craft && perms.canManageExpenses, keywords: ["ledger", "khata", "debts", "udhaar"] },
+    { to: "/cheques", label: "Cheques", icon: FileCheck2, section: "Money", show: !craft && !!ctx.chequesEnabled && perms.canManageExpenses, keywords: ["cheque", "check", "post-dated", "bank"] },
     { to: "/investors", label: t("nav.investors"), icon: TrendingUp, section: "Money", show: perms.canManageExpenses && ctx.investorsEnabled },
     { to: "/payroll", label: t("nav.payroll"), icon: BadgeDollarSign, section: "Money", show: perms.canManageExpenses, keywords: ["salary", "wages"] },
     // Things the shop uses (fridge, generator, shelving) — cost spread as depreciation.
@@ -122,7 +127,7 @@ export function newActions(ctx: NavContext): NewAction[] {
   const edit = ownerOrManager(ctx);
   const actions: (NewAction & { show: boolean })[] = [
     // Workshop (handicraft) shops
-    { id: "daybook-entry", label: "Roznamcha entry", icon: BookOpenCheck, to: "/daybook", show: craft && perms.canManagePurchases, keywords: ["daybook"] },
+    { id: "daybook-entry", label: "Roznamcha entry", icon: BookOpenCheck, to: "/daybook", show: craft ? perms.canManagePurchases : !!ctx.daybookEnabled && edit, keywords: ["daybook"] },
     { id: "material-purchase", label: "Purchase", icon: PackageOpen, to: "/material-purchases", show: craft && perms.canManagePurchases, keywords: ["material", "yarn", "bill"] },
     { id: "making-challan", label: "Making challan", icon: Scissors, to: "/making", show: craft && perms.canManagePurchases, keywords: ["karigar"] },
     { id: "job-work-challan", label: "Job work challan", icon: Factory, to: "/job-work", show: craft && perms.canManagePurchases, keywords: ["factory"] },
@@ -132,6 +137,7 @@ export function newActions(ctx: NavContext): NewAction[] {
     // Selling
     { id: "sale", label: "Sale", icon: ScanBarcode, to: "/pos", show: !craft, keywords: ["pos", "till", "bill"] },
     { id: "manual-sale", label: "Past sale (record)", icon: Receipt, to: "/sales", show: !craft, keywords: ["manual", "record"] },
+    { id: "return", label: "Return", icon: Undo2, to: "/returns", show: !craft && edit, keywords: ["refund", "sale return", "exchange"] },
     { id: "customer", label: "Customer", icon: Users, to: "/customers", show: craft ? perms.canManageSuppliers : true },
     { id: "vehicle", label: "Vehicle", icon: Car, to: "/oil-changes", show: oil, keywords: ["car", "register"] },
     { id: "patient", label: "Patient", icon: HeartPulse, to: "/patients", show: labView },

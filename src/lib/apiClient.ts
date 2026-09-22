@@ -80,6 +80,12 @@ export interface DeviceShop {
   show_imei_on_receipt?: boolean;
   show_previous_balance_on_receipt?: boolean;
   show_notes_on_receipt?: boolean;
+  /** Cheques on the khata (Settings → Shop). */
+  cheques_enabled?: boolean;
+  /** Days before a cheque's date that it shows as due. */
+  cheque_reminder_days?: number;
+  /** The Roznamcha — always on for handicraft shops, a switch for the rest. */
+  daybook_enabled?: boolean;
   receipt_terms?: string | null;
   print_terms_by_default?: boolean;
   created_by: string;

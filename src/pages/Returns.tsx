@@ -9,13 +9,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DetailsDialog } from "@/components/DetailsDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
-import { Undo2, Eye, Trash2, Truck } from "lucide-react";
+import { SCROLL_BATCH } from "@/hooks/usePagination";
+import { Undo2, Eye, Trash2, Truck, Plus, Printer } from "lucide-react";
+import { NewReturnDialog, type ReturnProductOption, type NewReturnInput } from "@/components/NewReturnDialog";
+import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
+import { ReturnReceiptDialog } from "@/components/ReturnReceiptDialog";
+import type { ReturnSlip } from "@/lib/return-receipt";
+import { useAddNew } from "@/hooks/useAddNew";
+import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
+import { syncNow } from "@/lib/syncEngine";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-const PAGE_SIZE_KEY = "pos.pageSize.returns";
-const DEFAULT_PAGE_SIZE = 20;
 
 interface CustomerReturnRow {
   id: string;
@@ -26,8 +32,10 @@ interface CustomerReturnRow {
   reason: string | null;
   notes: string | null;
   created_at: string;
-  sale_id: string;
+  /** Null for a return taken without a bill. */
+  sale_id: string | null;
   sales: { receipt_number: string | null } | null;
+  customer_name?: string | null;
   sale_return_items: { id: string; product_name: string; quantity: number; unit_price: number; line_total: number }[];
 }
 
@@ -65,16 +73,9 @@ export default function Returns() {
   const [supLoading, setSupLoading] = useState(true);
   const [supPage, setSupPage] = useState(1);
 
-  const [pageSize, setPageSizeState] = useState<number>(() => {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(PAGE_SIZE_KEY) : null;
-    const n = raw ? parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_PAGE_SIZE;
-  });
-  const setPageSize = (n: number) => {
-    setPageSizeState(n);
-    setCustPage(1); setSupPage(1);
-    try { localStorage.setItem(PAGE_SIZE_KEY, String(n)); } catch {}
-  };
+  // Infinite scroll: `page` counts the batches of SCROLL_BATCH shown so far.
+  const pageSize = SCROLL_BATCH;
+  const setPageSize = (_n: number) => { setCustPage(1); setSupPage(1); };
 
   const [custDetails, setCustDetails] = useState<CustomerReturnRow | null>(null);
   const [supDetails, setSupDetails] = useState<SupplierReturnRow | null>(null);
@@ -87,7 +88,7 @@ export default function Returns() {
     setCustLoading(true);
     try {
       const { rows, totalCount } = await rpc<{ rows: CustomerReturnRow[]; totalCount: number }>(
-        "listSaleReturnsAction", custPage, pageSize,
+        "listSaleReturnsAction", 1, custPage * pageSize,
       );
       setCustRows(rows ?? []);
       setCustCount(totalCount ?? 0);
@@ -103,7 +104,7 @@ export default function Returns() {
     setSupLoading(true);
     try {
       const { rows, totalCount } = await rpc<{ rows: SupplierReturnRow[]; totalCount: number }>(
-        "listSupplierReturnsAction", supPage, pageSize,
+        "listSupplierReturnsAction", 1, supPage * pageSize,
       );
       setSupRows(rows ?? []);
       setSupCount(totalCount ?? 0);
@@ -151,17 +152,74 @@ export default function Returns() {
     loadSupplier();
   };
 
+  // New return: products coming back with no bill. The product list comes from
+  // the terminal's own store (variants as their own rows), so the form opens
+  // offline — saving goes to the server, which restocks and books the refund.
+  const canCreate = role === "owner" || role === "manager";
+  const [creating, setCreating] = useState(false);
+  const [reprint, setReprint] = useState<ReturnSlip | null>(null);
+  const { data: catalogue } = useProductsWithVariants<{ id: string; name: string; price: number; unit: string | null; is_service?: boolean }>(currentShop?.id);
+  const returnables = useMemo<ReturnProductOption[]>(() => {
+    const out: ReturnProductOption[] = [];
+    for (const p of catalogue) {
+      if (p.is_service) continue;
+      const vs = (p.product_variants ?? []).filter((v) => v.is_active !== false);
+      if (vs.length === 0) out.push({ product_id: p.id, variant_id: null, name: p.name, price: Number(p.price) || 0, unit: p.unit ?? null });
+      else for (const v of vs) out.push({ product_id: p.id, variant_id: v.id, name: `${p.name} — ${v.name}`, price: v.price_override == null ? Number(p.price) || 0 : Number(v.price_override), unit: p.unit ?? null });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }, [catalogue]);
+  const startReturn = () => {
+    if (!navigator.onLine) return toast.error("Taking a return needs a connection — it restocks and refunds on the server.");
+    setCreating(true);
+  };
+  useAddNew({ return: canCreate && startReturn });
+  const submitReturn = async (input: NewReturnInput) => {
+    try {
+      // The server must know any product created on this terminal first.
+      await syncNow().catch(() => {});
+      const res = await rpc<{ ok: boolean; error?: string; returnId?: string; totalRefund?: number }>("createStandaloneReturnAction", input);
+      if (res.ok) void syncNow().catch(() => {});
+      return res;
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Failed" };
+    }
+  };
+  const openReprint = async (id: string) => {
+    const slip = await rpc<ReturnSlip | null>("getReturnReceiptAction", id).catch(() => null);
+    if (!slip) return toast.error(t("common.error"));
+    setReprint(slip);
+  };
+
   const custTotal = useMemo(() => custRows.reduce((a, r) => a + Number(r.total_refund), 0), [custRows]);
   const supTotal = useMemo(() => supRows.reduce((a, r) => a + Number(r.total_refund), 0), [supRows]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Undo2 className="size-6 text-primary" /> {t("returns.title")}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">Customer refunds and items you returned to suppliers</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Undo2 className="size-6 text-primary" /> {t("returns.title")}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">Customer refunds and items you returned to suppliers</p>
+        </div>
+        {canCreate && (
+          <Button onClick={startReturn}>
+            <Plus className="size-4 mr-2" /> New return
+          </Button>
+        )}
       </header>
+
+      <NewReturnDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        currency={cur}
+        products={returnables}
+        renderCustomer={(onChange) => <ReturnCustomerField onChange={onChange} />}
+        submit={submitReturn}
+        onSaved={(id) => { void loadCustomer(); void openReprint(id); }}
+      />
+      <ReturnReceiptDialog slip={reprint} onClose={() => setReprint(null)} />
 
       <Tabs defaultValue="customer" className="space-y-4">
         <TabsList className="grid w-full grid-cols-2 max-w-md">
@@ -196,7 +254,7 @@ export default function Returns() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {custLoading ? (
+                {custLoading && custRows.length === 0 ? (
                   <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
                 ) : custRows.length === 0 ? (
                   <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-12">{t("returns.empty")}</TableCell></TableRow>
@@ -204,7 +262,10 @@ export default function Returns() {
                   <TableRow key={r.id}>
                     <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
                     <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.sales?.receipt_number ?? "—"}</TableCell>
+                    <TableCell className="text-xs">
+                      <div className="font-mono">{r.sales?.receipt_number ?? (r.sale_id ? "—" : "No bill")}</div>
+                      {r.customer_name && <div className="text-muted-foreground">{r.customer_name}</div>}
+                    </TableCell>
                     <TableCell className="max-w-[16rem] truncate text-sm">
                       {r.sale_return_items.map((i) => Number(i.quantity) > 1 ? `${i.product_name} ×${Number(i.quantity)}` : i.product_name).join(", ") || "—"}
                     </TableCell>
@@ -217,6 +278,7 @@ export default function Returns() {
                     <TableCell className="text-end tabular-nums font-medium">{formatMoney(Number(r.total_refund), cur)}</TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={() => setCustDetails(r)}><Eye className="size-4" /></Button>
+                      <Button variant="ghost" size="icon" title="Receipt" onClick={() => void openReprint(r.id)}><Printer className="size-4" /></Button>
                       {canDelete && (
                         <Button variant="ghost" size="icon" title={t("returns.deleteReturn")} onClick={() => deleteCustReturn(r.id)}>
                           <Trash2 className="size-4 text-destructive" />
@@ -258,7 +320,7 @@ export default function Returns() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {supLoading ? (
+                {supLoading && supRows.length === 0 ? (
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
                 ) : supRows.length === 0 ? (
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-12">No supplier returns yet. Open a purchase and click the return icon.</TableCell></TableRow>
@@ -356,4 +418,10 @@ export default function Returns() {
       {confirmDialog}
     </div>
   );
+}
+
+/** The terminal's customer picker, reporting just the id to the return form. */
+function ReturnCustomerField({ onChange }: { onChange: (id: string | null) => void }) {
+  const [c, setC] = useState<CustomerLite | null>(null);
+  return <CustomerPicker value={c} onChange={(next) => { setC(next); onChange(next?.id ?? null); }} />;
 }

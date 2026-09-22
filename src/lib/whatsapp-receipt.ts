@@ -29,6 +29,11 @@ export interface ReceiptMessageInput {
   total: number;
   paid?: number | null;
   due?: number | null;
+  /** The customer's khata, when the shop prints it on the slip — see
+   *  lib/receipt-ledger. Null prints nothing, exactly like the paper. */
+  ledger?: { previous: number; thisBill: number; total: number } | null;
+  /** The sale's note, when the shop prints notes on the slip. */
+  notes?: string | null;
   currency: string;
   footer?: string | null;
   formatMoney: (n: number, currency: string) => string;
@@ -55,9 +60,20 @@ export function buildReceiptMessage(i: ReceiptMessageInput): string {
   if (i.discount) out.push(`Discount: ${money(i.discount)}`);
   if (i.tax) out.push(`Tax: ${money(i.tax)}`);
   out.push(`*Total: ${money(i.total)}*`);
-  if (i.paid != null && i.due != null && i.due > 0) {
+  if (i.ledger) {
+    // Same block as the printed slip, which then REPLACES the plain balance:
+    // "this bill" is the balance due.
+    if (i.paid != null) out.push(`Paid: ${money(i.paid)}`);
+    out.push(
+      "",
+      `Previous balance: ${money(i.ledger.previous)}`,
+      `This bill: ${money(i.ledger.thisBill)}`,
+      `*Total balance: ${money(i.ledger.total)}*`,
+    );
+  } else if (i.paid != null && i.due != null && i.due > 0) {
     out.push(`Paid: ${money(i.paid)}`, `Balance: ${money(i.due)}`);
   }
+  if (i.notes) out.push("", `Note: ${i.notes}`);
   if (i.footer) out.push("", i.footer);
   out.push("", "Thank you!");
 

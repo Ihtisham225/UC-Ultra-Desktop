@@ -1,5 +1,12 @@
 import { ReactNode, useState, useSyncExternalStore } from "react";
-import { NavLink, useLocation, Link } from "react-router-dom";
+import { NavLink, useLocation, Link, useNavigate } from "react-router-dom";
+import { NotificationBell, setNotificationsLoader } from "@/components/NotificationBell";
+import { rpc } from "@/lib/apiClient";
+import type { AppNotification } from "@/lib/notifications";
+
+// The bell's items are built on the server from the live books. Offline the
+// call fails and the bell keeps the last list it had.
+setNotificationsLoader(() => rpc<AppNotification[]>("listNotificationsAction"));
 import { LogOut, Store, ChevronDown, Sparkles, ShieldAlert, Calculator, Keyboard, PanelLeft } from "lucide-react";
 import { FloatingCalculator, type CalculatorState } from "@/components/FloatingCalculator";
 import { useTranslation } from "react-i18next";
@@ -59,6 +66,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   const { isSuperAdmin } = useIsSuperAdmin();
   const { t } = useTranslation();
   const loc = useLocation();
+  const navigate = useNavigate();
   const [calcOpen, setCalcOpen] = useState(false);
   const [calcState, setCalcState] = useState<CalculatorState>({ expr: "", display: "0" });
 
@@ -179,6 +187,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
             >
               <Keyboard className="size-4.5" />
             </Button>
+            <NotificationBell shopId={currentShop?.id} navigate={(href) => navigate(href)} />
             <Button variant="ghost" size="icon" onClick={() => setCalcOpen(true)} aria-label="Calculator" title={`Calculator (${appShortcutLabel("calculator", isMac)})`}>
               <Calculator className="size-4.5" />
             </Button>

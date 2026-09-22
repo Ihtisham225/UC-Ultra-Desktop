@@ -27,6 +27,8 @@ export interface BuilderVariant {
   batch_no?: string | null;
   /** Its own shelf; null/undefined = kept with the product. */
   location_id?: string | null;
+  /** Its own low-stock alert. Blank = the product's "Low stock alert". */
+  low_stock_threshold?: number | null;
   _new?: boolean;
 }
 
@@ -47,6 +49,10 @@ interface Props {
   onChange: (variants: BuilderVariant[]) => void;
   /** When given, each variant can be put on its own shelf. */
   locations?: LocationRow[];
+  /** The product's low-stock alert — what a variant left blank falls back to. */
+  baseLowStock?: number;
+  /** Services carry no stock, so there is no alert to set. */
+  hideLowStock?: boolean;
 }
 
 const SEPARATOR = " / ";
@@ -84,7 +90,7 @@ const cartesian = (groups: AttributeGroup[]): string[] => {
   ).filter(Boolean);
 };
 
-export const VariantsBuilder = ({ productName, basePrice, value, onChange, locations }: Props) => {
+export const VariantsBuilder = ({ productName, basePrice, value, onChange, locations, baseLowStock, hideLowStock }: Props) => {
   const { t } = useTranslation();
   const formatMoney = useFormatMoney();
   const { currentShop } = useShop();
@@ -176,11 +182,21 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange, locat
     onChange(next);
   };
 
+  const updateVariantLowStock = (idx: number, raw: string) => {
+    const next = [...value];
+    next[idx] = { ...next[idx], low_stock_threshold: raw === "" ? null : parseFloat(raw) };
+    onChange(next);
+  };
+
   const removeVariant = (idx: number) => onChange(value.filter((_, i) => i !== idx));
 
   const setAllPrices = (price: number | null) => {
     onChange(value.map((v) => ({ ...v, price_override: price })));
   };
+
+  // Each variant alerts on its own stock — a shop can run out of Large while
+  // Small sits full, and one product-wide number can't say that.
+  const cols = hideLowStock ? "grid-cols-[1fr_140px_36px]" : "grid-cols-[1fr_120px_90px_36px]";
 
   const totalCombos = previewNames.length;
   const groupsReady = groups.every((g) => g.values.length > 0) && groups.length > 0;
@@ -279,6 +295,10 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange, locat
                       value={pendingValue[i] ?? ""}
                       onChange={(e) => setPendingValue((p) => ({ ...p, [i]: e.target.value }))}
                       onKeyDown={(e) => {
+                        // An empty box has nothing to add: let Enter through so
+                        // the form moves on to the variant rows (price, shelf)
+                        // instead of stopping here for good.
+                        if (e.key === "Enter" && !(pendingValue[i] ?? "").trim()) return;
                         if (e.key === "Enter" || e.key === ",") {
                           e.preventDefault();
                           addValue(i, pendingValue[i] ?? "");
@@ -328,15 +348,16 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange, locat
               </div>
 
               <div className="rounded-lg border overflow-hidden">
-                <div className="grid grid-cols-[1fr_140px_36px] gap-2 px-3 py-2 bg-muted/40 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <div className={`grid ${cols} gap-2 px-3 py-2 bg-muted/40 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground`}>
                   <div>{t("variantsBuilder.variantCol")}</div>
                   <div>{t("variantsBuilder.priceCol")}</div>
+                  {!hideLowStock && <div title="Warn when this variant's stock falls to this">Low stock at</div>}
                   <div></div>
                 </div>
                 <div className="divide-y max-h-[280px] overflow-y-auto">
                   {value.map((v, idx) => (
                     <div key={(v.id ?? "new") + idx} className="px-3 py-2 hover:bg-muted/30">
-                      <div className="grid grid-cols-[1fr_140px_36px] gap-2 items-center">
+                      <div className={`grid ${cols} gap-2 items-center`}>
                         <div className="min-w-0">
                           <div className="text-sm font-medium truncate">{v.name}</div>
                           {productName && (
@@ -353,6 +374,19 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange, locat
                           onChange={(e) => updateVariantPrice(idx, e.target.value)}
                           className="h-8 text-sm tabular-nums"
                         />
+                        {!hideLowStock && (
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            inputMode="decimal"
+                            aria-label={`Low stock alert for ${v.name}`}
+                            value={v.low_stock_threshold ?? ""}
+                            placeholder={String(baseLowStock ?? 5)}
+                            onChange={(e) => updateVariantLowStock(idx, e.target.value)}
+                            className="h-8 text-sm tabular-nums"
+                          />
+                        )}
                         <Button
                           type="button"
                           variant="ghost"

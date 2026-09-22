@@ -1,50 +1,45 @@
 import { useEffect, useState } from "react";
 
-const STORAGE_PREFIX = "pos.pageSize.";
+/** How many rows every list reveals at a time as it is scrolled. */
+export const SCROLL_BATCH = 20;
 
 /**
- * Client-side pagination state. Persists the chosen page size per "key" in
- * localStorage, and resets the page when the underlying total or any reset
- * dependency changes.
+ * Client-side infinite scroll. The list shows the first batch, and each time
+ * its end scrolls into view (see components/Pagination) the next batch is
+ * revealed — no page numbers.
+ *
+ * `page` counts the batches shown so far, which keeps the shape the tables
+ * already used: `<Pagination page onPageChange … />` still works, it just
+ * asks for "one more batch" instead of "page N".
+ *
+ * Resets to the first batch whenever a reset dependency changes (a new
+ * search or filter), so a narrowed list starts back at the top.
  */
 export function usePagination<T>(
   items: T[],
   opts: { key: string; defaultSize?: number; resetDeps?: unknown[] } = { key: "default" },
 ) {
-  const { key, defaultSize = 20, resetDeps = [] } = opts;
-
-  const [pageSize, setPageSizeState] = useState<number>(() => {
-    if (typeof window === "undefined") return defaultSize;
-    const raw = localStorage.getItem(STORAGE_PREFIX + key);
-    const n = raw ? parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : defaultSize;
-  });
+  const { resetDeps = [] } = opts;
+  const pageSize = SCROLL_BATCH;
   const [page, setPage] = useState(1);
 
-  const setPageSize = (n: number) => {
-    setPageSizeState(n);
-    setPage(1);
-    try { localStorage.setItem(STORAGE_PREFIX + key, String(n)); } catch {}
-  };
-
-  // Reset to page 1 whenever the inputs that change the dataset shape change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setPage(1); }, resetDeps);
 
-  // Clamp page when totals shrink.
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  // Never ask for more batches than there are rows.
+  const batches = Math.max(1, Math.ceil(items.length / pageSize));
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    if (page > batches) setPage(batches);
+  }, [page, batches]);
 
-  const start = (page - 1) * pageSize;
-  const visible = items.slice(start, start + pageSize);
+  const visible = items.slice(0, page * pageSize);
 
   return {
     page,
     pageSize,
     setPage,
-    setPageSize,
+    /** Kept for older call sites; the batch size is fixed now. */
+    setPageSize: (_n: number) => setPage(1),
     visible,
     totalItems: items.length,
   };

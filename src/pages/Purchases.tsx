@@ -26,12 +26,14 @@ import { DetailsDialog } from "@/components/DetailsDialog";
 import { VariantPickerDialog } from "@/components/VariantPickerDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
+import { SCROLL_BATCH } from "@/hooks/usePagination";
 import { toast } from "sonner";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { syncNow } from "@/lib/syncEngine";
 import { useLocalStore } from "@/hooks/useLocalStore";
+import { useDaybookHandoff } from "@/hooks/useDaybookHandoff";
 import { upsertLocal, notifyChange } from "@/lib/localDb";
 import { generateSku, generateBarcode } from "@/lib/sku";
 import { v4 as uuid } from "uuid";
@@ -40,8 +42,6 @@ import { AccountPicker } from "@/components/AccountPicker";
 import { PartySelect } from "@/components/PartySelect";
 import { useAddNew } from "@/hooks/useAddNew";
 
-const PAGE_SIZE_KEY = "pos.pageSize.purchases";
-const DEFAULT_PAGE_SIZE = 20;
 
 interface Supplier { id: string; name: string; phone: string | null; }
 interface Investor { id: string; name: string; balance: number; }
@@ -146,21 +146,15 @@ export default function Purchases() {
   const grandTotal = sortedPurchases.reduce((a, p) => a + Number(p.total ?? 0), 0);
   const grandPaid = sortedPurchases.reduce((a, p) => a + Number(p.paid_amount ?? 0), 0);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSizeState] = useState<number>(() => {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(PAGE_SIZE_KEY) : null;
-    const n = raw ? parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_PAGE_SIZE;
-  });
+  // Infinite scroll: `page` counts the batches of SCROLL_BATCH shown so far.
+  const pageSize = SCROLL_BATCH;
 
   const purchases = useMemo(
-    () => sortedPurchases.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
+    // Infinite scroll: every batch shown so far.
+    () => sortedPurchases.slice(0, page * pageSize),
     [sortedPurchases, page, pageSize],
   );
-  const setPageSize = (n: number) => {
-    setPageSizeState(n);
-    setPage(1);
-    try { localStorage.setItem(PAGE_SIZE_KEY, String(n)); } catch {}
-  };
+  const setPageSize = (_n: number) => { setPage(1); };
   const [open, setOpen] = useState(false);
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -369,11 +363,6 @@ export default function Purchases() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Clamp page if totals shrink (e.g. after deletes).
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-    if (page > totalPages) setPage(totalPages);
-  }, [totalCount, pageSize, page]);
 
   const subtotal = useMemo(() => lines.reduce((a, l) => a + (l.unit_cost ?? 0) * (l.quantity ?? 0), 0), [lines]);
   const expensesTotal = useMemo(() => lines.reduce((a, l) => a + (l.expense_amount ?? 0), 0), [lines]);
@@ -610,6 +599,8 @@ export default function Purchases() {
     if (sourceType === "walkin" && !sellerName.trim()) return toast.error("Seller name is required for walk-in purchases");
     if (lines.length === 0) return toast.error(t("purchases.addAtLeastOne"));
     if (lines.some((l) => l.quantity == null || l.quantity <= 0 || l.unit_cost == null || l.unit_cost < 0)) return toast.error(t("purchases.invalidLine"));
+    /** The new purchase's id, for linking a Roznamcha line to it. */
+    let createdId: string | undefined;
     setBusy(true);
 
     const walkin = sourceType === "walkin";
@@ -652,6 +643,7 @@ export default function Purchases() {
           ? await rpc<{ ok: boolean; error?: string }>("updatePurchaseAction", editingId, input)
           : await rpc<{ ok: boolean; id?: string; error?: string }>("createPurchaseAction", input);
         if (!res.ok) return toast.error(res.error ?? t("purchases.failed"));
+        if (!editingId) createdId = (res as { id?: string }).id;
       } else {
         // Offline: write the bill and its lines locally and queue them. Stock
         // moves when the lines are pushed, and the push route finishes the
@@ -659,6 +651,7 @@ export default function Purchases() {
         // funding — exactly as createPurchaseAction would have.
         if (!currentShop || !user) return;
         const purchaseId = uuid();
+        createdId = purchaseId;
         const now = new Date().toISOString();
         const goods = input.items.reduce((a, l) => a + l.unit_cost * (l.quantity ?? 0), 0);
         const expenses = input.items.reduce((a, l) => a + (l.expense_amount ?? 0), 0);
@@ -710,6 +703,7 @@ export default function Purchases() {
       setBusy(false);
     }
     toast.success(editingId ? t("purchases.purchaseUpdated") : t("purchases.saved"));
+    if (createdId && daybook.entry) await daybook.link(createdId, `Purchase ${reference || ""}`.trim());
     setOpen(false);
     reset();
     load();
@@ -784,7 +778,7 @@ export default function Purchases() {
 
   const onPurchaseDialogChange = (o: boolean) => {
     setOpen(o);
-    if (!o) reset();
+    if (!o) { reset(); daybook.abandon(); }
     else if (!editingId) {
       if (!reference) setReference(generateReference());
       // Pool mode: new purchases draw from the shared pool by default.
@@ -793,6 +787,29 @@ export default function Purchases() {
   };
 
   useAddNew({ purchase: () => { reset(); onPurchaseDialogChange(true); } });
+
+  // A Roznamcha line raised as a purchase: open the form with the supplier
+  // (when they are on the register) and the line's wording in the notes; the
+  // goods themselves are picked as usual, since a daybook line names no product.
+  const [pendingSupplier, setPendingSupplier] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingSupplier || suppliers.length === 0) return;
+    if (suppliers.some((x) => x.id === pendingSupplier)) setSupplierId(pendingSupplier);
+    setPendingSupplier(null);
+  }, [pendingSupplier, suppliers]);
+  const daybook = useDaybookHandoff({
+    purchase: (e) => {
+      reset();
+      onPurchaseDialogChange(true);
+      if (e.party_id) setPendingSupplier(e.party_id);
+      const what = [
+        e.kind === "material" ? `${e.quantity ? `${Number(Number(e.quantity).toFixed(3))}${e.unit ? ` ${e.unit}` : ""} ` : ""}${e.description ?? ""}`.trim() : null,
+        e.kind === "money" && e.amount ? `Paid ${e.amount}` : null,
+        e.notes,
+      ].filter(Boolean).join(" — ");
+      setNotes(`Roznamcha #${e.number} · ${e.party_name}${what ? ` — ${what}` : ""}`);
+    },
+  });
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -1300,7 +1317,7 @@ export default function Purchases() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
+                <Button variant="outline" onClick={() => { setOpen(false); daybook.abandon(); }}>{t("common.cancel")}</Button>
                 <Button onClick={save} disabled={busy || lines.length === 0}>{busy ? t("common.saving") : t("common.save")}</Button>
               </DialogFooter>
             </DialogContent>

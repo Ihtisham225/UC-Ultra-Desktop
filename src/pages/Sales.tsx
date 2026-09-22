@@ -16,6 +16,7 @@ import { rpc } from "@/lib/apiClient";
 import { ReturnDialog } from "@/components/ReturnDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
+import { SCROLL_BATCH } from "@/hooks/usePagination";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { BulkActionBar } from "@/components/BulkActionBar";
 import { downloadCsv } from "@/lib/csv";
@@ -40,7 +41,6 @@ const lineSummary = (it: Sale["sale_items"][number]) => {
   return `${it.product_name} \u00d7${formatSoldQuantity(sold)}`;
 };
 
-const PAGE_SIZE_KEY = "pos.pageSize.sales";
 /** yyyy-MM-dd for a local day. */
 const isoDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -56,7 +56,6 @@ const lastDays = (n: number) => {
   return { from: isoDay(from), to: isoDay(to) };
 };
 
-const DEFAULT_PAGE_SIZE = 20;
 
 type ReturnStatus = "none" | "partial" | "full";
 
@@ -107,16 +106,9 @@ export default function Sales() {
   const [editProducts, setEditProducts] = useState<EditableProduct[]>([]);
   const canDelete = role === "owner";
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSizeState] = useState<number>(() => {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(PAGE_SIZE_KEY) : null;
-    const n = raw ? parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_PAGE_SIZE;
-  });
-  const setPageSize = (n: number) => {
-    setPageSizeState(n);
-    setPage(1);
-    try { localStorage.setItem(PAGE_SIZE_KEY, String(n)); } catch {}
-  };
+  // Infinite scroll: `page` counts the batches of SCROLL_BATCH shown so far.
+  const pageSize = SCROLL_BATCH;
+  const setPageSize = (_n: number) => { setPage(1); };
   const [openSale, setOpenSale] = useState<any>(null);
   const [returnSaleId, setReturnSaleId] = useState<string | null>(null);
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -194,15 +186,10 @@ export default function Sales() {
     .reduce((a: number, r: any) => a + Number(r.total_refund ?? 0), 0);
 
   const sales = useMemo(() => {
-    const offset = (page - 1) * pageSize;
-    return inRange.slice(offset, offset + pageSize);
+    // Infinite scroll: every batch shown so far.
+    return inRange.slice(0, page * pageSize);
   }, [inRange, page, pageSize]);
 
-  // Clamp page if totals shrink (e.g. after deletes).
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-    if (page > totalPages) setPage(totalPages);
-  }, [totalCount, pageSize, page]);
 
   const cur = currentShop?.currency ?? "USD";
 

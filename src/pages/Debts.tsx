@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { derivePaidAmount } from "@/lib/ledger";
 import { syncNow } from "@/lib/syncEngine";
+import { rpc } from "@/lib/apiClient";
 import { v4 as uuid } from "uuid";
 import { upsertLocal, deleteLocal, notifyChange, getById } from "@/lib/localDb";
 import { allocateSettlement, groupLedgers, increaseTarget, type LedgerGroup } from "@/lib/ledger-groups";
@@ -35,8 +36,11 @@ import { DetailsDialog } from "@/components/DetailsDialog";
 import { LedgerEntriesTable } from "@/components/LedgerEntriesLog";
 import { PageTip } from "@/components/PageTip";
 import { AccountPicker } from "@/components/AccountPicker";
+import { Checkbox } from "@/components/ui/checkbox";
 import { LedgerPersonPicker, type LedgerPerson } from "@/components/LedgerPersonPicker";
 import { useAddNew } from "@/hooks/useAddNew";
+import { useDaybookHandoff } from "@/hooks/useDaybookHandoff";
+import type { DaybookEntryDto } from "@/lib/daybookTypes";
 
 type Direction = "owed_to_me" | "i_owe";
 type Status = "open" | "settled";
@@ -79,6 +83,8 @@ interface DebtPayment {
   created_at: string;
   kind: EntryKind;
   account_id?: string | null;
+  /** The cheque this entry came from — it moves only with the cheque. */
+  cheque_id?: string | null;
 }
 
 const empty = {
@@ -99,6 +105,11 @@ const emptyPayment = {
   discount: "",
   payment_date: new Date().toISOString().slice(0, 10),
   notes: "",
+  /** Paid by a post-dated cheque instead of cash / an account. */
+  byCheque: false,
+  cheque_number: "",
+  bank_name: "",
+  cheque_date: "",
 };
 
 const getRemainingAmount = (debt: Pick<Debt, "amount" | "paid_amount">) =>
@@ -345,6 +356,54 @@ export default function Debts() {
     });
   };
 
+  // ── Roznamcha hand-off: a line of the day raised as a ledger record ──────
+  const lineText = (e: DaybookEntryDto) =>
+    [e.kind === "material" && (e.quantity || e.description)
+      ? `${e.quantity ? `${Number(Number(e.quantity).toFixed(3))}${e.unit ? ` ${e.unit}` : ""} ` : ""}${e.description ?? ""}`.trim()
+      : null, e.notes].filter(Boolean).join(" — ");
+
+  /** A new khata row: whoever TOOK money or goods owes the shop; whoever GAVE is owed. */
+  const openEntryFromLine = (e: DaybookEntryDto) => {
+    startCreate();
+    setForm({
+      ...empty,
+      direction: e.direction === "out" ? "owed_to_me" : "i_owe",
+      person_name: e.party_name,
+      amount: e.amount ? String(e.amount) : "",
+      notes: lineText(e),
+    });
+    setPerson(
+      e.party_id
+        ? {
+            id: e.party_id, name: e.party_name, phone: null, source: "party" as const, role_label: "Party",
+            is_customer: false, is_supplier: false, is_maker: false, is_processor: false,
+          }
+        : null,
+    );
+  };
+
+  /** A payment on their existing account, the amount filled in. */
+  const openPaymentFromLine = (e: DaybookEntryDto, direction: Direction) => {
+    const name = e.party_name.trim().toLowerCase();
+    const group = groups.find(
+      (g) => g.direction === direction && g.remaining > 0 &&
+        (e.party_id ? g.party_id === e.party_id : g.person_name.trim().toLowerCase() === name),
+    );
+    if (!group) {
+      toast.info(`${e.party_name} has nothing open on the ledger that way — opening a new entry instead.`);
+      openEntryFromLine(e);
+      return;
+    }
+    openPaymentsDialog(group);
+    setPaymentForm({ ...emptyPayment, amount: e.amount ? String(Math.min(Number(e.amount), group.remaining)) : "", notes: lineText(e) });
+  };
+
+  const daybook = useDaybookHandoff({
+    ledger_entry: openEntryFromLine,
+    ledger_payment_in: (e) => openPaymentFromLine(e, "owed_to_me"),
+    ledger_payment_out: (e) => openPaymentFromLine(e, "i_owe"),
+  });
+
   const save = async () => {
     if (!currentShop || !user) return;
     if (!form.person_name.trim()) return toast.error("Name is required");
@@ -371,6 +430,7 @@ export default function Debts() {
     // the settlements, and sending a stale figure would move a balance nobody
     // touched.
     const now = new Date().toISOString();
+    const newId = editing ? null : uuid();
     try {
       // ⚠️ paid_amount, status and settled_at are DERIVED on the server and
       // must never travel from here. `debts` is last-write-wins, so pushing
@@ -386,7 +446,7 @@ export default function Debts() {
         editing
           ? { ...editable, ...payload, updated_at: now }
           : {
-              id: uuid(),
+              id: newId,
               shop_id: currentShop.id,
               created_by: user.id,
               ...payload,
@@ -406,12 +466,49 @@ export default function Debts() {
     }
     void syncNow().catch(() => {});
     toast.success(editing ? "Ledger entry updated" : "Ledger entry added");
+    if (newId && daybook.entry) await daybook.link(newId, `Ledger entry — ${payload.person_name}`);
     setOpen(false);
     await load();
   };
 
   const savePayment = async () => {
     if (!currentShop || !user || !selectedGroup) return;
+    // A cheque settles the khata now; its money reaches an account only when it
+    // clears. Cheques live on the server, so this path needs a connection.
+    if (paymentForm.kind === "payment" && paymentForm.byCheque) {
+      const amt = Number(paymentForm.amount || 0);
+      if (!paymentForm.cheque_number.trim()) return toast.error("Enter the cheque number");
+      if (!paymentForm.cheque_date) return toast.error("Enter the date on the cheque");
+      if (!(amt > 0)) return toast.error("Amount must be greater than 0");
+      if (amt > selectedGroup.remaining + 0.001) return toast.error("The cheque can't be for more than the remaining balance");
+      if (!navigator.onLine) return toast.error("Recording a cheque needs a connection.");
+      setPaymentSaving(true);
+      try {
+        // The server must hold every khata row this cheque is spread over.
+        await syncNow();
+        const res = await rpc<{ ok: boolean; error?: string }>("takeChequeAction", {
+          debt_ids: selectedGroup.debts.map((d) => d.id),
+          cheque_number: paymentForm.cheque_number.trim(),
+          bank_name: paymentForm.bank_name.trim() || null,
+          cheque_date: paymentForm.cheque_date,
+          amount: amt,
+          notes: paymentForm.notes.trim() || null,
+        });
+        if (!res.ok) return toast.error(res.error ?? "Failed");
+        // Pull the settlement rows the server just wrote.
+        await syncNow().catch(() => {});
+        notifyChange("debt_payments");
+        notifyChange("debts");
+      } catch (e) {
+        return toast.error(e instanceof Error ? e.message : "Failed");
+      } finally {
+        setPaymentSaving(false);
+      }
+      toast.success("Cheque recorded — it's on the Cheques page until it clears");
+      if (daybook.entry) await daybook.link(selectedGroup.debts[0].id, `Cheque ${paymentForm.cheque_number.trim()} — ${selectedGroup.person_name}`);
+      setPaymentForm({ ...emptyPayment });
+      return;
+    }
     const amount = Number(paymentForm.amount || 0);
     const discount = paymentForm.kind === "payment" ? Number(paymentForm.discount || 0) : 0;
     const remaining = selectedGroup.remaining;
@@ -497,6 +594,7 @@ export default function Debts() {
     void syncNow().catch(() => {});
 
     toast.success(paymentForm.kind === "payment" ? "Payment recorded" : "Debt increased");
+    if (daybook.entry) await daybook.link(selectedGroup.debts[0].id, `Ledger payment — ${selectedGroup.person_name}`);
     setPaymentForm({ ...emptyPayment });
   };
 
@@ -803,7 +901,7 @@ export default function Debts() {
         />
       </Card>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) daybook.abandon(); }}>
         <DialogContent data-add-new="ledger-entry">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit debt" : "Add debt"}</DialogTitle>
@@ -864,7 +962,7 @@ export default function Debts() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setOpen(false); daybook.abandon(); }}>Cancel</Button>
             <Button onClick={save} disabled={saving}>{saving ? "Saving…" : editing ? "Update" : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
@@ -874,6 +972,7 @@ export default function Debts() {
         open={paymentsOpen}
         onOpenChange={(nextOpen) => {
           setPaymentsOpen(nextOpen);
+          if (!nextOpen) daybook.abandon();
           if (!nextOpen) {
             setPayKey(null);
             setPaymentForm({ ...emptyPayment });
@@ -991,7 +1090,34 @@ export default function Debts() {
                       />
                     </div>
                   </div>
-                  <AccountPicker value={payAccountId} onChange={setPayAccountId} label="Money in / out of" />
+                  {paymentForm.kind === "payment" && currentShop?.cheques_enabled && (
+                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                      <Checkbox
+                        checked={paymentForm.byCheque}
+                        onCheckedChange={(v) => setPaymentForm({ ...paymentForm, byCheque: !!v })}
+                      />
+                      Paid by cheque
+                      <span className="text-xs text-muted-foreground">— comes off the balance now; money reaches the bank when it clears</span>
+                    </label>
+                  )}
+                  {paymentForm.kind === "payment" && paymentForm.byCheque && currentShop?.cheques_enabled ? (
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="space-y-1.5">
+                        <Label>Cheque number</Label>
+                        <Input value={paymentForm.cheque_number} onChange={(e) => setPaymentForm({ ...paymentForm, cheque_number: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Bank</Label>
+                        <Input value={paymentForm.bank_name} onChange={(e) => setPaymentForm({ ...paymentForm, bank_name: e.target.value })} placeholder="e.g. HBL" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Cheque date</Label>
+                        <Input type="date" value={paymentForm.cheque_date} onChange={(e) => setPaymentForm({ ...paymentForm, cheque_date: e.target.value })} />
+                      </div>
+                    </div>
+                  ) : (
+                    <AccountPicker value={payAccountId} onChange={setPayAccountId} label="Money in / out of" />
+                  )}
                   <div className="space-y-1.5">
                     <Label>Notes (optional)</Label>
                     <Input
@@ -1060,7 +1186,8 @@ export default function Debts() {
                                 size="icon"
                                 className="size-8 text-destructive"
                                 onClick={() => setConfirmPaymentDeleteId(payment.id)}
-                                title="Delete entry"
+                                disabled={!!payment.cheque_id}
+                                title={payment.cheque_id ? "Part of a cheque — clear or bounce it on the Cheques page" : "Delete entry"}
                               >
                                 <Trash2 className="size-4" />
                               </Button>

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Pagination } from "@/components/Pagination";
+import { SCROLL_BATCH } from "@/hooks/usePagination";
 import { rpc } from "@/lib/apiClient";
 import type {
   AuditLogRow, AuditPage, AuditQuery, AuditVocabulary,
@@ -14,9 +16,10 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Download, Search, RotateCcw, Laptop, Globe, Server, KeyRound, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, Search, RotateCcw, Laptop, Globe, Server, KeyRound } from "lucide-react";
 
-const PAGE_SIZE = 50;
+// Infinite scroll: each batch is appended as the end of the list comes into view.
+const PAGE_SIZE = SCROLL_BATCH;
 const ANY = "__any__";
 
 /** One row's origin, as an icon — a till and a browser read very differently. */
@@ -75,7 +78,8 @@ export default function AdminAudit() {
     setLoading(true);
     try {
       const res = await rpc<AuditPage>("adminListAuditAction", query);
-      setRows(res.rows);
+      // The first batch replaces (a new filter); later ones are appended.
+      setRows((prev) => ((query.page ?? 1) > 1 ? [...prev, ...res.rows.filter((r) => !prev.some((p) => p.id === r.id))] : res.rows));
       setTotal(res.total);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't load the log");
@@ -126,7 +130,6 @@ export default function AdminAudit() {
     }
   };
 
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <>
@@ -246,21 +249,6 @@ export default function AdminAudit() {
       <Section
         title={`${total.toLocaleString()} line${total === 1 ? "" : "s"}`}
         description={loading ? "Loading…" : undefined}
-        actions={
-          pages > 1 ? (
-            <div className="flex items-center gap-1">
-              <Button variant="outline" size="icon" className="size-8" disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                <ChevronLeft className="size-4" />
-              </Button>
-              <span className="text-xs text-muted-foreground tabular-nums px-1">{page} / {pages}</span>
-              <Button variant="outline" size="icon" className="size-8" disabled={page >= pages}
-                onClick={() => setPage((p) => Math.min(pages, p + 1))}>
-                <ChevronRight className="size-4" />
-              </Button>
-            </div>
-          ) : undefined
-        }
       >
         {rows.length === 0 && !loading ? (
           <Empty label="Nothing matches these filters." />
@@ -311,6 +299,9 @@ export default function AdminAudit() {
             </table>
           </div>
         )}
+        <div className="-mx-4 -mb-4 mt-4">
+          <Pagination page={page} pageSize={PAGE_SIZE} totalItems={total} onPageChange={setPage} loading={loading} />
+        </div>
       </Section>
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>

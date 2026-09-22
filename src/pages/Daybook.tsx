@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { isHandicraft } from "@/lib/handicraft";
 import { format, subDays, startOfMonth } from "date-fns";
 import { toast } from "sonner";
 import {
@@ -713,7 +714,7 @@ export default function Daybook() {
               <div className="text-xs uppercase tracking-wider text-muted-foreground">
                 Open the record, filled in from this line
               </div>
-              {targetsFor(completing.kind, completing.direction).map((t) => (
+              {targetsFor(completing.kind, completing.direction, isHandicraft(currentShop)).map((t) => (
                 <button
                   key={t.value}
                   type="button"

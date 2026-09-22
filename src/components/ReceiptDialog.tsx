@@ -636,6 +636,9 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
       total: Number(sale.total),
       paid: Number(sale.amount_paid ?? 0),
       due: Number(sale.balance_due ?? 0),
+      // The same gates as the paper, so WhatsApp says what the slip says.
+      ledger: ledgerFor(sale),
+      notes: noteFor(sale),
       currency: cur,
       footer: sale.shop?.receipt_footer ?? null,
       formatMoney,

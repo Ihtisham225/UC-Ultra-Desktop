@@ -415,6 +415,8 @@ export function ProductFormFields<T extends ProductFormValue>({
               value={(value.variants ?? []) as BuilderVariant[]}
               onChange={(variants) => set({ variants })}
               locations={locations}
+              baseLowStock={value.low_stock_threshold ?? 5}
+              hideLowStock={isService}
             />
           )}
         </div>
