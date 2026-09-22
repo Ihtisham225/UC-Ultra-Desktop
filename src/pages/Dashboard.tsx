@@ -236,24 +236,30 @@ export default function Dashboard() {
         <StatCard icon={Receipt} label={t("dashboard.todaySales")} value={String(safeStats.todayCount)} tone="accent" />
         <StatCard icon={Package} label={t("dashboard.activeProducts")} value={String(safeStats.productCount)} tone="default" />
         <StatCard icon={AlertTriangle} label={t("dashboard.lowStock")} value={String(safeStats.lowStock.length)} tone="warning" />
-        <StatCard
-          icon={TrendingUp}
-          label={t("dashboard.todayGrossProfit", { defaultValue: "Today's gross profit" })}
-          value={formatMoney(safeStats.todayGrossProfit, cur)}
-          tone={safeStats.todayGrossProfit < 0 ? "warning" : "primary"}
-        />
-        <StatCard
-          icon={PackageOpen}
-          label={t("dashboard.todayPurchases", { defaultValue: "Today's purchases" })}
-          value={formatMoney(safeStats.todayPurchases, cur)}
-          tone="default"
-        />
-        <StatCard
-          icon={Wallet}
-          label={t("dashboard.todayExpenses", { defaultValue: "Today's expenses" })}
-          value={formatMoney(safeStats.todayExpenses, cur)}
-          tone="default"
-        />
+        {perms.canSeeProfit && (
+          <StatCard
+            icon={TrendingUp}
+            label={t("dashboard.todayGrossProfit", { defaultValue: "Today's gross profit" })}
+            value={formatMoney(safeStats.todayGrossProfit, cur)}
+            tone={safeStats.todayGrossProfit < 0 ? "warning" : "primary"}
+          />
+        )}
+        {perms.canManagePurchases && (
+          <StatCard
+            icon={PackageOpen}
+            label={t("dashboard.todayPurchases", { defaultValue: "Today's purchases" })}
+            value={formatMoney(safeStats.todayPurchases, cur)}
+            tone="default"
+          />
+        )}
+        {perms.canManageExpenses && (
+          <StatCard
+            icon={Wallet}
+            label={t("dashboard.todayExpenses", { defaultValue: "Today's expenses" })}
+            value={formatMoney(safeStats.todayExpenses, cur)}
+            tone="default"
+          />
+        )}
         {/* What went on the khata today rather than into the drawer. The
             running total underneath is the figure the shop actually chases. */}
         <StatCard

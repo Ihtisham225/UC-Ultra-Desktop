@@ -3,6 +3,7 @@ import { formatQty } from "@/lib/format";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShop } from "@/contexts/ShopContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -130,6 +131,7 @@ interface CartItem {
 export default function POS() {
   const { user } = useAuth();
   const { currentShop } = useShop();
+  const posPerms = usePermissions();
   const { t } = useTranslation();
   usePageMeta({
     title: "Point of Sale — UCU",
@@ -140,7 +142,8 @@ export default function POS() {
   // Average landed cost per product, on the same basis the P&L report and the
   // dashboard tile use. Computed from the offline store so the figure is there
   // on a till with no connection, and only when the shop has switched it on.
-  const showCost = !!currentShop?.show_cost_in_pos;
+  // The shop asks for it AND this person may see cost (Staff → Roles).
+  const showCost = !!currentShop?.show_cost_in_pos && posPerms.canSeeProfit;
   const { data: purchaseItemRows } = useLocalStore<any>("purchase_items", showCost ? currentShop?.id : undefined);
   const costByProduct = useMemo(() => {
     const acc = new Map<string, { cost: number; qty: number }>();
