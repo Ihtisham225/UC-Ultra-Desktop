@@ -77,7 +77,8 @@ export const DAYBOOK_LINK_TARGETS = [
     href: "/expenses",
     kinds: ["money"],
     directions: ["out"],
-    craft: false,
+    // Every store type: a handicraft shop pays for tea and rent too.
+    craft: null,
   },
   {
     value: "purchase",
@@ -186,8 +187,9 @@ export const DAYBOOK_LINK_TARGETS = [
   href: string;
   kinds: readonly DaybookKindValue[];
   directions: readonly DaybookDirectionValue[];
-  /** Handicraft shops raise their own records; every other shop the general ones. */
-  craft: boolean;
+  /** Handicraft shops raise their own records; every other shop the general
+   *  ones; null is offered to both. */
+  craft: boolean | null;
 }[];
 
 export type DaybookLinkTarget = (typeof DAYBOOK_LINK_TARGETS)[number]["value"];
@@ -202,7 +204,7 @@ export function daybookTarget(value?: string | null) {
 export function targetsFor(kind: DaybookKindValue, direction: DaybookDirectionValue, craft = true) {
   return DAYBOOK_LINK_TARGETS.filter(
     (t) =>
-      t.craft === craft &&
+      (t.craft === null || t.craft === craft) &&
       (t.kinds as readonly string[]).includes(kind) &&
       (t.directions as readonly string[]).includes(direction),
   );

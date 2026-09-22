@@ -146,3 +146,11 @@ describe("previous balance on the return slip", () => {
     expect(buildReturnMessage({ ...slip, show_previous_balance: false }, money, "x")).not.toContain("Previous balance");
   });
 });
+
+describe("Roznamcha → expense", () => {
+  it("is offered to handicraft and to every other store type", () => {
+    expect(targetsFor("money", "out", true).map((t) => t.value)).toContain("expense");
+    expect(targetsFor("money", "out", false).map((t) => t.value)).toContain("expense");
+    expect(targetsFor("money", "in", true).map((t) => t.value)).not.toContain("expense");
+  });
+});
