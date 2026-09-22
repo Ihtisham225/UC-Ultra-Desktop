@@ -19,6 +19,7 @@ import type { ReturnSlip } from "@/lib/return-receipt";
 import { useAddNew } from "@/hooks/useAddNew";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { syncNow } from "@/lib/syncEngine";
+import { bulkUpsertLocal, notifyChange } from "@/lib/localDb";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -37,6 +38,7 @@ interface CustomerReturnRow {
   sale_id: string | null;
   sales: { receipt_number: string | null } | null;
   customer_name?: string | null;
+  credited_to_ledger?: boolean;
   sale_return_items: { id: string; product_name: string; quantity: number; unit_price: number; line_total: number }[];
 }
 
@@ -127,8 +129,15 @@ export default function Returns() {
     });
     if (!ok) return;
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("deleteSaleReturnAction", id);
+      const res = await rpc<{ ok: boolean; error?: string; rows?: { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] } }>("deleteSaleReturnAction", id);
       if (!res.ok) return toast.error(res.error ?? t("common.error"));
+      // A ledger-credited return is reversed with new khata entries — apply them now.
+      if (res.rows) {
+        await bulkUpsertLocal("debts", res.rows.debts);
+        await bulkUpsertLocal("debt_payments", res.rows.debt_payments);
+        notifyChange("debts");
+        notifyChange("debt_payments");
+      }
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : t("common.error"));
     }
@@ -205,7 +214,13 @@ export default function Returns() {
     try {
       // The server must know any product created on this terminal first.
       await syncNow().catch(() => {});
-      const res = await rpc<{ ok: boolean; error?: string; returnId?: string; totalRefund?: number }>("createStandaloneReturnAction", input);
+      const res = await rpc<{ ok: boolean; error?: string; returnId?: string; totalRefund?: number; rows?: { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] } }>("createStandaloneReturnAction", input);
+      if (res.ok && res.rows) {
+        await bulkUpsertLocal("debts", res.rows.debts);
+        await bulkUpsertLocal("debt_payments", res.rows.debt_payments);
+        notifyChange("debts");
+        notifyChange("debt_payments");
+      }
       if (res.ok) void syncNow().catch(() => {});
       return res;
     } catch (e) {
@@ -298,7 +313,7 @@ export default function Returns() {
                       {r.sale_return_items.map((i) => Number(i.quantity) > 1 ? `${i.product_name} ×${Number(i.quantity)}` : i.product_name).join(", ") || "—"}
                     </TableCell>
                     <TableCell className="tabular-nums">{r.sale_return_items.reduce((a, i) => a + Number(i.quantity), 0)}</TableCell>
-                    <TableCell className="capitalize">{r.refund_method}</TableCell>
+                    <TableCell className="capitalize">{r.credited_to_ledger ? "Ledger" : r.refund_method}</TableCell>
                     <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{r.reason ?? "—"}</TableCell>
                     <TableCell className="text-end tabular-nums text-destructive">
                       {Number(r.deduction ?? 0) > 0 ? `−${formatMoney(Number(r.deduction), cur)}` : "—"}

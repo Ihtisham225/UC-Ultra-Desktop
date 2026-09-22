@@ -154,3 +154,24 @@ describe("Roznamcha → expense", () => {
     expect(targetsFor("money", "in", true).map((t) => t.value)).not.toContain("expense");
   });
 });
+
+import { balanceAfterLabel, returnSlipLedger } from "@/lib/return-receipt";
+
+describe("a return refunded to the customer's ledger", () => {
+  const base = { show_previous_balance: true, credited_to_ledger: true, previous_balance: 1500, total_refund: 2000 };
+
+  it("says where the balance stands after, flipping to what the shop owes", () => {
+    expect(returnSlipLedger(base)).toEqual({ previous: 1500, after: -500 });
+    expect(balanceAfterLabel(-500)).toEqual({ label: "Shop owes you", amount: 500 });
+    expect(balanceAfterLabel(1200)).toEqual({ label: "Balance now", amount: 1200 });
+  });
+
+  it("prints nothing extra without the toggle or for a cash refund", () => {
+    expect(returnSlipLedger({ ...base, show_previous_balance: false })).toBeNull();
+    expect(returnSlipLedger({ ...base, credited_to_ledger: false })).toBeNull();
+  });
+
+  it("names the ledger as where the refund went", () => {
+    expect(refundedVia({ account_name: "Cash", refund_method: "other", credited_to_ledger: true })).toBe("Customer's ledger");
+  });
+});
