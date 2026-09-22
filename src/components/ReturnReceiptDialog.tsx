@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatMoney } from "@/lib/format";
 import { buildWaReminderUrl } from "@/lib/debt-reminder";
-import { buildReturnMessage, buildReturnPrintHtml, refundedVia, type ReturnSlip } from "@/lib/return-receipt";
+import { buildReturnMessage, buildReturnPrintHtml, refundedVia, returnSlipBalance, type ReturnSlip } from "@/lib/return-receipt";
 import { matchPosShortcut } from "@/lib/pos-shortcuts";
 
 /** Print a standalone HTML page through a hidden frame, like the sale receipt. */
@@ -94,6 +94,11 @@ export function ReturnReceiptDialog({ slip, onClose }: { slip: ReturnSlip | null
             )}
             <div className="flex justify-between font-bold text-sm"><span>REFUNDED</span><span>{formatMoney(slip.total_refund, cur)}</span></div>
             <div className="flex justify-between"><span>Via</span><span>{refundedVia(slip)}</span></div>
+            {returnSlipBalance(slip) !== null && (
+              <div className="flex justify-between border-t border-gray-300 pt-2">
+                <span>Previous balance</span><span>{formatMoney(returnSlipBalance(slip) as number, cur)}</span>
+              </div>
+            )}
             {slip.reason && <div>Reason: {slip.reason}</div>}
           </div>
         )}

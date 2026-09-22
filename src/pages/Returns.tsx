@@ -11,7 +11,8 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
 import { SCROLL_BATCH } from "@/hooks/usePagination";
 import { Undo2, Eye, Trash2, Truck, Plus, Printer } from "lucide-react";
-import { NewReturnDialog, type ReturnProductOption, type NewReturnInput } from "@/components/NewReturnDialog";
+import { NewReturnDialog, type ReturnProductOption, type NewReturnInput, type ReturnBillOption } from "@/components/NewReturnDialog";
+import { useLocalStore } from "@/hooks/useLocalStore";
 import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
 import { ReturnReceiptDialog } from "@/components/ReturnReceiptDialog";
 import type { ReturnSlip } from "@/lib/return-receipt";
@@ -169,6 +170,32 @@ export default function Returns() {
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }, [catalogue]);
+  // The optional Bill field searches the terminal's own copy of the bills, so
+  // it works offline like the product list does.
+  const { data: localSales } = useLocalStore<{ id: string; receipt_number: string | null; created_at: string; total: number | string; customer_id: string | null }>("sales", currentShop?.id);
+  const { data: localParties } = useLocalStore<{ id: string; name: string; phone: string | null }>("suppliers", currentShop?.id);
+  const searchBills = useCallback(async (query: string): Promise<ReturnBillOption[]> => {
+    const byId = new Map(localParties.map((p) => [p.id, p]));
+    const q = query.trim().toLowerCase();
+    return [...localSales]
+      .filter((s) => {
+        if (!q) return true;
+        const c = s.customer_id ? byId.get(s.customer_id) : undefined;
+        return (s.receipt_number ?? "").toLowerCase().includes(q) ||
+          (c?.name ?? "").toLowerCase().includes(q) ||
+          (c?.phone ?? "").includes(q);
+      })
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      .slice(0, 25)
+      .map((s) => ({
+        id: s.id,
+        receipt_number: s.receipt_number,
+        created_at: s.created_at,
+        total: Number(s.total) || 0,
+        customer_id: s.customer_id,
+        customer_name: s.customer_id ? byId.get(s.customer_id)?.name ?? null : null,
+      }));
+  }, [localSales, localParties]);
   const startReturn = () => {
     if (!navigator.onLine) return toast.error("Taking a return needs a connection — it restocks and refunds on the server.");
     setCreating(true);
@@ -217,6 +244,7 @@ export default function Returns() {
         products={returnables}
         renderCustomer={(onChange) => <ReturnCustomerField onChange={onChange} />}
         submit={submitReturn}
+        searchBills={searchBills}
         onSaved={(id) => { void loadCustomer(); void openReprint(id); }}
       />
       <ReturnReceiptDialog slip={reprint} onClose={() => setReprint(null)} />
