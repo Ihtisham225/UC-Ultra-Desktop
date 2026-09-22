@@ -17,6 +17,14 @@ export function useDialogFormKeys(forwarded: React.ForwardedRef<HTMLDivElement>)
   const pendingNew = React.useRef<{ id: string; at: number } | null>(null);
   /** The LAST field was a picker and a choice was just made — the next Enter saves. */
   const chosenLast = React.useRef<HTMLElement | null>(null);
+  /**
+   * A picker that just closed on a CLICKED choice. Enter on it next means
+   * "done here, move on" — reopening it (what a button does with Enter) is
+   * what made every dropdown feel like a dead end.
+   */
+  const pickedByPointer = React.useRef<{ el: HTMLElement; at: number } | null>(null);
+  /** Search boxes the user has arrowed through — Enter there is a real choice. */
+  const navigated = React.useRef<WeakSet<HTMLElement>>(new WeakSet());
   const cleanup = React.useRef<(() => void) | null>(null);
 
   /** Press the dialog's save button; `andNew` opens a fresh form once it closes. */
@@ -45,6 +53,91 @@ export function useDialogFormKeys(forwarded: React.ForwardedRef<HTMLDivElement>)
       const target = e.target as HTMLElement;
       const justChosen = chosenLast.current;
       chosenLast.current = null;
+      const clicked = pickedByPointer.current;
+      pickedByPointer.current = null;
+
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && target instanceof HTMLElement && target.hasAttribute("cmdk-input")) {
+        navigated.current.add(target);
+      }
+
+      // A plain dropdown opened with no value chosen has nothing highlighted,
+      // and Enter there did nothing at all. Same rule as an empty search box:
+      // close it, leave it empty, move on.
+      if (
+        e.key === "Enter" && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+        target instanceof HTMLElement && !root.contains(target)
+      ) {
+        const list = target.closest<HTMLElement>("[role='listbox']");
+        if (list && !list.querySelector("[role='option'][data-highlighted]")) {
+          const trigger = Array.from(root.querySelectorAll<HTMLElement>("[aria-expanded='true']")).find(
+            (t) => t.getAttribute("aria-controls") === list.id || (!!list.id && document.getElementById(t.getAttribute("aria-controls") ?? "")?.contains(list)),
+          );
+          if (trigger && isPicker(trigger) && !trigger.closest("[data-enter-chain='off']")) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (trigger === armed.current) armed.current = null;
+            target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+            advanceWhenSettled(trigger, root, (next) => {
+              if (next) { if (isPicker(next)) armed.current = next; }
+              else chosenLast.current = trigger;
+            });
+            return;
+          }
+        }
+      }
+
+      // ⚠️ Enter in a search dropdown's box with NOTHING typed and no arrowing
+      // is "move on", not "take the first row". Taking it made Enter-ing
+      // through a form pick the first person on the ledger, add the first
+      // product to a purchase, and clear a product's shelf (its first row is
+      // "Not on a shelf"). The dropdown closes, the value stays as it was.
+      if (
+        e.key === "Enter" && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+        target instanceof HTMLInputElement && target.hasAttribute("cmdk-input") &&
+        target.value.trim() === "" && !navigated.current.has(target)
+      ) {
+        const trigger = Array.from(root.querySelectorAll<HTMLElement>("[aria-expanded='true']")).find((t) => {
+          const id = t.getAttribute("aria-controls");
+          const popup = id ? document.getElementById(id) : null;
+          return !!popup && popup.contains(target);
+        });
+        if (trigger && isPicker(trigger) && !trigger.closest("[data-enter-chain='off']")) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (trigger === armed.current) armed.current = null;
+          // Close it the way Escape would (the observer then sees an Escape
+          // and leaves it alone), and move on ourselves.
+          target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+          advanceWhenSettled(trigger, root, (next) => {
+            if (next) { if (isPicker(next)) armed.current = next; }
+            else chosenLast.current = trigger;
+          });
+          return;
+        }
+      }
+
+      // ⚠️ The list is open but focus stayed on its button (a Radix Select
+      // moves focus in on the next frame, which a busy or background window
+      // may not have yet). The Enter would go to the button and pick nothing,
+      // so pick the highlighted — else the current — option ourselves.
+      if (
+        e.key === "Enter" && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+        target instanceof HTMLElement && root.contains(target) && isPicker(target) &&
+        target.getAttribute("aria-expanded") === "true" && !target.closest("[data-enter-chain='off']")
+      ) {
+        const listId = target.getAttribute("aria-controls");
+        const list = listId ? document.getElementById(listId) : null;
+        const option = list?.querySelector<HTMLElement>("[role='option'][data-highlighted]") ??
+          list?.querySelector<HTMLElement>("[role='option'][data-state='checked']") ??
+          list?.querySelector<HTMLElement>("[role='option']:not([data-disabled])");
+        if (option) {
+          e.preventDefault();
+          e.stopPropagation();
+          option.focus();
+          option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+          return;
+        }
+      }
 
       // Enter on a picker is handled here, in the capture phase: a Radix Select
       // button claims Enter for itself (to open) before the dialog's own
@@ -63,6 +156,10 @@ export function useDialogFormKeys(forwarded: React.ForwardedRef<HTMLDivElement>)
         } else if (justChosen === target) {
           // The last field is a picker and a choice was just made: save.
           if (submit(root, false)) take();
+        } else if (clicked && clicked.el === target && Date.now() - clicked.at < 60_000) {
+          // A choice was just clicked here: Enter moves on, like after typing.
+          take();
+          if (!moveFrom(target, root, 1)) submit(root, false);
         } else {
           // Let it open as usual; once a choice is made by Enter, move on.
           armed.current = target;
@@ -84,9 +181,17 @@ export function useDialogFormKeys(forwarded: React.ForwardedRef<HTMLDivElement>)
     const observer = new MutationObserver((mutations) => {
       for (const m of mutations) {
         const el = m.target as HTMLElement;
-        if (el !== armed.current || m.oldValue !== "true" || el.getAttribute("aria-expanded") !== "false") continue;
-        armed.current = null;
+        if (m.oldValue !== "true" || el.getAttribute("aria-expanded") !== "false") continue;
+        // ⚠️ ANY picker in the form, not only one the chain opened itself: a
+        // dropdown opened by a click (or by Enter on it) and chosen with Enter
+        // used to leave focus sitting on it, and the next Enter reopened it.
+        if (!isPicker(el) || el.hasAttribute("cmdk-input") || el.closest("[data-enter-chain='off']")) continue;
+        if (el === armed.current) armed.current = null;
         const { kind, at } = lastInput.current;
+        if (kind === "pointer" && Date.now() - at < 2000) {
+          pickedByPointer.current = { el, at: Date.now() };
+          continue;
+        }
         if (kind !== "Enter" || Date.now() - at > 2000) continue;
         advanceWhenSettled(el, root, (next) => {
           // Landed on another picker: it opened itself, so watch it close too.
@@ -211,8 +316,10 @@ function advanceWhenSettled(trigger: HTMLElement, root: HTMLElement, done: (next
     if (!active || active === document.body || active === root || active === trigger) return finish(true);
     // Clicked into another field meanwhile — leave them there.
     if (root.contains(active)) return finish(false);
-    // Still inside the closing popup.
-    if (++checks >= 10) return finish(false);
+    // Still inside the closing popup. Up to ~6s: an exit animation on a slow
+    // shop PC (or a background window) can run well past a second, and giving
+    // up early left the chain parked on the dropdown it had just chosen from.
+    if (++checks >= 20) return finish(false);
     timer = setTimeout(check, 300);
   };
   timer = setTimeout(check, 300);

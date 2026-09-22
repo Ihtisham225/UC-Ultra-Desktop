@@ -234,7 +234,6 @@ export default function Categories() {
                   onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                   placeholder="e.g. Accessories"
                   autoFocus
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
                 />
               </div>
               <div className="space-y-1.5">
