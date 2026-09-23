@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
 import { useLocalStore } from "@/hooks/useLocalStore";
+import { findDuplicateParties } from "@/lib/party-duplicates";
+import { useDuplicatePartyConfirm } from "@/components/DuplicatePartyDialog";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +56,7 @@ export const CustomerPicker = ({
     currentShop?.id,
   );
   const list = parties.filter((p) => p.is_customer);
+  const { confirmDuplicates, duplicateDialog } = useDuplicatePartyConfirm();
 
   const choose = (c: CustomerLite | null) => {
     onChange(c);
@@ -72,6 +75,19 @@ export const CustomerPicker = ({
     if (!currentShop || !form.name.trim()) return toast.error("Name is required");
     setBusy(true);
     try {
+      // Same name or phone already on this till? Offer the existing customer
+      // before a second record splits their balance in two. Checked against
+      // the local copy, so it works offline.
+      const matches = findDuplicateParties(parties, { name: form.name.trim(), phone: form.phone || null });
+      const decision = await confirmDuplicates(matches, { canUse: (m) => m.is_customer, noun: "customer" });
+      if (decision === "cancel") return;
+      if (decision !== "create") {
+        onChange({ id: decision.use.id, name: decision.use.name, phone: decision.use.phone });
+        setForm({ name: "", phone: "" });
+        pickedRef.current = true;
+        setCreateOpen(false);
+        return;
+      }
       // is_supplier defaults true server-side, so say it explicitly or every
       // customer added at the till turns up in the supplier picker too.
       const c = await save({
@@ -188,6 +204,7 @@ export const CustomerPicker = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {duplicateDialog}
     </>
   );
 };

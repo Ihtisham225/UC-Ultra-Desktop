@@ -13,6 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, Users, Search, Printer, Trash2, HandCoins, FileText, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useDuplicatePartyConfirm } from "@/components/DuplicatePartyDialog";
+import { findDuplicatePartiesLocal } from "@/lib/partyDuplicatesLocal";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePermissions } from "@/hooks/usePermissions";
 import { PartySelect } from "@/components/PartySelect";
@@ -78,6 +80,7 @@ export default function CraftCustomers() {
   const cur = currentShop?.currency ?? "PKR";
   const canManage = perms.canManageSuppliers;
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const { confirmDuplicates, duplicateDialog } = useDuplicatePartyConfirm();
 
   const [customers, setCustomers] = useState<CraftCustomer[]>([]);
   const [challans, setChallans] = useState<CustomerChallanDto[]>([]);
@@ -269,6 +272,21 @@ export default function CraftCustomers() {
     if (!newCustomer.name.trim()) return toast.error("Give the customer a name");
     setBusy(true);
     try {
+      // Already on the books under this name or phone? An existing customer
+      // can be dropped straight into the open form instead.
+      const matches = await findDuplicatePartiesLocal(
+        currentShop?.id, newCustomer.name.trim(), newCustomer.phone || null,
+      );
+      const decision = await confirmDuplicates(matches, { canUse: (m) => m.is_customer, noun: "customer" });
+      if (decision === "cancel") return;
+      if (decision !== "create") {
+        const id = decision.use.id;
+        setNewCustomer({ name: "", phone: "", city: "" });
+        setNewOpen(false);
+        if (challanOpen) setChallanForm((f) => ({ ...f, customer_id: id }));
+        if (paymentOpen) setPaymentForm((f) => ({ ...f, customer_id: id }));
+        return;
+      }
       const res = await rpc<Res>("createCraftCustomerAction", {
         name: newCustomer.name.trim(),
         phone: newCustomer.phone || null,
@@ -338,6 +356,7 @@ export default function CraftCustomers() {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {confirmDialog}
+      {duplicateDialog}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

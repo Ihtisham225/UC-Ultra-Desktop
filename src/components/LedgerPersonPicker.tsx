@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useShop } from "@/contexts/ShopContext";
 import { rpc } from "@/lib/apiClient";
+import { useDuplicatePartyConfirm } from "@/components/DuplicatePartyDialog";
+import { findDuplicatePartiesLocal } from "@/lib/partyDuplicatesLocal";
 
 /** Mirror of the server's LedgerPerson — the desktop can't import it. */
 export interface LedgerPerson {
@@ -46,6 +48,7 @@ export function LedgerPersonPicker({
   const [people, setPeople] = useState<LedgerPerson[]>([]);
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const { confirmDuplicates, duplicateDialog } = useDuplicatePartyConfirm();
   const [form, setForm] = useState<{ name: string; phone: string; type: PersonType }>({
     name: "",
     phone: "",
@@ -91,6 +94,22 @@ export function LedgerPersonPicker({
   const create = async () => {
     if (!form.name.trim()) return toast.error("Name is required");
     setBusy(true);
+    // Already on the books under this name or phone? Pick them instead of
+    // opening a second ledger for the same person.
+    const matches = await findDuplicatePartiesLocal(currentShop?.id, form.name.trim(), form.phone || null);
+    const decision = await confirmDuplicates(matches, {
+      canUse: (m) => people.some((p) => p.id === m.id),
+      noun: "person",
+    });
+    if (decision === "cancel") return setBusy(false);
+    if (decision !== "create") {
+      setBusy(false);
+      const existing = people.find((p) => p.id === decision.use.id);
+      if (existing) onChange(existing);
+      setCreateOpen(false);
+      setSearch("");
+      return;
+    }
     const result = await rpc<{ ok: boolean; error?: string; person?: LedgerPerson }>(
       "createLedgerPersonAction",
       { name: form.name.trim(), phone: form.phone || null, type: form.type },
@@ -219,6 +238,7 @@ export function LedgerPersonPicker({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {duplicateDialog}
     </>
   );
 }
