@@ -61,6 +61,10 @@ export default function Settings() {
   // shops that never configure this are untouched.
   const [receiptPrefix, setReceiptPrefix] = useState("");
   const [receiptNext, setReceiptNext] = useState("");
+  const [returnPrefix, setReturnPrefix] = useState("RET-");
+  const [returnNext, setReturnNext] = useState("");
+  const [supReturnPrefix, setSupReturnPrefix] = useState("SRET-");
+  const [supReturnNext, setSupReturnNext] = useState("");
   const [labTests, setLabTests] = useState(false);
   const [imeiMode, setImeiMode] = useState<"sale" | "product">("sale");
   const [showCustomer, setShowCustomer] = useState(false);
@@ -102,6 +106,13 @@ export default function Settings() {
       setShowCostInPos(!!currentShop.show_cost_in_pos);
       setReceiptPrefix(currentShop.receipt_prefix ?? "");
       setReceiptNext(currentShop.receipt_next_number == null ? "" : String(currentShop.receipt_next_number));
+      // Null means "never set", which prints the default prefix — show it.
+      setReturnPrefix(currentShop.return_prefix ?? "RET-");
+      setReturnNext(currentShop.return_next_number == null ? "" : String(currentShop.return_next_number));
+      setSupReturnPrefix(currentShop.supplier_return_prefix ?? "SRET-");
+      setSupReturnNext(
+        currentShop.supplier_return_next_number == null ? "" : String(currentShop.supplier_return_next_number),
+      );
       setImeiMode((currentShop.imei_capture_mode as "sale" | "product") ?? "sale");
       setShowCustomer(currentShop.show_customer_on_receipt ?? false);
       setShowImei(currentShop.show_imei_on_receipt ?? false);
@@ -162,6 +173,11 @@ export default function Settings() {
         show_cost_in_pos: showCostInPos,
         receipt_prefix: receiptPrefix.trim() || null,
         receipt_next_number: receiptNext.trim() === "" ? null : (parseInt(receiptNext, 10) || null),
+        // Kept as typed: "" is a deliberate bare number, unlike order numbers.
+        return_prefix: returnPrefix.trim(),
+        return_next_number: returnNext.trim() === "" ? null : (parseInt(returnNext, 10) || null),
+        supplier_return_prefix: supReturnPrefix.trim(),
+        supplier_return_next_number: supReturnNext.trim() === "" ? null : (parseInt(supReturnNext, 10) || null),
         imei_capture_mode: imeiMode,
         cheques_enabled: chequesOn,
         cheque_reminder_days: Math.min(90, Math.max(0, parseInt(chequeDays, 10) || 0)),
@@ -517,9 +533,9 @@ export default function Settings() {
               <div>
                 <Label>Order numbers</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Leave the number blank to keep the automatic code. Set one and
-                  bills count up from there — the prefix is optional, so leaving it
-                  empty gives plain numbers like 200, 201, 202.
+                  Bills count up from the next number — set it to carry on from where
+                  your old book stopped. The prefix is optional, so leaving it empty
+                  gives plain numbers like 200, 201, 202.
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3 max-w-md">
@@ -541,20 +557,62 @@ export default function Settings() {
                     inputMode="numeric"
                     value={receiptNext}
                     onChange={(e) => setReceiptNext(e.target.value)}
-                    placeholder="automatic"
+                    placeholder="1"
                     disabled={!canEditShop}
                   />
                 </div>
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Next bill will be{" "}
-                <b>
-                  {receiptNext.trim() === ""
-                    ? "an automatic code"
-                    : `${receiptPrefix.trim()}${parseInt(receiptNext, 10) || 1}`}
-                </b>
-                .
+                <b>{`${receiptPrefix.trim()}${parseInt(receiptNext, 10) || 1}`}</b>.
               </p>
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <div>
+                <Label>Return numbers</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Every return gets its own number, counting up like order numbers but on a
+                  separate sequence, so a return slip is never mistaken for a bill. Clear the
+                  prefix for plain numbers.
+                </p>
+              </div>
+              {([
+                ["Customer returns", returnPrefix, setReturnPrefix, returnNext, setReturnNext],
+                ["Supplier returns", supReturnPrefix, setSupReturnPrefix, supReturnNext, setSupReturnNext],
+              ] as const).map(([label, prefix, setPrefix, next, setNext]) => (
+                <div key={label} className="space-y-1.5">
+                  <div className="text-xs font-medium">{label}</div>
+                  <div className="grid grid-cols-2 gap-3 max-w-md">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Prefix (optional)</Label>
+                      <Input
+                        value={prefix}
+                        onChange={(e) => setPrefix(e.target.value)}
+                        placeholder="none"
+                        maxLength={12}
+                        disabled={!canEditShop}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Next number</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        inputMode="numeric"
+                        value={next}
+                        onChange={(e) => setNext(e.target.value)}
+                        placeholder="1"
+                        disabled={!canEditShop}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Next one will be <b>{`${prefix.trim()}${parseInt(next, 10) || 1}`}</b>.
+                  </p>
+                </div>
+              ))}
             </div>
             {storeType === "pharmacy" && (
               <div className="flex items-center justify-between gap-4 rounded-lg border p-3">

@@ -5,12 +5,13 @@ import { useShop } from "@/contexts/ShopContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ScanBarcode, Package, Receipt, AlertTriangle, TrendingUp, DollarSign, Users, PackageOpen, Wallet, BarChart3, NotebookPen, Banknote, Landmark } from "lucide-react";
+import { ScanBarcode, Package, Receipt, AlertTriangle, TrendingUp, DollarSign, Users, PackageOpen, Wallet, BarChart3, NotebookPen } from "lucide-react";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { PageTip } from "@/components/PageTip";
 import { useLocalStore } from "@/hooks/useLocalStore";
-import { deriveCollection } from "@/lib/ledger";
+import { computeTodayMoney } from "@/lib/today-money";
+import { TodayMoneyCard } from "@/components/TodayMoneyCard";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { useState } from "react";
 import { rpc } from "@/lib/apiClient";
@@ -65,15 +66,11 @@ export default function Dashboard() {
   const { data: allPurchaseItems } = useLocalStore<any>("purchase_items", currentShop?.id);
   // The khata, for the credit tile. Synced locally, so it reads offline too.
   const { data: allDebts } = useLocalStore<any>("debts", currentShop?.id);
-  // The other side of the khata: what came back in today. The account's type
-  // decides which column it lands in, so both tables are needed.
-  const { data: allDebtPayments } = useLocalStore<{
-    id: string;
-    kind?: string | null;
-    amount?: number | string | null;
-    account_id?: string | null;
-    created_at?: string | null;
-  }>("debt_payments", currentShop?.id);
+  // Today's money by instrument: settlements, tenders and refunds. The
+  // account's type decides which column money lands in, so accounts too.
+  const { data: allDebtPayments } = useLocalStore<any>("debt_payments", currentShop?.id);
+  const { data: allSalePayments } = useLocalStore<any>("sale_payments", currentShop?.id);
+  const { data: allReturns } = useLocalStore<any>("sale_returns", currentShop?.id);
   const { data: allAccounts } = useLocalStore<{ id: string; type?: string }>(
     "money_accounts",
     currentShop?.id,
@@ -161,18 +158,23 @@ export default function Dashboard() {
         0,
       );
 
-    const collected = deriveCollection(
-      allDebtPayments,
-      new Map<string, string>(
-        allAccounts
-          .filter((a) => a.id && a.type)
-          .map((a) => [String(a.id), String(a.type)] as const),
-      ),
-      startOfDay,
-    );
+    // The same pure function the web dashboard runs, over the offline store —
+    // so the card reads with no connection and agrees with the web.
+    const money = computeTodayMoney({
+      since: startOfDay,
+      today: todayKey,
+      accounts: allAccounts,
+      sales: allSales,
+      salePayments: allSalePayments.filter((p: any) => todaySaleIds.has(p.sale_id)),
+      returns: allReturns,
+      debts: allDebts,
+      debtPayments: allDebtPayments,
+      purchases: allPurchases,
+      expenses: allExpenses,
+    });
 
     return {
-      collected,
+      money,
       todaySales,
       todayCount,
       productCount: activeProducts.length,
@@ -183,7 +185,7 @@ export default function Dashboard() {
       todayCredit,
       totalOwedToMe,
     };
-  }, [allSales, allProducts, allSaleItems, allExpenses, allPurchases, allPurchaseItems, allDebts, allDebtPayments, allAccounts]);
+  }, [allSales, allProducts, allSaleItems, allExpenses, allPurchases, allPurchaseItems, allDebts, allDebtPayments, allAccounts, allSalePayments, allReturns]);
 
   const cur = currentShop?.currency ?? "USD";
 
@@ -269,28 +271,19 @@ export default function Dashboard() {
           tone={safeStats.todayCredit > 0 ? "warning" : "default"}
           hint={`${formatMoney(safeStats.totalOwedToMe, cur)} owed in total`}
         />
-        {/* The other side of the khata: what came back in today, split by
-            where it landed. The two tiles plus anything unassigned add up to
-            everything collected, so money is never lost between them. */}
-        <StatCard
-          icon={Banknote}
-          label={t("dashboard.collectedCash", { defaultValue: "Collected — cash" })}
-          value={formatMoney(safeStats.collected.cash, cur)}
-          tone={safeStats.collected.cash > 0 ? "primary" : "default"}
-          hint={`${formatMoney(safeStats.collected.total, cur)} collected today`}
-        />
-        <StatCard
-          icon={Landmark}
-          label={t("dashboard.collectedBanked", { defaultValue: "Collected — bank" })}
-          value={formatMoney(safeStats.collected.banked, cur)}
-          tone={safeStats.collected.banked > 0 ? "accent" : "default"}
-          hint={
-            safeStats.collected.unassigned > 0
-              ? `+ ${formatMoney(safeStats.collected.unassigned, cur)} with no account set`
-              : "bank & wallet accounts"
-          }
-        />
       </div>
+
+      {/* Where today's money came from and went, by how it was paid. The
+          purchase and expense rows follow the same permissions as their tiles. */}
+      <TodayMoneyCard
+        money={safeStats.money}
+        format={(n) => formatMoney(n, cur)}
+        visible={(src) =>
+          src === "purchases" ? perms.canManagePurchases
+            : src === "expenses" ? perms.canManageExpenses
+              : true
+        }
+      />
 
       <div className="flex flex-wrap gap-2">
         {perms.canManageExpenses && (

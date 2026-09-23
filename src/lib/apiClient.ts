@@ -71,6 +71,12 @@ export interface DeviceShop {
   /** Custom order numbering: an optional prefix and the next number to issue. */
   receipt_prefix?: string | null;
   receipt_next_number?: number | null;
+  /** Return numbering. Null prefix = the default "RET-" / "SRET-"; an empty
+   *  string is a deliberate bare number. Null next-number starts at 1. */
+  return_prefix?: string | null;
+  return_next_number?: number | null;
+  supplier_return_prefix?: string | null;
+  supplier_return_next_number?: number | null;
   investor_mode?: "individual" | "shared" | "both";
   investor_default_commission?: number;
   investor_deduct_expenses?: boolean;
