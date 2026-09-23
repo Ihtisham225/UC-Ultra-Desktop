@@ -15,6 +15,8 @@ import { useShop } from "@/contexts/ShopContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useDuplicatePartyConfirm } from "@/components/DuplicatePartyDialog";
+import { findDuplicatePartiesLocal } from "@/lib/partyDuplicatesLocal";
 import { Pagination } from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { downloadCsv } from "@/lib/csv";
@@ -74,6 +76,7 @@ export default function MaterialPurchases() {
   const perms = usePermissions();
   const formatMoney = useFormatMoney();
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const { confirmDuplicates, duplicateDialog } = useDuplicatePartyConfirm();
 
   const canManage = perms.canManagePurchases;
   const currency = currentShop?.currency ?? "PKR";
@@ -356,6 +359,20 @@ export default function MaterialPurchases() {
   const addParty = async (target: "purchase" | "payment") => {
     const name = newPartyName.trim();
     if (!name) return;
+    // A party already on the books under this name can simply be picked.
+    const matches = await findDuplicatePartiesLocal(currentShop?.id, name);
+    const decision = await confirmDuplicates(matches, {
+      canUse: (m) => parties.some((p) => p.id === m.id),
+      noun: "party",
+    });
+    if (decision === "cancel") return;
+    if (decision !== "create") {
+      const id = decision.use.id;
+      if (target === "purchase") setPurchaseDraft((d) => (d ? { ...d, supplier_id: id } : d));
+      else setPaymentDraft((d) => (d ? { ...d, supplier_id: id } : d));
+      setNewPartyName("");
+      return;
+    }
     const result = await rpc<{ ok: boolean; error?: string; party?: PartyOption }>("quickAddPartyAction", name);
     if (!result.ok) return toast.error(result.error ?? "Failed");
     setParties((prev) => [...prev, result.party].sort((a, b) => a.name.localeCompare(b.name)));
@@ -906,6 +923,7 @@ export default function MaterialPurchases() {
       />
 
       {confirmDialog}
+      {duplicateDialog}
     </div>
   );
 }

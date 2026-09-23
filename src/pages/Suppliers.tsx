@@ -16,6 +16,8 @@ import { toast } from "sonner";
 import { DetailsDialog } from "@/components/DetailsDialog";
 import { CustomerSalesHistory, SupplierPurchaseHistory } from "@/components/PartyHistory";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useDuplicatePartyConfirm } from "@/components/DuplicatePartyDialog";
+import { findDuplicatePartiesLocal } from "@/lib/partyDuplicatesLocal";
 import { usePagination } from "@/hooks/usePagination";
 import { Pagination } from "@/components/Pagination";
 import { useRowSelection } from "@/hooks/useRowSelection";
@@ -58,6 +60,7 @@ export default function Suppliers() {
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [details, setDetails] = useState<Supplier | null>(null);
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const { confirmDuplicates, duplicateDialog } = useDuplicatePartyConfirm();
   const sel = useRowSelection();
   // Handicraft shops read this page as a khata of what each party is owed.
   const [balances, setBalances] = useState<Record<string, PartyBalance>>({});
@@ -123,18 +126,11 @@ export default function Suppliers() {
     const name = editing.name?.trim() || "";
     if (!name) return toast.error(t("purchases.nameRequired"));
 
-    if (!editing.id) {
-      const existing = items.find((s) => s.name.trim().toLowerCase() === name.toLowerCase());
-      if (existing) {
-        const ok = await confirm({
-          title: t("common.duplicateFound"),
-          description: t("common.duplicateMessage", { name: existing.name }),
-          confirmLabel: t("common.addAnyway"),
-          variant: "default",
-        });
-        if (!ok) return;
-      }
-    }
+    // Same name or phone as anyone already on the books — customer or
+    // supplier — on add AND on edit. A warning, not a refusal.
+    const matches = await findDuplicatePartiesLocal(currentShop.id, name, editing.phone || null, editing.id ?? null);
+    const decision = await confirmDuplicates(matches, { noun: craft ? "party" : "supplier", editing: !!editing.id });
+    if (decision !== "create") return;
 
     const payload = {
       name,
@@ -477,6 +473,7 @@ export default function Suppliers() {
         </DetailsDialog>
       )}
       {confirmDialog}
+      {duplicateDialog}
     </div>
   );
 }

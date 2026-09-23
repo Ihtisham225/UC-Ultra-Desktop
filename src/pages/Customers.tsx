@@ -16,6 +16,8 @@ import { DetailsDialog } from "@/components/DetailsDialog";
 import { CustomerSalesHistory } from "@/components/PartyHistory";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useDuplicatePartyConfirm } from "@/components/DuplicatePartyDialog";
+import { findDuplicatePartiesLocal } from "@/lib/partyDuplicatesLocal";
 import { usePagination } from "@/hooks/usePagination";
 import { Pagination } from "@/components/Pagination";
 import { useRowSelection } from "@/hooks/useRowSelection";
@@ -49,6 +51,7 @@ export default function Customers() {
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [details, setDetails] = useState<Customer | null>(null);
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const { confirmDuplicates, duplicateDialog } = useDuplicatePartyConfirm();
   const sel = useRowSelection();
 
   const canDelete = role === "owner" || role === "manager";
@@ -96,19 +99,12 @@ export default function Customers() {
     const name = editing.name?.trim() || "";
     if (!name) return toast.error(t("customers.nameRequired"));
 
-    // Duplicate name detection (only on insert)
-    if (!editing.id) {
-      const existing = items.find((c) => c.name.trim().toLowerCase() === name.toLowerCase());
-      if (existing) {
-        const ok = await confirm({
-          title: t("common.duplicateFound"),
-          description: t("common.duplicateMessage", { name: existing.name }),
-          confirmLabel: t("common.addAnyway"),
-          variant: "default",
-        });
-        if (!ok) return;
-      }
-    }
+    // Same name or phone as anyone already on the books — customer or
+    // supplier — on add AND on edit (an edit can turn one record into
+    // another's twin). A warning, not a refusal: two people can share a name.
+    const matches = await findDuplicatePartiesLocal(currentShop.id, name, editing.phone || null, editing.id ?? null);
+    const decision = await confirmDuplicates(matches, { noun: "customer", editing: !!editing.id });
+    if (decision !== "create") return;
 
     const payload = {
       name,
@@ -321,6 +317,7 @@ export default function Customers() {
       {/* Over the details, so closing the slip returns to the history. */}
       {openSale && <ReceiptDialog sale={openSale} onClose={() => setOpenSale(null)} />}
       {confirmDialog}
+      {duplicateDialog}
     </div>
   );
 }

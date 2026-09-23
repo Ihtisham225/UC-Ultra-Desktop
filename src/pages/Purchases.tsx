@@ -25,6 +25,8 @@ import { PageTip } from "@/components/PageTip";
 import { DetailsDialog } from "@/components/DetailsDialog";
 import { VariantPickerDialog } from "@/components/VariantPickerDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useDuplicatePartyConfirm } from "@/components/DuplicatePartyDialog";
+import { findDuplicateParties } from "@/lib/party-duplicates";
 import { Pagination } from "@/components/Pagination";
 import { SCROLL_BATCH } from "@/hooks/usePagination";
 import { toast } from "sonner";
@@ -212,6 +214,7 @@ export default function Purchases() {
   const [printPurchase, setPrintPurchase] = useState<any | null>(null);
   const [detailsItemSearch, setDetailsItemSearch] = useState("");
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const { confirmDuplicates, duplicateDialog } = useDuplicatePartyConfirm();
   const [supplierReturnFor, setSupplierReturnFor] = useState<string | null>(null);
 
   // Product-level search across purchase_items
@@ -733,16 +736,17 @@ export default function Purchases() {
     if (!currentShop || !newSupplier.name.trim()) return toast.error(t("purchases.nameRequired"));
     const name = newSupplier.name.trim();
 
-    // Duplicate name detection
-    const existing = suppliers.find((s) => s.name.trim().toLowerCase() === name.toLowerCase());
-    if (existing) {
-      const ok = await confirm({
-        title: t("common.duplicateFound"),
-        description: t("common.duplicateMessage", { name: existing.name }),
-        confirmLabel: t("common.addAnyway"),
-        variant: "default",
-      });
-      if (!ok) return;
+    // Same name or phone as anyone on this till — customer or supplier? A
+    // supplier already there can simply be picked; a customer-only match is
+    // only a warning. Checked locally, so it works offline.
+    const matches = findDuplicateParties(allParties, { name, phone: newSupplier.phone || null });
+    const decision = await confirmDuplicates(matches, { canUse: (m) => m.is_seller, noun: "supplier" });
+    if (decision === "cancel") return;
+    if (decision !== "create") {
+      setSupplierId(decision.use.id);
+      setNewSupplier({ name: "", phone: "", email: "", notes: "" });
+      setSupplierOpen(false);
+      return;
     }
 
     let supplier: Supplier;
@@ -1661,6 +1665,7 @@ export default function Purchases() {
         onDone={load}
       />
       {confirmDialog}
+      {duplicateDialog}
     </div>
   );
 }
