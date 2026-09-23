@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { deleteLocal, notifyChange } from "@/lib/localDb";
+import { voidSaleLocally } from "@/lib/voidSaleLocal";
 import { syncNow } from "@/lib/syncEngine";
 import { ManualSaleDialog, type ManualSaleApi } from "@/components/ManualSaleDialog";
 import { EditSaleDialog, type EditableSale, type EditableProduct } from "@/components/EditSaleDialog";
@@ -272,11 +273,16 @@ export default function Sales() {
       variant: "destructive",
     });
     if (!ok) return;
+    // The bill's khata row and tenders go with it here and now; the server
+    // voids the rest (stock back, cash) when the delete lands — synced at once
+    // so the corrected stock comes straight back.
+    if (currentShop) await voidSaleLocally(currentShop.id, saleId);
     const saleItems = allSaleItems.filter((i: any) => i.sale_id === saleId);
     for (const item of saleItems) await deleteLocal("sale_items", item.id, true);
     await deleteLocal("sales", saleId, true);
     notifyChange("sales");
     toast.success(t("common.deleted"));
+    void syncNow().catch(() => { /* offline: the next sync carries it */ });
   };
 
   const visibleIds = sales.map((s) => s.id);
@@ -291,6 +297,7 @@ export default function Sales() {
     if (!ok) return;
     const ids = sel.ids;
     for (const id of ids) {
+      if (currentShop) await voidSaleLocally(currentShop.id, id);
       const saleItems = allSaleItems.filter((i: any) => i.sale_id === id);
       for (const item of saleItems) await deleteLocal("sale_items", item.id, true);
       await deleteLocal("sales", id, true);
@@ -298,6 +305,7 @@ export default function Sales() {
     notifyChange("sales");
     toast.success(t("bulk.deleted", { count: ids.length }));
     sel.clear();
+    void syncNow().catch(() => { /* offline: the next sync carries it */ });
   };
 
   const bulkExport = () => {

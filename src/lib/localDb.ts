@@ -46,6 +46,9 @@ export const SYNC_TABLES = [
   // no line. Insert-once on the server, which recomputes the khata's paid
   // figure from these — never write paid_amount from here.
   'debt_payments',
+  // Receipts for khata payments. Two-way: written with an offline payment,
+  // numbered by the server when it lands (and handed straight back).
+  'payment_receipts',
   'sale_returns',
   // Alternate sale units (oil sold by the bottle). Pull-only — edited on the
   // Products page through an online action, but the till needs them offline.

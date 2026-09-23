@@ -65,6 +65,8 @@ export default function Settings() {
   const [returnNext, setReturnNext] = useState("");
   const [supReturnPrefix, setSupReturnPrefix] = useState("SRET-");
   const [supReturnNext, setSupReturnNext] = useState("");
+  const [payReceiptPrefix, setPayReceiptPrefix] = useState("PR-");
+  const [payReceiptNext, setPayReceiptNext] = useState("");
   const [labTests, setLabTests] = useState(false);
   const [imeiMode, setImeiMode] = useState<"sale" | "product">("sale");
   const [showCustomer, setShowCustomer] = useState(false);
@@ -112,6 +114,10 @@ export default function Settings() {
       setSupReturnPrefix(currentShop.supplier_return_prefix ?? "SRET-");
       setSupReturnNext(
         currentShop.supplier_return_next_number == null ? "" : String(currentShop.supplier_return_next_number),
+      );
+      setPayReceiptPrefix(currentShop.payment_receipt_prefix ?? "PR-");
+      setPayReceiptNext(
+        currentShop.payment_receipt_next_number == null ? "" : String(currentShop.payment_receipt_next_number),
       );
       setImeiMode((currentShop.imei_capture_mode as "sale" | "product") ?? "sale");
       setShowCustomer(currentShop.show_customer_on_receipt ?? false);
@@ -178,6 +184,8 @@ export default function Settings() {
         return_next_number: returnNext.trim() === "" ? null : (parseInt(returnNext, 10) || null),
         supplier_return_prefix: supReturnPrefix.trim(),
         supplier_return_next_number: supReturnNext.trim() === "" ? null : (parseInt(supReturnNext, 10) || null),
+        payment_receipt_prefix: payReceiptPrefix.trim(),
+        payment_receipt_next_number: payReceiptNext.trim() === "" ? null : (parseInt(payReceiptNext, 10) || null),
         imei_capture_mode: imeiMode,
         cheques_enabled: chequesOn,
         cheque_reminder_days: Math.min(90, Math.max(0, parseInt(chequeDays, 10) || 0)),
@@ -570,16 +578,16 @@ export default function Settings() {
 
             <div className="rounded-lg border p-3 space-y-3">
               <div>
-                <Label>Return numbers</Label>
+                <Label>Return &amp; receipt numbers</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Every return gets its own number, counting up like order numbers but on a
-                  separate sequence, so a return slip is never mistaken for a bill. Clear the
-                  prefix for plain numbers.
+                  Returns and ledger payment receipts each count up on their own sequence, so a
+                  slip is never mistaken for a bill. Clear a prefix for plain numbers.
                 </p>
               </div>
               {([
                 ["Customer returns", returnPrefix, setReturnPrefix, returnNext, setReturnNext],
                 ["Supplier returns", supReturnPrefix, setSupReturnPrefix, supReturnNext, setSupReturnNext],
+                ["Ledger payment receipts", payReceiptPrefix, setPayReceiptPrefix, payReceiptNext, setPayReceiptNext],
               ] as const).map(([label, prefix, setPrefix, next, setNext]) => (
                 <div key={label} className="space-y-1.5">
                   <div className="text-xs font-medium">{label}</div>

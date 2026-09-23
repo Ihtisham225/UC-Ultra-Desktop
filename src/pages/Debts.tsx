@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowDownLeft, ArrowUpRight, Pencil, Plus, Trash2, Wallet, Eye, TrendingUp, TrendingDown, MessageCircle, Upload, Printer } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Pencil, Plus, Trash2, Wallet, Eye, TrendingUp, TrendingDown, MessageCircle, Upload, Printer, ReceiptText } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -36,6 +36,8 @@ import { DetailsDialog } from "@/components/DetailsDialog";
 import { LedgerEntriesTable } from "@/components/LedgerEntriesLog";
 import { PageTip } from "@/components/PageTip";
 import { AccountPicker } from "@/components/AccountPicker";
+import { PaymentReceiptDialog } from "@/components/PaymentReceiptDialog";
+import type { PaymentReceiptDto } from "@/lib/payment-receipt";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LedgerPersonPicker, type LedgerPerson } from "@/components/LedgerPersonPicker";
 import { useAddNew } from "@/hooks/useAddNew";
@@ -85,6 +87,27 @@ interface DebtPayment {
   account_id?: string | null;
   /** The cheque this entry came from — it moves only with the cheque. */
   cheque_id?: string | null;
+  /** The receipt it was given on — shared by every bill one payment covered. */
+  receipt_id?: string | null;
+}
+
+/** A synced payment_receipts row (numbers may arrive as strings) → the slip's shape. */
+function toReceiptDto(r: Record<string, unknown>): PaymentReceiptDto {
+  return {
+    id: String(r.id),
+    receipt_number: (r.receipt_number as string | null) ?? null,
+    person_name: String(r.person_name ?? ""),
+    phone: (r.phone as string | null) ?? null,
+    direction: r.direction === "i_owe" ? "i_owe" : "owed_to_me",
+    amount: Number(r.amount ?? 0),
+    discount: Number(r.discount ?? 0),
+    method: (r.method as string | null) ?? null,
+    balance_before: Number(r.balance_before ?? 0),
+    balance_after: Number(r.balance_after ?? 0),
+    payment_date: String(r.payment_date ?? "").slice(0, 10),
+    notes: (r.notes as string | null) ?? null,
+    created_at: String(r.created_at ?? new Date().toISOString()),
+  };
 }
 
 const empty = {
@@ -227,6 +250,8 @@ export default function Debts() {
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [paymentForm, setPaymentForm] = useState({ ...emptyPayment });
   const [paymentSaving, setPaymentSaving] = useState(false);
+  /** The receipt on screen — straight after a payment, or a reprint. */
+  const [receipt, setReceipt] = useState<PaymentReceiptDto | null>(null);
   const [confirmPaymentDeleteId, setConfirmPaymentDeleteId] = useState<string | null>(null);
   const [detailsKey, setDetailsKey] = useState<string | null>(null);
   const detailsGroup = useMemo(() => groups.find((g) => g.key === detailsKey) ?? null, [groups, detailsKey]);
@@ -485,7 +510,7 @@ export default function Debts() {
       try {
         // The server must hold every khata row this cheque is spread over.
         await syncNow();
-        const res = await rpc<{ ok: boolean; error?: string; rows?: { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] } }>("takeChequeAction", {
+        const res = await rpc<{ ok: boolean; error?: string; receipt?: PaymentReceiptDto; rows?: { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] } }>("takeChequeAction", {
           debt_ids: selectedGroup.debts.map((d) => d.id),
           cheque_number: paymentForm.cheque_number.trim(),
           bank_name: paymentForm.bank_name.trim() || null,
@@ -505,6 +530,7 @@ export default function Debts() {
         void syncNow().catch(() => {});
         notifyChange("debt_payments");
         notifyChange("debts");
+        if (res.receipt) setReceipt(res.receipt);
       } catch (e) {
         return toast.error(e instanceof Error ? e.message : "Failed");
       } finally {
@@ -565,8 +591,43 @@ export default function Debts() {
     // The money account and the recalculated balance are the server's job when
     // these rows are pushed; the terminal only records that the money came in,
     // so the counter can take payment with no connection.
+    let receiptId: string | null = null;
     try {
       const now = new Date().toISOString();
+      // The receipt the customer walks away with — one per payment, however
+      // many bills it covers. Written here with the payment so it works
+      // offline; the server gives it its number when it lands.
+      if (paymentForm.kind === "payment") {
+        const holder = selectedGroup.debts[selectedGroup.debts.length - 1];
+        const account = payAccountId
+          ? await getById<{ name?: string }>("money_accounts", payAccountId).catch(() => null)
+          : null;
+        receiptId = uuid();
+        await upsertLocal(
+          "payment_receipts",
+          {
+            id: receiptId,
+            shop_id: currentShop.id,
+            receipt_number: null,
+            party_id: holder.party_id ?? null,
+            person_name: selectedGroup.person_name,
+            phone: holder.phone ?? null,
+            direction: selectedGroup.direction,
+            amount,
+            discount,
+            account_id: payAccountId || null,
+            method: account?.name ?? null,
+            balance_before: Math.round(remaining * 100) / 100,
+            balance_after: Math.round((remaining - amount - discount) * 100) / 100,
+            payment_date: paymentForm.payment_date,
+            notes: paymentForm.notes.trim() || null,
+            created_by: user.id,
+            created_at: now,
+            updated_at: now,
+          },
+          true,
+        );
+      }
       // The overpaid excess: a khata row facing the other way. Its money is
       // booked by the server when the row is pushed (advance_account_id), the
       // same as online — the terminal never writes account rows itself.
@@ -611,6 +672,7 @@ export default function Debts() {
             payment_date: paymentForm.payment_date,
             account_id: payAccountId || null,
             notes: paymentForm.notes.trim() || null,
+            receipt_id: receiptId,
             created_at: now,
           },
           true,
@@ -635,7 +697,17 @@ export default function Debts() {
     } finally {
       setPaymentSaving(false);
     }
-    void syncNow().catch(() => {});
+    if (receiptId) {
+      // ⚠️ Resolve the number FIRST, then open the slip: printing a receipt
+      // that says "Pending sync" when the number was a second away puts a slip
+      // in the customer's hand the books will never match. Offline, it opens
+      // pending and can be reprinted from the history once it syncs.
+      if (navigator.onLine) await syncNow().catch(() => {});
+      const fresh = await getById<Record<string, unknown>>("payment_receipts", receiptId).catch(() => null);
+      if (fresh) setReceipt(toReceiptDto(fresh));
+    } else {
+      void syncNow().catch(() => {});
+    }
 
     toast.success(paymentForm.kind === "payment" ? "Payment recorded" : "Debt increased");
     if (daybook.entry) await daybook.link(selectedGroup.debts[0].id, `Ledger payment — ${selectedGroup.person_name}`);
@@ -658,6 +730,13 @@ export default function Debts() {
     void syncNow().catch(() => {});
     toast.success("Ledger entry deleted");
     setConfirmId(null);
+  };
+
+  /** Reprint from the local copy — works offline, and carries the number once synced. */
+  const openReceipt = async (id: string) => {
+    const r = await getById<Record<string, unknown>>("payment_receipts", id).catch(() => null);
+    if (!r) return toast.error("That receipt hasn't reached this till yet — try again after a sync");
+    setReceipt(toReceiptDto(r));
   };
 
   const removePayment = async (id: string) => {
@@ -1242,7 +1321,18 @@ export default function Debts() {
                           <TableCell className={"text-right tabular-nums font-medium " + (isIncrease ? "text-destructive" : "text-success")}>
                             {isIncrease ? "+" : "−"}{formatMoney(payment.amount, selectedGroup.currency ?? cur)}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right whitespace-nowrap">
+                            {payment.receipt_id && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                onClick={() => void openReceipt(payment.receipt_id!)}
+                                title="Receipt"
+                              >
+                                <ReceiptText className="size-4" />
+                              </Button>
+                            )}
                             {canManage && (
                               <Button
                                 variant="ghost"
@@ -1369,6 +1459,19 @@ export default function Debts() {
         description="The debt balance will be recalculated automatically."
         variant="destructive"
         onConfirm={() => { if (confirmPaymentDeleteId) void removePayment(confirmPaymentDeleteId); }}
+      />
+
+      <PaymentReceiptDialog
+        receipt={receipt}
+        shop={currentShop ? {
+          name: currentShop.name,
+          address: currentShop.address ?? null,
+          phone: currentShop.phone ?? null,
+          currency: currentShop.currency ?? "PKR",
+          receipt_header: currentShop.receipt_header ?? null,
+          receipt_footer: currentShop.receipt_footer ?? null,
+        } : null}
+        onClose={() => setReceipt(null)}
       />
 
       <ImportDebtsDialog
