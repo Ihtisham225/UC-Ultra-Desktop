@@ -12,6 +12,7 @@ import { PageTip } from "@/components/PageTip";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { computeTodayMoney } from "@/lib/today-money";
 import { TodayMoneyCard } from "@/components/TodayMoneyCard";
+import { computePnl } from "@/lib/pnl";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { useState } from "react";
 import { rpc } from "@/lib/apiClient";
@@ -71,6 +72,7 @@ export default function Dashboard() {
   const { data: allDebtPayments } = useLocalStore<any>("debt_payments", currentShop?.id);
   const { data: allSalePayments } = useLocalStore<any>("sale_payments", currentShop?.id);
   const { data: allReturns } = useLocalStore<any>("sale_returns", currentShop?.id);
+  const { data: allReturnItems } = useLocalStore<any>("sale_return_items", currentShop?.id);
   const { data: allAccounts } = useLocalStore<{ id: string; type?: string }>(
     "money_accounts",
     currentShop?.id,
@@ -116,29 +118,36 @@ export default function Dashboard() {
       .filter((p: any) => p.created_at && new Date(p.created_at) >= startOfDay)
       .reduce((a: number, p: any) => a + Number(p.total ?? 0), 0);
 
-    // Average landed cost per product, on the same basis the P&L report uses,
-    // so the tile and the report can never disagree. A product never purchased
-    // through the app contributes no cost and so flatters the margin — the
-    // same assumption the report makes.
-    const costQty = new Map<string, { cost: number; qty: number }>();
-    for (const pi of allPurchaseItems) {
-      const key = pi.product_id;
-      if (!key) continue;
-      const acc = costQty.get(key) ?? { cost: 0, qty: 0 };
-      acc.cost += Number(pi.quantity ?? 0) * Number(pi.unit_cost ?? 0) + Number(pi.expense_amount ?? 0);
-      acc.qty += Number(pi.quantity ?? 0);
-      costQty.set(key, acc);
-    }
     const todaySaleIds = new Set(
       allSales.filter((s: any) => s.created_at && new Date(s.created_at) >= startOfDay).map((s: any) => s.id),
     );
-    const todayCogs = allSaleItems
-      .filter((si: any) => todaySaleIds.has(si.sale_id))
-      .reduce((a: number, si: any) => {
-        const c = costQty.get(si.product_id);
-        const avg = c && c.qty > 0 ? c.cost / c.qty : 0;
-        return a + Number(si.quantity ?? 0) * avg;
-      }, 0);
+    // Today's gross profit from lib/pnl — the SAME calculation as the Profit &
+    // Loss report and Analytics (net of tax and returns, cost at the average
+    // landed cost), so the tile and the report can never disagree.
+    const itemsBySale = new Map<string, any[]>();
+    for (const si of allSaleItems) {
+      if (!todaySaleIds.has(si.sale_id)) continue;
+      const arr = itemsBySale.get(si.sale_id) ?? [];
+      arr.push(si);
+      itemsBySale.set(si.sale_id, arr);
+    }
+    const todayReturns = allReturns.filter((r: any) => r.created_at && new Date(r.created_at) >= startOfDay);
+    const todayReturnIds = new Set(todayReturns.map((r: any) => r.id));
+    const itemsByReturn = new Map<string, any[]>();
+    for (const ri of allReturnItems) {
+      if (!todayReturnIds.has(ri.return_id)) continue;
+      const arr = itemsByReturn.get(ri.return_id) ?? [];
+      arr.push(ri);
+      itemsByReturn.set(ri.return_id, arr);
+    }
+    const todayPnl = computePnl({
+      sales: allSales
+        .filter((s: any) => todaySaleIds.has(s.id))
+        .map((s: any) => ({ subtotal: s.subtotal, tax: s.tax, total: s.total, items: itemsBySale.get(s.id) ?? [] })),
+      returns: todayReturns.map((r: any) => ({ total_refund: r.total_refund, items: itemsByReturn.get(r.id) ?? [] })),
+      purchaseItems: allPurchaseItems,
+      expenses: 0,
+    });
 
     // Credit given today: billed less what was actually handed over. Clamped
     // at zero — settling an older account on today's bill would otherwise read
@@ -181,11 +190,11 @@ export default function Dashboard() {
       lowStock: lowStock.slice(0, 5),
       todayExpenses,
       todayPurchases,
-      todayGrossProfit: Math.round((todaySales - todayCogs) * 100) / 100,
+      todayGrossProfit: todayPnl.grossProfit,
       todayCredit,
       totalOwedToMe,
     };
-  }, [allSales, allProducts, allSaleItems, allExpenses, allPurchases, allPurchaseItems, allDebts, allDebtPayments, allAccounts, allSalePayments, allReturns]);
+  }, [allSales, allProducts, allSaleItems, allExpenses, allPurchases, allPurchaseItems, allDebts, allDebtPayments, allAccounts, allSalePayments, allReturns, allReturnItems]);
 
   const cur = currentShop?.currency ?? "USD";
 
