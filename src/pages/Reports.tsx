@@ -1,5 +1,7 @@
 // Detailed reports hub: Sales / Purchases / Inventory / P&L / Expenses / Customers & Debts / Tax.
 // Each report has a date range, KPI cards, a sortable table, CSV export, and print-to-PDF.
+import { computePnl, pnlStatement, type Pnl } from "@/lib/pnl";
+import { ProfitExplainer } from "@/components/ProfitExplainer";
 import { useEffect, useMemo, useState } from "react";
 import { getAll } from "@/lib/localDb";
 import { rpc } from "@/lib/apiClient";
@@ -470,11 +472,11 @@ function InventoryReport({ shopId, formatMoney, cur }: Omit<ReportProps, "range"
 
 function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
   const { fromISO, toISO, fromDate, toDate } = useRange(range);
-  const [data, setData] = useState<{ revenue: number; subtotal: number; tax: number; cogs: number; expenses: number; payroll: number; depreciation: number; assetGain: number; expByCat: { name: string; total: number }[] } | null>(null);
+  const [data, setData] = useState<Pnl | null>(null);
 
   useEffect(() => {
     (async () => {
-      const [allSales, allSaleItems, allExpenses, pi, cats, extras] = await Promise.all([
+      const [allSales, allSaleItems, allExpenses, pi, cats, extras, allReturns, allReturnItems, allProducts] = await Promise.all([
         getAll<any>("sales", shopId),
         getAll<any>("sale_items", shopId),
         getAll<any>("expenses", shopId),
@@ -483,66 +485,43 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
         // Wages and asset depreciation live only on the server (0 offline).
         rpc<{ payroll: number; depreciation: number; asset_gain: number }>("pnlExtrasAction", fromDate, toDate)
           .catch(() => ({ payroll: 0, depreciation: 0, asset_gain: 0 })),
+        getAll<any>("sale_returns", shopId),
+        getAll<any>("sale_return_items", shopId),
+        getAll<any>("products", shopId),
       ]);
       const itemsBySale = new Map<string, any[]>();
       for (const it of allSaleItems) { const arr = itemsBySale.get(it.sale_id) ?? []; arr.push(it); itemsBySale.set(it.sale_id, arr); }
+      const itemsByReturn = new Map<string, any[]>();
+      for (const it of allReturnItems) { const arr = itemsByReturn.get(it.return_id) ?? []; arr.push(it); itemsByReturn.set(it.return_id, arr); }
       const sales = allSales.filter((sl) => sl.created_at >= fromISO && sl.created_at <= toISO);
+      const returns = allReturns.filter((r) => r.created_at >= fromISO && r.created_at <= toISO);
       const exps = allExpenses.filter((ex) => String(ex.expense_date) >= fromDate && String(ex.expense_date) <= toDate);
-      const items = sales.flatMap((sl) => itemsBySale.get(sl.id) ?? []);
-      const avg = new Map<string, number>();
-      const totals = new Map<string, { qty: number; cost: number }>();
-      (pi as any[]).forEach((r) => {
-        const k = r.variant_id ?? r.product_id; if (!k) return;
-        const cur = totals.get(k) ?? { qty: 0, cost: 0 };
-        cur.qty += Number(r.quantity);
-        // Landed cost — includes this line's transport/loading share.
-        cur.cost += Number(r.quantity) * Number(r.unit_cost) + Number(r.expense_amount ?? 0);
-        totals.set(k, cur);
-      });
-      totals.forEach((v, k) => avg.set(k, v.qty > 0 ? v.cost / v.qty : 0));
-      const cogs = items.reduce((a, it) => {
-        const k = it.variant_id ?? it.product_id;
-        return a + Number(it.quantity) * (k ? avg.get(k) ?? 0 : 0);
-      }, 0);
       const catMap = new Map<string, string>((cats as any[]).map((c) => [c.id, c.name]));
       const byCat = new Map<string, number>();
       exps.forEach((ex) => {
         const name = ex.category_id ? catMap.get(ex.category_id) ?? "Other" : "Uncategorized";
         byCat.set(name, (byCat.get(name) ?? 0) + Number(ex.amount));
       });
-      setData({
-        revenue: sales.reduce((a, x) => a + Number(x.total), 0),
-        subtotal: sales.reduce((a, x) => a + Number(x.subtotal), 0),
-        tax: sales.reduce((a, x) => a + Number(x.tax), 0),
-        cogs,
+      // lib/pnl is the one calculation — Analytics and the dashboard tile use
+      // it too, and the web runs the identical copy.
+      setData(computePnl({
+        sales: sales.map((sl) => ({ subtotal: sl.subtotal, tax: sl.tax, total: sl.total, items: itemsBySale.get(sl.id) ?? [] })),
+        returns: returns.map((r) => ({ total_refund: r.total_refund, items: itemsByReturn.get(r.id) ?? [] })),
+        purchaseItems: pi as any[],
         expenses: exps.reduce((a, x) => a + Number(x.amount), 0),
+        expensesByCategory: Array.from(byCat.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total),
         payroll: extras.payroll ?? 0,
         depreciation: extras.depreciation ?? 0,
         assetGain: extras.asset_gain ?? 0,
-        expByCat: Array.from(byCat.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total),
-      });
+        serviceIds: new Set(allProducts.filter((p) => p.is_service).map((p) => p.id)),
+      }));
     })();
   }, [shopId, fromISO, toISO, fromDate, toDate]);
 
   if (!data) return <div className="p-8 text-center text-muted-foreground">Loading…</div>;
 
-  const grossProfit = data.subtotal - data.cogs;
-  const margin = data.subtotal > 0 ? (grossProfit / data.subtotal) * 100 : 0;
-  const netProfit = grossProfit - data.expenses - data.payroll - data.depreciation + data.assetGain;
-
-  const rows = [
-    { label: "Revenue (incl. tax)", value: data.revenue },
-    { label: "Tax collected", value: data.tax },
-    { label: "Net sales (subtotal)", value: data.subtotal },
-    { label: "Cost of goods sold (COGS)", value: -data.cogs },
-    { label: "Gross profit", value: grossProfit, strong: true },
-    ...data.expByCat.map((c) => ({ label: `Expense — ${c.name}`, value: -c.total })),
-    { label: "Total expenses", value: -data.expenses },
-    ...(data.payroll ? [{ label: "Salaries & wages", value: -data.payroll }] : []),
-    ...(data.depreciation ? [{ label: "Depreciation of assets", value: -data.depreciation }] : []),
-    ...(data.assetGain ? [{ label: data.assetGain > 0 ? "Gain on assets sold" : "Loss on assets sold / written off", value: data.assetGain }] : []),
-    { label: "Net profit", value: netProfit, strong: true },
-  ];
+  const netProfit = data.netProfit;
+  const rows = pnlStatement(data);
 
   const columns: CsvColumn<any>[] = [
     { header: "Line", value: (r) => r.label },
@@ -552,9 +531,9 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KPI label="Revenue" value={formatMoney(data.revenue, cur)} />
-        <KPI label="Gross profit" value={formatMoney(grossProfit, cur)} sub={`${margin.toFixed(1)}% margin`} />
-        <KPI label="Expenses" value={formatMoney(data.expenses, cur)} />
+        <KPI label="Net sales" value={formatMoney(data.netSales, cur)} sub={`${formatMoney(data.billed, cur)} billed`} />
+        <KPI label="Gross profit" value={formatMoney(data.grossProfit, cur)} sub={`${data.margin.toFixed(1)}% margin`} />
+        <KPI label="Expenses & salaries" value={formatMoney(data.overheads, cur)} />
         <KPI label="Net profit" value={formatMoney(netProfit, cur)} sub={netProfit >= 0 ? "Profitable" : "Loss"} />
       </div>
       <Card className="shadow-card p-4">
@@ -573,6 +552,7 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
           </Table>
         </div>
       </Card>
+      <ProfitExplainer pnl={data} format={(n) => formatMoney(n, cur)} />
     </div>
   );
 }

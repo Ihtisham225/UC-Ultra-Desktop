@@ -50,6 +50,9 @@ export const SYNC_TABLES = [
   // numbered by the server when it lands (and handed straight back).
   'payment_receipts',
   'sale_returns',
+  // What came back on each return. Pull-only: the P&L takes returned goods'
+  // cost off COGS (lib/pnl) and must do it offline too.
+  'sale_return_items',
   // Alternate sale units (oil sold by the bottle). Pull-only — edited on the
   // Products page through an online action, but the till needs them offline.
   'product_units',

@@ -12,6 +12,8 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format, subDays, startOfDay, eachDayOfInterval } from "date-fns";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { computePnl } from "@/lib/pnl";
+import { ProfitExplainer } from "@/components/ProfitExplainer";
 
 type Range = 7 | 30 | 90;
 
@@ -34,6 +36,9 @@ export default function Analytics() {
   /** Weighted average cost per product_id or variant_id, derived from all purchase_items. */
   const [avgCost, setAvgCost] = useState<Map<string, number>>(new Map());
   const [customerCount, setCustomerCount] = useState(0);
+  const [pnlExtra, setPnlExtra] = useState<{ returns: any[]; purchaseItems: any[]; serviceIds: Set<string> }>({
+    returns: [], purchaseItems: [], serviceIds: new Set(),
+  });
 
   useEffect(() => { document.title = "UCU"; }, []);
 
@@ -44,14 +49,31 @@ export default function Analytics() {
       const since = startOfDay(subDays(new Date(), range)).toISOString();
       const shopId = currentShop.id;
       // Read from the local sync store — offline-capable, all these tables sync.
-      const [allSales, allSaleItems, allProducts, allExpenses, allCustomers, allPurchaseItems] = await Promise.all([
+      const [allSales, allSaleItems, allProducts, allExpenses, allCustomers, allPurchaseItems, allReturns, allReturnItems] = await Promise.all([
         getAll<any>("sales", shopId),
         getAll<any>("sale_items", shopId),
         getAll<any>("products", shopId),
         perms.canManageExpenses ? getAll<any>("expenses", shopId) : Promise.resolve([] as any[]),
         getAll<any>("customers", shopId),
         getAll<any>("purchase_items", shopId),
+        getAll<any>("sale_returns", shopId),
+        getAll<any>("sale_return_items", shopId),
       ]);
+      // Returns in the range take their refund off sales and their goods' cost
+      // off COGS (lib/pnl).
+      const itemsByReturn = new Map<string, any[]>();
+      for (const it of allReturnItems) {
+        const arr = itemsByReturn.get(it.return_id) ?? [];
+        arr.push(it);
+        itemsByReturn.set(it.return_id, arr);
+      }
+      setPnlExtra({
+        returns: allReturns
+          .filter((r) => r.created_at >= since)
+          .map((r) => ({ total_refund: r.total_refund, items: itemsByReturn.get(r.id) ?? [] })),
+        purchaseItems: allPurchaseItems,
+        serviceIds: new Set(allProducts.filter((p) => p.is_service).map((p) => p.id)),
+      });
       const itemsBySale = new Map<string, any[]>();
       for (const it of allSaleItems) {
         const arr = itemsBySale.get(it.sale_id) ?? [];
@@ -109,27 +131,32 @@ export default function Analytics() {
 
   const cur = currentShop?.currency ?? "USD";
 
+  // lib/pnl is the one calculation — the Profit & Loss report and the
+  // dashboard tile use it too, and so does the web. (This page used to take
+  // expenses straight off revenue, forgetting what the goods cost.)
+  const pnl = useMemo(() => computePnl({
+    sales: sales.map((s) => ({ subtotal: s.subtotal, tax: s.tax, total: s.total, items: s.sale_items ?? [] })),
+    returns: pnlExtra.returns,
+    purchaseItems: pnlExtra.purchaseItems,
+    expenses: expenses.reduce((a, e) => a + Number(e.amount), 0),
+    payroll: payroll.reduce((a, p) => a + Number(p.amount), 0),
+    depreciation: assetEffects.depreciation,
+    assetGain: assetEffects.disposal_gain,
+    serviceIds: pnlExtra.serviceIds,
+  }), [sales, expenses, payroll, assetEffects, pnlExtra]);
+
   const stats = useMemo(() => {
-    const revenue = sales.reduce((a, s) => a + Number(s.total), 0);
-    const subtotal = sales.reduce((a, s) => a + Number(s.subtotal), 0);
-    // COGS = sum over sold items of qty × weighted-avg purchase cost for that variant/product.
-    const cogs = items.reduce((a, it) => {
-      const key = it.variant_id ?? it.product_id;
-      const unit = key ? avgCost.get(key) ?? 0 : 0;
-      return a + Number(it.quantity) * unit;
-    }, 0);
-    const profit = subtotal - cogs;
-    const margin = subtotal > 0 ? (profit / subtotal) * 100 : 0;
     const txnCount = sales.length;
-    const avgTicket = txnCount > 0 ? revenue / txnCount : 0;
-    const totalExpenses = expenses.reduce((a, e) => a + Number(e.amount), 0);
-    const totalPayroll = payroll.reduce((a, p) => a + Number(p.amount), 0);
-    // The slice of fixed assets used up in the range is a cost too; selling one
-    // above or below its book value is a one-off gain or loss.
-    const depreciation = assetEffects.depreciation;
-    const netProfit = revenue - totalExpenses - totalPayroll - depreciation + assetEffects.disposal_gain;
-    return { revenue, subtotal, profit, margin, txnCount, avgTicket, totalExpenses, totalPayroll, depreciation, netProfit, cogs };
-  }, [sales, items, expenses, payroll, avgCost]);
+    return {
+      revenue: pnl.netSales,
+      profit: pnl.grossProfit,
+      margin: pnl.margin,
+      txnCount,
+      avgTicket: txnCount > 0 ? pnl.billed / txnCount : 0,
+      netProfit: pnl.netProfit,
+      overheads: pnl.overheads,
+    };
+  }, [sales, pnl]);
 
   const dailySeries = useMemo(() => {
     const days = eachDayOfInterval({ start: subDays(new Date(), range - 1), end: new Date() });
@@ -224,11 +251,13 @@ export default function Analytics() {
       </header>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KPI icon={DollarSign} label={t("analytics.revenue")} value={formatMoney(stats.revenue, cur)} tone="primary" />
+        <KPI icon={DollarSign} label={t("analytics.netSales", { defaultValue: "Net sales" })} value={formatMoney(stats.revenue, cur)} sub={`${formatMoney(pnl.billed, cur)} billed`} tone="primary" />
         <KPI icon={TrendingUp} label={t("analytics.grossProfit")} value={formatMoney(stats.profit, cur)} sub={t("analytics.margin", { value: stats.margin.toFixed(1) })} tone="accent" />
         <KPI icon={ShoppingCart} label={t("analytics.transactions")} value={String(stats.txnCount)} sub={t("analytics.avg", { value: formatMoney(stats.avgTicket, cur) })} tone="default" />
-        <KPI icon={Users} label={t("analytics.netProfit")} value={formatMoney(stats.netProfit, cur)} sub={t("analytics.expBrief", { value: formatMoney(stats.totalExpenses + stats.totalPayroll + stats.depreciation, cur) })} tone={stats.netProfit >= 0 ? "primary" : "warning"} />
+        <KPI icon={Users} label={t("analytics.netProfit")} value={formatMoney(stats.netProfit, cur)} sub={`after ${formatMoney(stats.overheads, cur)} expenses & salaries`} tone={stats.netProfit >= 0 ? "primary" : "warning"} />
       </div>
+
+      <ProfitExplainer pnl={pnl} format={(n) => formatMoney(n, cur)} />
 
       <Tabs defaultValue="trends" className="space-y-4">
         <TabsList className="flex-wrap h-auto">
