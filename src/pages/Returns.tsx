@@ -11,7 +11,9 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
 import { SCROLL_BATCH } from "@/hooks/usePagination";
 import { Undo2, Eye, Trash2, Truck, Plus, Printer } from "lucide-react";
-import { NewReturnDialog, type ReturnProductOption, type NewReturnInput, type ReturnBillOption } from "@/components/NewReturnDialog";
+import { NewReturnDialog, type ReturnProductOption, type NewReturnInput, type NewSupplierReturnInput, type ReturnBillOption } from "@/components/NewReturnDialog";
+import { PartySelect } from "@/components/PartySelect";
+import { averageCosts } from "@/lib/pnl";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
 import { ReturnReceiptDialog } from "@/components/ReturnReceiptDialog";
@@ -153,8 +155,15 @@ export default function Returns() {
     });
     if (!ok) return;
     try {
-      const res = await rpc<{ ok: boolean; error?: string }>("deleteSupplierReturnAction", id);
+      const res = await rpc<{ ok: boolean; error?: string; rows?: { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] } }>("deleteSupplierReturnAction", id);
       if (!res.ok) return toast.error(res.error ?? t("common.error"));
+      // A ledger credit is undone with opposite entries — apply them here.
+      if (res.rows) {
+        await bulkUpsertLocal("debts", res.rows.debts);
+        await bulkUpsertLocal("debt_payments", res.rows.debt_payments);
+        notifyChange("debts");
+        notifyChange("debt_payments");
+      }
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : t("common.error"));
     }
@@ -169,16 +178,24 @@ export default function Returns() {
   const [creating, setCreating] = useState(false);
   const [reprint, setReprint] = useState<ReturnSlip | null>(null);
   const { data: catalogue } = useProductsWithVariants<{ id: string; name: string; price: number; unit: string | null; is_service?: boolean }>(currentShop?.id);
+  // Average landed cost from the local purchases — the default price when goods
+  // go back to a supplier (lib/pnl, the same basis as the P&L).
+  const { data: localPurchaseItems } = useLocalStore<any>("purchase_items", currentShop?.id);
   const returnables = useMemo<ReturnProductOption[]>(() => {
+    const avg = averageCosts(localPurchaseItems);
+    const costOf = (k: string) => {
+      const c = avg.get(k);
+      return c === undefined ? null : Math.round(c * 100) / 100;
+    };
     const out: ReturnProductOption[] = [];
     for (const p of catalogue) {
       if (p.is_service) continue;
       const vs = (p.product_variants ?? []).filter((v) => v.is_active !== false);
-      if (vs.length === 0) out.push({ product_id: p.id, variant_id: null, name: p.name, price: Number(p.price) || 0, unit: p.unit ?? null });
-      else for (const v of vs) out.push({ product_id: p.id, variant_id: v.id, name: `${p.name} — ${v.name}`, price: v.price_override == null ? Number(p.price) || 0 : Number(v.price_override), unit: p.unit ?? null });
+      if (vs.length === 0) out.push({ product_id: p.id, variant_id: null, name: p.name, price: Number(p.price) || 0, cost: costOf(p.id), unit: p.unit ?? null });
+      else for (const v of vs) out.push({ product_id: p.id, variant_id: v.id, name: `${p.name} — ${v.name}`, price: v.price_override == null ? Number(p.price) || 0 : Number(v.price_override), cost: costOf(v.id), unit: p.unit ?? null });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
-  }, [catalogue]);
+  }, [catalogue, localPurchaseItems]);
   // The optional Bill field searches the terminal's own copy of the bills, so
   // it works offline like the product list does.
   const { data: localSales } = useLocalStore<{ id: string; receipt_number: string | null; created_at: string; total: number | string; customer_id: string | null }>("sales", currentShop?.id);
@@ -227,6 +244,24 @@ export default function Returns() {
       return { ok: false, error: e instanceof Error ? e.message : "Failed" };
     }
   };
+  /** Goods going back to a supplier — server-side, like a customer return. */
+  const submitSupplierReturn = async (input: NewSupplierReturnInput) => {
+    try {
+      await syncNow().catch(() => {});
+      const res = await rpc<{ ok: boolean; error?: string; returnId?: string; totalRefund?: number; rows?: { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] } }>("createStandaloneSupplierReturnAction", input);
+      if (res.ok && res.rows) {
+        // The supplier's khata moves on the server — apply it here at once.
+        await bulkUpsertLocal("debts", res.rows.debts);
+        await bulkUpsertLocal("debt_payments", res.rows.debt_payments);
+        notifyChange("debts");
+        notifyChange("debt_payments");
+      }
+      if (res.ok) void syncNow().catch(() => {});
+      return res;
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Failed" };
+    }
+  };
   const openReprint = async (id: string) => {
     const slip = await rpc<ReturnSlip | null>("getReturnReceiptAction", id).catch(() => null);
     if (!slip) return toast.error(t("common.error"));
@@ -261,6 +296,9 @@ export default function Returns() {
         submit={submitReturn}
         searchBills={searchBills}
         onSaved={(id) => { void loadCustomer(); void openReprint(id); }}
+        renderSupplier={(onChange) => <ReturnSupplierField onChange={onChange} parties={localParties} />}
+        submitSupplier={submitSupplierReturn}
+        onSupplierSaved={() => { void loadSupplier(); }}
       />
       <ReturnReceiptDialog slip={reprint} onClose={() => setReprint(null)} />
 
@@ -464,6 +502,30 @@ export default function Returns() {
 }
 
 /** The terminal's customer picker, reporting just the id to the return form. */
+/** The suppliers this till knows (local store — works offline to pick). */
+function ReturnSupplierField({ onChange, parties }: {
+  onChange: (id: string | null) => void;
+  parties: { id: string; name: string; phone: string | null; is_supplier?: boolean; is_maker?: boolean; is_processor?: boolean }[];
+}) {
+  const [id, setId] = useState("");
+  const options = useMemo(
+    () => parties
+      .filter((p) => p.is_supplier || p.is_maker || p.is_processor)
+      .map((p) => ({ id: p.id, name: p.name, phone: p.phone }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [parties],
+  );
+  return (
+    <PartySelect
+      value={id}
+      onChange={(next) => { setId(next); onChange(next || null); }}
+      options={options}
+      placeholder="Choose the supplier…"
+      emptyLabel={null}
+    />
+  );
+}
+
 function ReturnCustomerField({ onChange }: { onChange: (id: string | null) => void }) {
   const [c, setC] = useState<CustomerLite | null>(null);
   return <CustomerPicker value={c} onChange={(next) => { setC(next); onChange(next?.id ?? null); }} />;
