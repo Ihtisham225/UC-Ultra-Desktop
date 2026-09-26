@@ -45,3 +45,31 @@ export function staleIds(
   }
   return out;
 }
+
+/**
+ * Ids of cached CHILD rows whose parent is gone — a purchase's lines once the
+ * purchase was deleted on the server, a return's lines once the return was.
+ * The server only names parent ids, so the children follow them here. Lines
+ * left behind are not harmless: the till averages landed cost from its
+ * purchase lines, so a deleted purchase kept moving every margin it touched.
+ *
+ * Same rules as `staleIds`: only this shop's rows, and never a row still
+ * queued (a line whose purchase was created offline and not yet pushed).
+ */
+export function orphanIds(
+  rows: (CachedRow & Record<string, unknown>)[],
+  fkField: string,
+  shopId: string,
+  liveParentIds: ReadonlySet<string>,
+  keepParentIds: ReadonlySet<string>,
+): string[] {
+  const out: string[] = [];
+  for (const row of rows) {
+    const id = typeof row.id === "string" ? row.id : null;
+    if (!id || row.shop_id !== shopId) continue;
+    const parent = typeof row[fkField] === "string" ? (row[fkField] as string) : null;
+    if (!parent || liveParentIds.has(parent) || keepParentIds.has(parent)) continue;
+    out.push(id);
+  }
+  return out;
+}

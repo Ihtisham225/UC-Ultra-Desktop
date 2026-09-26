@@ -9,9 +9,11 @@
  */
 
 import { syncPush, syncPull, getToken, type PushOp } from './apiClient'
+import { onServerWrite } from './serverWrites'
 import {
   purgeLocalChildren,
   pruneLocalRows,
+  pruneOrphanChildren,
   SYNC_TABLES,
   getAllQueued,
   removeFromQueue,
@@ -43,6 +45,20 @@ export async function pullAll() {
       await purgeLocalChildren(child, 'sale_id', changedSaleIds)
     }
   }
+  // The same for a purchase or a return edited on the server: its lines were
+  // replaced, and the new set arrives in this very pull (they follow the
+  // parent's clock). Without this an edited purchase showed its old lines AND
+  // its new ones, and the landed cost behind every margin counted both.
+  const idsOf = (table: string) =>
+    new Set((changes[table] ?? []).map((r) => String((r as { id?: unknown }).id ?? '')).filter(Boolean))
+  const changedPurchaseIds = idsOf('purchases')
+  const changedReturnIds = idsOf('sale_returns')
+  if (changedPurchaseIds.size > 0 && (changes['purchase_items'] ?? []).length > 0) {
+    await purgeLocalChildren('purchase_items', 'purchase_id', changedPurchaseIds)
+  }
+  if (changedReturnIds.size > 0 && (changes['sale_return_items'] ?? []).length > 0) {
+    await purgeLocalChildren('sale_return_items', 'return_id', changedReturnIds)
+  }
 
   for (const table of SYNC_TABLES) {
     const rows = changes[table] ?? []
@@ -72,6 +88,17 @@ export async function pullAll() {
       const keep = new Set(queued.filter((q) => q.table === table).map((q) => q.recordId))
       const removed = await pruneLocalRows(table, liveShopId, new Set(ids), keep)
       if (removed > 0) notifyChange(table)
+    }
+    // A deleted purchase or return takes its lines with it.
+    for (const [parent, child, fk] of [
+      ['purchases', 'purchase_items', 'purchase_id'],
+      ['sale_returns', 'sale_return_items', 'return_id'],
+    ] as const) {
+      const live = liveIds[parent]
+      if (!live) continue
+      const keep = new Set(queued.filter((q) => q.table === parent).map((q) => q.recordId))
+      const removed = await pruneOrphanChildren(child, fk, liveShopId, new Set(live), keep)
+      if (removed > 0) notifyChange(child)
     }
   }
 }
@@ -156,6 +183,25 @@ export async function syncNow(): Promise<void> {
   return startSync()
 }
 
+// ─── Sync right after a server write ────────────────────────────────────────
+
+let requested: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Pull as soon as possible after the server changed something. Calls within a
+ * moment of each other collapse into one sync (a save that runs three actions
+ * back to back pulls once), and it waits for a sync already in flight rather
+ * than being skipped by it — the in-flight one may have read the server before
+ * this write landed.
+ */
+export function requestSync(delayMs = 150): void {
+  if (requested) return
+  requested = setTimeout(() => {
+    requested = null
+    void syncNow().catch(() => {})
+  }, delayMs)
+}
+
 // ─── Background sync loop ───────────────────────────────────────────────────
 
 let intervalId: ReturnType<typeof setInterval> | null = null
@@ -168,13 +214,28 @@ export function startSyncLoop(getShopId: () => string | null, intervalMs = 30_00
     if (getShopId() && getToken()) syncAll().catch(() => {})
   }
 
+  // ⚠️ The background tick alone left a save made through the server (a
+  // purchase, a return, a cheque) invisible in the offline store for up to half
+  // a minute — longer behind a slow sync — while the web showed it at once.
+  const stopWrites = onServerWrite(() => {
+    if (getShopId() && getToken()) requestSync()
+  })
+  // Coming back to the window: someone may have changed things on the web or
+  // on another till in the meantime.
+  const onVisible = () => { if (document.visibilityState === 'visible') run() }
+
   window.addEventListener('online', run)
+  window.addEventListener('focus', run)
+  document.addEventListener('visibilitychange', onVisible)
   intervalId = setInterval(run, intervalMs)
   run()
 
   return () => {
     if (intervalId) clearInterval(intervalId)
     intervalId = null
+    stopWrites()
     window.removeEventListener('online', run)
+    window.removeEventListener('focus', run)
+    document.removeEventListener('visibilitychange', onVisible)
   }
 }
