@@ -15,13 +15,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins } from "lucide-react";
+import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins, PackageCheck } from "lucide-react";
 import { downloadCsv, CsvColumn } from "@/lib/csv";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { isHandicraft } from "@/lib/handicraft";
 import CraftReports from "@/components/CraftReports";
 import { groupLedgers } from "@/lib/ledger-groups";
 import { derivePaidAmount } from "@/lib/ledger";
+import { productMovement, movementTotals, type MovementRow } from "@/lib/product-movement";
+import { formatQty } from "@/lib/format";
 
 type Rng = { from: string; to: string };
 
@@ -73,6 +75,7 @@ export default function Reports() {
           <TabsTrigger value="sales"><ShoppingCart className="size-3.5 mr-1.5" />Sales</TabsTrigger>
           <TabsTrigger value="purchases"><PackageOpen className="size-3.5 mr-1.5" />Purchases</TabsTrigger>
           <TabsTrigger value="inventory"><Boxes className="size-3.5 mr-1.5" />Inventory</TabsTrigger>
+          <TabsTrigger value="sold-left"><PackageCheck className="size-3.5 mr-1.5" />Sold &amp; left</TabsTrigger>
           <TabsTrigger value="pnl"><TrendingUp className="size-3.5 mr-1.5" />Profit & Loss</TabsTrigger>
           <TabsTrigger value="expenses"><Wallet className="size-3.5 mr-1.5" />Expenses</TabsTrigger>
           <TabsTrigger value="customers"><Users className="size-3.5 mr-1.5" />Customers</TabsTrigger>
@@ -89,6 +92,7 @@ export default function Reports() {
           <TabsContent value="sales"><SalesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="purchases"><PurchasesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="inventory"><InventoryReport shopId={currentShop.id} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          <TabsContent value="sold-left"><SoldLeftReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="pnl"><PnlReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="expenses"><ExpensesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="customers"><CustomersReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
@@ -992,4 +996,162 @@ function LedgerReport({ shopId, range, formatMoney, cur }: ReportProps) {
       </Card>
     </div>
   );
+}
+
+/* ---------- Sold & left ---------- */
+
+type MovementFilter = "all" | "sold" | "idle";
+
+/**
+ * How many of each product sold in the period and how many are left now —
+ * lib/product-movement does the arithmetic (shared with the other app).
+ */
+function SoldLeftReport({ shopId, range, formatMoney, cur }: ReportProps) {
+  const { fromISO, toISO } = useRange(range);
+  const [rows, setRows] = useState<MovementRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [show, setShow] = useState<MovementFilter>("all");
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      setLoading(true);
+      const input = await loadMovement(shopId, fromISO, toISO).catch(() => null);
+      if (!live) return;
+      setRows(input ? productMovement(input) : []);
+      setLoading(false);
+    })();
+    return () => { live = false; };
+  }, [shopId, fromISO, toISO]);
+
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (show === "sold" && !(r.net_sold > 0 || r.returned > 0)) return false;
+      // Not selling: on the shelf, and nothing sold OR came back this period —
+      // a return-only line would otherwise count as idle and drag the totals negative.
+      if (show === "idle" && (r.is_service || r.sold > 0 || r.returned > 0 || (r.left ?? 0) <= 0)) return false;
+      return !needle || r.name.toLowerCase().includes(needle) || (r.sku ?? "").toLowerCase().includes(needle);
+    });
+  }, [rows, search, show]);
+  const totals = useMemo(() => movementTotals(visible), [visible]);
+
+  const qty = (n: number, unit?: string | null) => `${formatQty(n)}${unit ? ` ${unit}` : ""}`;
+  const columns: CsvColumn<MovementRow>[] = [
+    { header: "Product", value: (r) => r.name },
+    { header: "SKU", value: (r) => r.sku ?? "" },
+    { header: "Unit", value: (r) => r.unit ?? "" },
+    { header: "Bought", value: (r) => r.bought },
+    { header: "Sold", value: (r) => r.sold },
+    { header: "Returned", value: (r) => r.returned },
+    { header: "Net sold", value: (r) => r.net_sold },
+    { header: "Sales value", value: (r) => r.sales_value.toFixed(2) },
+    { header: "Left now", value: (r) => (r.left === null ? "" : r.left) },
+  ];
+
+  if (loading) return <div className="p-8 text-center text-muted-foreground">Loading…</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KPI label="Units sold" value={formatQty(totals.units_sold)} sub={totals.units_returned > 0 ? `after ${formatQty(totals.units_returned)} returned` : undefined} />
+        <KPI label="Sales value" value={formatMoney(totals.sales_value, cur)} sub="before bill discounts" />
+        <KPI label="Products sold" value={String(totals.products_sold)} sub={`${totals.not_moving} in stock, not selling`} />
+        <KPI label="Units left" value={formatQty(totals.units_left)} sub="in stock now" />
+      </div>
+      <Card className="shadow-card p-4">
+        <ReportToolbar title="Sold & left" rows={visible} columns={columns} filename="sold-and-left" />
+        <div className="mt-3 flex flex-wrap items-center gap-2 print:hidden">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search product or SKU…"
+            className="h-9 w-full sm:w-72"
+          />
+          <div className="flex gap-1 p-1 bg-muted rounded-lg">
+            {([["all", "All products"], ["sold", "Sold in period"], ["idle", "Not selling"]] as const).map(([k, label]) => (
+              <Button key={k} size="sm" variant={show === k ? "default" : "ghost"} onClick={() => setShow(k)} className="h-7 px-2 text-xs">{label}</Button>
+            ))}
+          </div>
+        </div>
+        {visible.length === 0 ? <Empty msg="No products match." /> : (
+          <div className="mt-3 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead className="text-right">Bought</TableHead>
+                  <TableHead className="text-right">Sold</TableHead>
+                  <TableHead className="text-right">Returned</TableHead>
+                  <TableHead className="text-right">Net sold</TableHead>
+                  <TableHead className="text-right">Sales value</TableHead>
+                  <TableHead className="text-right">Left now</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visible.map((r) => {
+                  const out = r.left !== null && r.left <= 0;
+                  return (
+                    <TableRow key={r.key}>
+                      <TableCell className="font-medium">
+                        {r.name}
+                        {r.sku && <span className="ml-2 font-mono text-xs text-muted-foreground">{r.sku}</span>}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{r.bought ? qty(r.bought, r.unit) : "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums">{r.sold ? qty(r.sold, r.unit) : "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums">{r.returned ? qty(r.returned, r.unit) : "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums font-semibold">{r.net_sold ? qty(r.net_sold, r.unit) : "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums">{r.sales_value ? formatMoney(r.sales_value, cur) : "—"}</TableCell>
+                      <TableCell className={`text-right tabular-nums ${out ? "text-destructive font-semibold" : r.low ? "text-warning font-semibold" : ""}`}>
+                        {r.left === null ? "—" : qty(r.left, r.unit)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+        <p className="mt-3 text-xs text-muted-foreground">
+          Sold, returned and bought are for the dates above; <span className="font-medium">left now</span> is today&apos;s stock.
+          Quantities are in each product&apos;s own unit.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * The terminal reads the period from its offline store, so the report works
+ * with no connection. Lines are matched to their bill / return / purchase by
+ * that parent's date, exactly as the server filters them.
+ */
+async function loadMovement(shopId: string, fromISO: string, toISO: string) {
+  const from = new Date(fromISO).getTime();
+  const to = new Date(toISO).getTime();
+  const inRange = (r: { created_at?: string }) => {
+    const t = new Date(String(r.created_at ?? "")).getTime();
+    return t >= from && t <= to;
+  };
+  const [products, variants, sales, saleItems, returns, returnItems, purchases, purchaseItems] = await Promise.all([
+    getAll<any>("products", shopId),
+    getAll<any>("product_variants", shopId),
+    getAll<any>("sales", shopId),
+    getAll<any>("sale_items", shopId),
+    getAll<any>("sale_returns", shopId),
+    getAll<any>("sale_return_items", shopId),
+    getAll<any>("purchases", shopId),
+    getAll<any>("purchase_items", shopId),
+  ]);
+  const saleIds = new Set(sales.filter(inRange).map((s) => s.id));
+  const returnIds = new Set(returns.filter(inRange).map((r) => r.id));
+  const purchaseIds = new Set(purchases.filter(inRange).map((p) => p.id));
+  return {
+    products,
+    variants: variants.filter((v) => v.is_active !== false),
+    sold: saleItems.filter((l) => saleIds.has(l.sale_id)),
+    returned: returnItems.filter((l) => returnIds.has(l.return_id)),
+    bought: purchaseItems.filter((l) => purchaseIds.has(l.purchase_id)),
+  };
 }
