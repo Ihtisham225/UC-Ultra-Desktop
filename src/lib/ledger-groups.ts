@@ -67,6 +67,29 @@ export function ledgerKey(d: Pick<GroupableDebt, "direction" | "party_id" | "per
   return `${d.direction}|${who}`;
 }
 
+/** The person half of a ledger key — the same person in either direction. */
+export function ledgerWho(key: string): string {
+  return key.slice(key.indexOf("|") + 1);
+}
+
+/**
+ * The same person's account facing the OTHER way, open or settled.
+ *
+ * ⚠️ The two directions are separate accounts, so a supplier who owed the shop
+ * and was then paid off by goods (a purchase settles what they owe first — see
+ * purchase-credit.ts) ends with a SETTLED "to receive" account and a new open
+ * "to pay" one. Opening the new one showed none of the old entries, and the
+ * shop thought the purchase had wiped the payment history (Tech Town, AL
+ * BADAR). The history screen shows these alongside, marked with their side.
+ */
+export function counterpartGroups<T extends GroupableDebt>(
+  groups: LedgerGroup<T>[],
+  of: Pick<LedgerGroup<T>, "key" | "direction">,
+): LedgerGroup<T>[] {
+  const who = ledgerWho(of.key);
+  return groups.filter((g) => g.key !== of.key && g.direction !== of.direction && ledgerWho(g.key) === who);
+}
+
 const byOldest = <T extends { created_at: string; id: string }>(a: T, b: T) =>
   a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id);
 

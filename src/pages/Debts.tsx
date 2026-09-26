@@ -5,7 +5,7 @@ import { syncNow } from "@/lib/syncEngine";
 import { rpc } from "@/lib/apiClient";
 import { v4 as uuid } from "uuid";
 import { upsertLocal, deleteLocal, notifyChange, getById, bulkUpsertLocal } from "@/lib/localDb";
-import { allocateSettlement, groupLedgers, increaseTarget, oppositeDirection, splitOverpayment, type LedgerGroup } from "@/lib/ledger-groups";
+import { allocateSettlement, counterpartGroups, groupLedgers, increaseTarget, oppositeDirection, splitOverpayment, type LedgerGroup } from "@/lib/ledger-groups";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -237,8 +237,16 @@ export default function Debts() {
   // the derived list, so recording a payment updates it without a refetch.
   const [payKey, setPayKey] = useState<string | null>(null);
   const selectedGroup = useMemo(() => groups.find((g) => g.key === payKey) ?? null, [groups, payKey]);
+  /** The same person's account facing the other way — its history belongs here too. */
+  const otherSides = useMemo(
+    () => (selectedGroup ? counterpartGroups(groups, selectedGroup) : []),
+    [groups, selectedGroup],
+  );
   const payments: DebtPayment[] = useMemo(() => {
-    const ids = new Set(selectedGroup?.debts.map((d) => d.id) ?? []);
+    // ⚠️ Display only: both sides' entries, so a supplier whose old "to receive"
+    // account a purchase settled still shows that history. Nothing that moves
+    // a balance reads this list.
+    const ids = new Set([...(selectedGroup ? [selectedGroup] : []), ...otherSides].flatMap((g) => g.debts.map((d) => d.id)));
     return allPayments
       .filter((p) => ids.has(p.debt_id))
       .sort(
@@ -246,7 +254,7 @@ export default function Debts() {
           String(a.payment_date ?? "").localeCompare(String(b.payment_date ?? "")) ||
           String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")),
       );
-  }, [allPayments, selectedGroup]);
+  }, [allPayments, selectedGroup, otherSides]);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [paymentForm, setPaymentForm] = useState({ ...emptyPayment });
   const [paymentSaving, setPaymentSaving] = useState(false);
@@ -1276,13 +1284,26 @@ export default function Debts() {
                 </div>
               )}
 
+              {otherSides.length > 0 && (
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+                  {otherSides.map((o) => (
+                    <div key={o.key}>
+                      {selectedGroup.person_name} also has a{" "}
+                      <span className="font-medium">{o.direction === "owed_to_me" ? "To receive" : "To pay"}</span> account
+                      {" "}({o.status === "settled" ? "settled" : `${formatMoney(o.remaining, o.currency ?? cur)} left`}).
+                      {" "}Its entries are listed below too, marked with their side, so the whole history with them is in one place.
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="rounded-md border overflow-auto max-h-[50vh]">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Type</TableHead>
-                      {selectedGroup.debts.length > 1 && <TableHead>Bill</TableHead>}
+                      {(selectedGroup.debts.length > 1 || otherSides.length > 0) && <TableHead>Bill</TableHead>}
                       <TableHead>Notes</TableHead>
                       <TableHead className="text-right">Discount</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
@@ -1296,7 +1317,7 @@ export default function Debts() {
                       </TableRow>
                     ) : payments.map((payment) => {
                       const isIncrease = payment.kind === "increase";
-                      const bill = selectedGroup.debts.find((d) => d.id === payment.debt_id);
+                      const bill = [selectedGroup, ...otherSides].flatMap((g) => g.debts).find((d) => d.id === payment.debt_id);
                       return (
                         <TableRow key={payment.id}>
                           <TableCell>{payment.payment_date}</TableCell>
@@ -1311,8 +1332,15 @@ export default function Debts() {
                               </Badge>
                             )}
                           </TableCell>
-                          {selectedGroup.debts.length > 1 && (
-                            <TableCell className="text-sm whitespace-nowrap">{bill ? billLabel(bill, billNo) : "—"}</TableCell>
+                          {(selectedGroup.debts.length > 1 || otherSides.length > 0) && (
+                            <TableCell className="text-sm whitespace-nowrap">
+                              {bill ? billLabel(bill, billNo) : "—"}
+                              {bill && bill.direction !== selectedGroup.direction && (
+                                <Badge variant="secondary" className="ml-2 text-[10px]">
+                                  {bill.direction === "owed_to_me" ? "To receive" : "To pay"}
+                                </Badge>
+                              )}
+                            </TableCell>
                           )}
                           <TableCell className="text-sm text-muted-foreground">{payment.notes ?? "—"}</TableCell>
                           <TableCell className="text-right tabular-nums text-warning">
