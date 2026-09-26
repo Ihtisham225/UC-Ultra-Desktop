@@ -9,7 +9,7 @@
  */
 
 import { openDB, type IDBPDatabase } from 'idb'
-import { staleIds } from './prune'
+import { orphanIds, staleIds } from './prune'
 
 export type SyncOp = 'upsert' | 'delete'
 
@@ -244,6 +244,24 @@ export async function pruneLocalRows(
   const store = tx.objectStore('records')
   const rows = (await store.index('byTableShop').getAll([table, shopId])) as Record<string, unknown>[]
   const doomed = staleIds(rows, shopId, liveIds, keepIds)
+  for (const id of doomed) await store.delete([table, id])
+  await tx.done
+  return doomed.length
+}
+
+/** Drop this shop's cached children whose parent the server no longer has. */
+export async function pruneOrphanChildren(
+  table: string,
+  fkField: string,
+  shopId: string,
+  liveParentIds: ReadonlySet<string>,
+  keepParentIds: ReadonlySet<string>,
+): Promise<number> {
+  const db = await getLocalDb()
+  const tx = db.transaction('records', 'readwrite')
+  const store = tx.objectStore('records')
+  const rows = (await store.index('byTableShop').getAll([table, shopId])) as Record<string, unknown>[]
+  const doomed = orphanIds(rows, fkField, shopId, liveParentIds, keepParentIds)
   for (const id of doomed) await store.delete([table, id])
   await tx.done
   return doomed.length

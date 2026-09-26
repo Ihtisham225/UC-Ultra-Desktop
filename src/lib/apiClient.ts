@@ -7,6 +7,8 @@
  * and /api/sync/push (see the Next app's src/app/api).
  */
 
+import { announceServerWrite } from "./serverWrites";
+
 export const API_BASE =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "") ||
   "https://ucultra.com";
@@ -235,6 +237,9 @@ export async function rpc<T = unknown>(action: string, ...args: unknown[]): Prom
     method: "POST",
     body: JSON.stringify({ action, args }),
   });
+  // The server changed something the offline store also holds (a purchase's
+  // khata row, the stock, an account) — pull it now, not on the next tick.
+  announceServerWrite(action);
   return result;
 }
 
