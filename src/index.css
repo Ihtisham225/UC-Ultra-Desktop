@@ -164,14 +164,51 @@ body.kb-open .overflow-y-auto {
   input, textarea, select { font-size: max(16px, 1rem); }
 }
 
-/* --- Print: only show #report-print-area when printing Reports --- */
+/* --- Print: only #report-print-area, compact, full page width --- */
 @media print {
-  body * { visibility: hidden !important; }
-  #report-print-area, #report-print-area * { visibility: visible !important; }
-  #report-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 16px; }
+  @page { size: A4; margin: 10mm; }
   .print\:hidden { display: none !important; }
   .print\:block { display: block !important; }
-  @page { margin: 12mm; }
+
+  /* ⚠️ Hiding the app with `visibility` kept its LAYOUT: the report printed at
+     the width of the content column (sidebar offset, max-width), cropping the
+     right-hand columns, and the invisible app still took up pages. Everything
+     that is neither the report nor one of its ancestors is removed outright,
+     and the ancestors lose every box that could narrow or clip it. */
+  body *:not(:has(#report-print-area)):not(#report-print-area):not(#report-print-area *) { display: none !important; }
+  body, body *:has(#report-print-area) {
+    display: block !important; position: static !important; transform: none !important;
+    width: auto !important; max-width: none !important; height: auto !important; min-height: 0 !important;
+    margin: 0 !important; padding: 0 !important; overflow: visible !important; background: #fff !important;
+  }
+  #report-print-area { width: 100% !important; padding: 0 !important; color: #000; font-size: 9pt; }
+  #report-print-area > * + * { margin-top: 6px !important; }
+
+  /* Tables sit in scroll boxes on screen; on paper a scroll box just clips. */
+  #report-print-area .overflow-auto, #report-print-area .overflow-x-auto { overflow: visible !important; }
+  #report-print-area table { width: 100% !important; font-size: 8.5pt !important; border-collapse: collapse; }
+  #report-print-area th, #report-print-area td {
+    padding: 2px 5px !important; height: auto !important; line-height: 1.25 !important; vertical-align: top;
+  }
+  #report-print-area thead { display: table-header-group; } /* header on every page */
+  #report-print-area tr { break-inside: avoid; }
+
+  /* Cards and KPI tiles: same content, a fraction of the height. */
+  #report-print-area .shadow-card, #report-print-area [class*="rounded-lg"], #report-print-area [class*="rounded-xl"] {
+    box-shadow: none !important; padding: 5px 7px !important;
+  }
+  #report-print-area .grid { gap: 5px !important; }
+  /* A4 is narrower than the md breakpoint, so the tiles would drop to two a row. */
+  #report-print-area .md\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  #report-print-area .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  #report-print-area .space-y-4 > * + *, #report-print-area .space-y-3 > * + * { margin-top: 6px !important; }
+  #report-print-area .mt-3 { margin-top: 4px !important; }
+  #report-print-area .text-3xl, #report-print-area .text-2xl { font-size: 13pt !important; line-height: 1.2 !important; }
+  #report-print-area .text-xl, #report-print-area .text-lg { font-size: 10.5pt !important; line-height: 1.2 !important; }
+  #report-print-area .text-sm { font-size: 8.5pt !important; }
+  #report-print-area .text-xs, #report-print-area [class*="text-[11px]"], #report-print-area [class*="text-[10px]"] { font-size: 7.5pt !important; }
+  #report-print-area h3 { font-size: 10pt !important; }
+  #report-print-area .tabular-nums { white-space: nowrap; }
 }
 
 /* A table row reached with the arrow keys (lib/list-keys). */
