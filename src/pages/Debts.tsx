@@ -991,6 +991,15 @@ export default function Debts() {
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => setDetailsKey(g.key)} title="Details">
                             <Eye className="size-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            title="Print statement"
+                            onClick={() => void printStatements(g.debts.map((d) => d.id))}
+                          >
+                            <Printer className="size-4" />
+                          </Button>
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => openPaymentsDialog(g)} title="Payments">
                             <Wallet className="size-4" />
                           </Button>
@@ -1315,7 +1324,7 @@ export default function Debts() {
                       const spread = payment.debt_ids.length;
                       return (
                         <TableRow key={payment.id}>
-                          <TableCell>{payment.payment_date}</TableCell>
+                          <TableCell className="whitespace-nowrap">{String(payment.payment_date ?? "").slice(0, 10)}</TableCell>
                           <TableCell>
                             {isIncrease ? (
                               <Badge variant="outline" className="text-destructive border-destructive/40">
