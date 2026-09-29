@@ -20,6 +20,8 @@ export interface StatementPayment {
   kind: string;
   notes: string | null;
   account_name?: string | null;
+  /** Shared by the parts of one payment over several bills — folds them into one line. */
+  receipt_id?: string | null;
 }
 
 /** One khata row of the person's account — usually one bill. */
