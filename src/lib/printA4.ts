@@ -1,8 +1,8 @@
 /**
- * A4 printing for reports, ledger statements and count sheets.
+ * Reports, ledger statements and count sheets as A4 PDFs.
  *
- * ⚠️ In the desktop app these go through the main process with the paper
- * fixed to A4. The renderer's own `window.print()` lays the page out on the
+ * ⚠️ In the desktop app these are rendered to an A4 PDF by the main process
+ * and opened in the default PDF viewer, where the shop prints or saves it. The renderer's own `window.print()` lays the page out on the
  * chosen printer's default paper — for a shop with an 80mm receipt printer
  * that meant A4 reports laid out 80mm wide, two columns and the names cut off
  * (SHAMSHER CORPORATION), while "Save as PDF" came out right.
@@ -11,23 +11,28 @@
  */
 import { stripAutoPrint } from "@/lib/printThermal";
 
-/** Print the current page — the Reports screen, whose print CSS shows only the report. */
-export async function printCurrentPageA4(): Promise<void> {
+/**
+ * The current page (the Reports screen, whose print CSS shows only the report)
+ * as an A4 PDF, opened in the system's PDF viewer. Throws when it can't, so the
+ * caller can say so rather than doing nothing.
+ */
+export async function printCurrentPageA4(name = "report"): Promise<void> {
   const api = window.electronAPI;
   if (api?.printCurrentPageA4) {
-    await api.printCurrentPageA4();
+    const res = await api.printCurrentPageA4(name);
+    if (!res?.success) throw new Error(res?.reason || "Could not open the PDF.");
     return;
   }
   window.print();
 }
 
-/** Print a complete A4 document (its own <html>, which may carry an auto-print hook). */
-export async function printDocumentA4(html: string): Promise<void> {
+/** A complete A4 document (its own <html>) as a PDF, opened in the system's PDF viewer. */
+export async function printDocumentA4(html: string, name = "document"): Promise<void> {
   const api = window.electronAPI;
   if (api?.printDocumentA4) {
-    // The builders embed an onload window.print(); the main process prints
-    // itself, so that hook would fire a second job.
-    await api.printDocumentA4(stripAutoPrint(html));
+    // The builders embed an onload window.print(); the PDF path must not run it.
+    const res = await api.printDocumentA4(stripAutoPrint(html), name);
+    if (!res?.success) throw new Error(res?.reason || "Could not open the PDF.");
     return;
   }
   const iframe = document.createElement("iframe");

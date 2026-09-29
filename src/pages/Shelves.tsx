@@ -213,7 +213,7 @@ export default function Shelves() {
       })),
     });
     // A4 fixed, whatever the printer's default paper (lib/printA4).
-    void printDocumentA4(html).catch(() => {});
+    void printDocumentA4(html, `count-sheet-${title}`).catch((e) => toast.error(e instanceof Error ? e.message : "Could not open the PDF."));
   };
 
   const allPicked = items.length > 0 && items.every((i) => picked.has(key(i)));

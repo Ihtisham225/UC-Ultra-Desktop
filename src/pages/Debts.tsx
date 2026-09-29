@@ -821,7 +821,7 @@ export default function Debts() {
 
     // A4 fixed, whatever the printer's default paper (lib/printA4).
     try {
-      await printDocumentA4(html);
+      await printDocumentA4(html, ledgers.length === 1 ? `statement-${ledgers[0].person_name}` : "ledger-statements");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not open the print view.");
     }

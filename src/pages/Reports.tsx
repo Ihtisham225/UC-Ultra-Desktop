@@ -1,6 +1,7 @@
 // Detailed reports hub: Sales / Purchases / Inventory / P&L / Expenses / Customers & Debts / Tax.
 // Each report has a date range, KPI cards, a sortable table, CSV export, and print-to-PDF.
 import { printCurrentPageA4 } from "@/lib/printA4";
+import { toast } from "sonner";
 import { computePnl, pnlStatement, type Pnl } from "@/lib/pnl";
 import { ProfitExplainer } from "@/components/ProfitExplainer";
 import { useEffect, useMemo, useState } from "react";
@@ -126,7 +127,7 @@ function ReportToolbar<T>({ title, rows, columns, filename }: { title: string; r
       <h3 className="font-semibold">{title}</h3>
       <div className="flex gap-2 print:hidden">
         <Button size="sm" variant="outline" onClick={() => downloadCsv(filename, rows, columns)} disabled={rows.length === 0}><Download className="size-3.5 mr-1.5" />CSV</Button>
-        <Button size="sm" variant="outline" onClick={() => void printCurrentPageA4()}><Printer className="size-3.5 mr-1.5" />PDF / Print</Button>
+        <Button size="sm" variant="outline" onClick={() => void printCurrentPageA4(filename).catch((e) => toast.error(e instanceof Error ? e.message : "Could not open the PDF."))}><Printer className="size-3.5 mr-1.5" />PDF / Print</Button>
       </div>
     </div>
   );
@@ -1043,6 +1044,7 @@ function SoldLeftReport({ shopId, range, formatMoney, cur }: ReportProps) {
     { header: "Product", value: (r) => r.name },
     { header: "SKU", value: (r) => r.sku ?? "" },
     { header: "Unit", value: (r) => r.unit ?? "" },
+    { header: "Opening", value: (r) => (r.opening === null ? "" : r.opening) },
     { header: "Bought", value: (r) => r.bought },
     { header: "Sold", value: (r) => r.sold },
     { header: "Returned", value: (r) => r.returned },
@@ -1082,6 +1084,7 @@ function SoldLeftReport({ shopId, range, formatMoney, cur }: ReportProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
+                  <TableHead className="text-right">Opening</TableHead>
                   <TableHead className="text-right">Bought</TableHead>
                   <TableHead className="text-right">Sold</TableHead>
                   <TableHead className="text-right">Returned</TableHead>
@@ -1099,6 +1102,7 @@ function SoldLeftReport({ shopId, range, formatMoney, cur }: ReportProps) {
                         {r.name}
                         {r.sku && <span className="ml-2 font-mono text-xs text-muted-foreground">{r.sku}</span>}
                       </TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">{r.opening === null ? "—" : qty(r.opening, r.unit)}</TableCell>
                       <TableCell className="text-right tabular-nums">{r.bought ? qty(r.bought, r.unit) : "—"}</TableCell>
                       <TableCell className="text-right tabular-nums">{r.sold ? qty(r.sold, r.unit) : "—"}</TableCell>
                       <TableCell className="text-right tabular-nums">{r.returned ? qty(r.returned, r.unit) : "—"}</TableCell>
@@ -1115,7 +1119,9 @@ function SoldLeftReport({ shopId, range, formatMoney, cur }: ReportProps) {
           </div>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          Sold, returned and bought are for the dates above; <span className="font-medium">left now</span> is today&apos;s stock.
+          <span className="font-medium">Opening + Bought − Net sold = Left now.</span> Bought, sold and returned are for the dates above;
+          left now is today&apos;s stock, and opening is what was on the shelf when the period began (stock adjustments and
+          goods sent back to a supplier in the period are counted in it).
           Quantities are in each product&apos;s own unit.
         </p>
       </Card>
