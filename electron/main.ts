@@ -140,6 +140,47 @@ ipcMain.handle('print-receipt', async (_event, html: string, printerName?: strin
   })
 })
 
+// ─── A4 printing (reports, statements, count sheets) ───────────────────────
+
+/**
+ * ⚠️ `window.print()` lays the page out on whatever paper the chosen printer
+ * defaults to. A shop with an 80mm receipt printer got its A4 reports laid out
+ * 80mm wide — two columns, names cut off, a strip down the left of the sheet —
+ * while "Save as PDF" (A4 by default) came out right (SHAMSHER CORPORATION).
+ * These two paths fix the paper to A4; the cashier still picks the printer.
+ */
+const A4_PRINT: Electron.WebContentsPrintOptions = {
+  silent: false,
+  printBackground: true,
+  pageSize: 'A4',
+  margins: { marginType: 'default' },
+}
+
+// The page that asked — the Reports screen prints itself (its print CSS
+// shows only the report).
+ipcMain.handle('print-current-page-a4', async (event) => {
+  return new Promise((resolve) => {
+    event.sender.print(A4_PRINT, (success, reason) => resolve({ success, reason }))
+  })
+})
+
+// A ready-made A4 document (ledger statements, shelf count sheets).
+ipcMain.handle('print-document-a4', async (_event, html: string) => {
+  return new Promise((resolve) => {
+    const win = new BrowserWindow({
+      show: false,
+      webPreferences: { nodeIntegration: false, contextIsolation: true },
+    })
+    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.print(A4_PRINT, (success, reason) => {
+        win.destroy()
+        resolve({ success, reason })
+      })
+    })
+  })
+})
+
 // ─── Auto-updater ──────────────────────────────────────────────────────────
 
 type UpdateState = {

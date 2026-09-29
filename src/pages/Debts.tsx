@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { printDocumentA4 } from "@/lib/printA4";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { derivePaidAmount } from "@/lib/ledger";
 import { syncNow } from "@/lib/syncEngine";
@@ -818,23 +819,12 @@ export default function Debts() {
       subtitle: ledgers.length === 1 ? undefined : `${ledgers.length} accounts`,
     });
 
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("aria-hidden", "true");
-    // Parked off-screen at a real A4 width rather than 0x0: a zero-sized frame
-    // lays its document out in a zero-width viewport, which on some browsers
-    // clips a multi-sheet print down to the first page.
-    iframe.style.cssText =
-      "position:fixed;left:-10000px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      iframe.remove();
-      return toast.error("Could not open the print view.");
+    // A4 fixed, whatever the printer's default paper (lib/printA4).
+    try {
+      await printDocumentA4(html);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open the print view.");
     }
-    doc.open();
-    doc.write(html);
-    doc.close();
-    setTimeout(() => iframe.remove(), 60_000);
   };
 
   return (

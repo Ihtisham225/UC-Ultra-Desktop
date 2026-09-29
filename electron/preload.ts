@@ -31,6 +31,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   printReceipt: (html: string, printerName?: string, silent?: boolean): Promise<{ success: boolean }> =>
     ipcRenderer.invoke('print-receipt', html, printerName, silent),
 
+  // A4 printing: fixed paper size, whatever the printer's default (see main.ts)
+  printCurrentPageA4: (): Promise<{ success: boolean; reason?: string }> =>
+    ipcRenderer.invoke('print-current-page-a4'),
+  printDocumentA4: (html: string): Promise<{ success: boolean; reason?: string }> =>
+    ipcRenderer.invoke('print-document-a4', html),
+
   // Google OAuth bridge
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),
   onOAuthCallback: (cb: (data: { token?: string; state?: string; error?: string }) => void) =>
