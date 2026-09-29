@@ -808,6 +808,8 @@ export default function Debts() {
             kind: String(pay.kind ?? "payment"),
             notes: pay.notes ?? null,
             account_name: pay.account_id ? (moneyAccounts.find((a) => a.id === pay.account_id)?.name ?? null) : null,
+            // Folds one payment's parts (several bills) into one statement line.
+            receipt_id: (pay as { receipt_id?: string | null }).receipt_id ?? null,
           })),
       }));
     if (ledgers.length === 0) return toast.error("Nothing to print.");
