@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { printDocumentA4 } from "@/lib/printA4";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { derivePaidAmount } from "@/lib/ledger";
 import { syncNow } from "@/lib/syncEngine";
 import { rpc } from "@/lib/apiClient";
 import { v4 as uuid } from "uuid";
 import { upsertLocal, deleteLocal, notifyChange, getById, bulkUpsertLocal } from "@/lib/localDb";
+import { groupPaymentParts } from "@/lib/payment-parts";
 import { allocateSettlement, counterpartGroups, groupLedgers, increaseTarget, oppositeDirection, splitOverpayment, type LedgerGroup } from "@/lib/ledger-groups";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -751,7 +753,9 @@ export default function Debts() {
     try {
       // The khata's paid figure is recomputed on the server once this delete
       // is pushed; locally it falls out of the derived sum straight away.
-      await deleteLocal("debt_payments", id, true);
+      // A payment spread over several bills is one row — and goes as one.
+      const ids = groupPaymentParts(payments).find((r) => r.ids.includes(id))?.ids ?? [id];
+      for (const partId of ids) await deleteLocal("debt_payments", partId, true);
       notifyChange("debt_payments");
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : "Failed");
@@ -815,23 +819,12 @@ export default function Debts() {
       subtitle: ledgers.length === 1 ? undefined : `${ledgers.length} accounts`,
     });
 
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("aria-hidden", "true");
-    // Parked off-screen at a real A4 width rather than 0x0: a zero-sized frame
-    // lays its document out in a zero-width viewport, which on some browsers
-    // clips a multi-sheet print down to the first page.
-    iframe.style.cssText =
-      "position:fixed;left:-10000px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      iframe.remove();
-      return toast.error("Could not open the print view.");
+    // A4 fixed, whatever the printer's default paper (lib/printA4).
+    try {
+      await printDocumentA4(html);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open the print view.");
     }
-    doc.open();
-    doc.write(html);
-    doc.close();
-    setTimeout(() => iframe.remove(), 60_000);
   };
 
   return (
@@ -1315,9 +1308,11 @@ export default function Debts() {
                       <TableRow>
                         <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No entries recorded yet.</TableCell>
                       </TableRow>
-                    ) : payments.map((payment) => {
+                    ) : groupPaymentParts(payments).map((payment) => {
                       const isIncrease = payment.kind === "increase";
-                      const bill = [selectedGroup, ...otherSides].flatMap((g) => g.debts).find((d) => d.id === payment.debt_id);
+                      const allBills = [selectedGroup, ...otherSides].flatMap((g) => g.debts);
+                      const bill = allBills.find((d) => d.id === payment.debt_id);
+                      const spread = payment.debt_ids.length;
                       return (
                         <TableRow key={payment.id}>
                           <TableCell>{payment.payment_date}</TableCell>
@@ -1334,7 +1329,11 @@ export default function Debts() {
                           </TableCell>
                           {(selectedGroup.debts.length > 1 || otherSides.length > 0) && (
                             <TableCell className="text-sm whitespace-nowrap">
-                              {bill ? billLabel(bill, billNo) : "—"}
+                              {spread > 1 ? (
+                                <span title={payment.debt_ids.map((id) => { const b = allBills.find((d) => d.id === id); return b ? billLabel(b, billNo) : ""; }).filter(Boolean).join(", ")}>
+                                  Spread over {spread} bills
+                                </span>
+                              ) : bill ? billLabel(bill, billNo) : "—"}
                               {bill && bill.direction !== selectedGroup.direction && (
                                 <Badge variant="secondary" className="ml-2 text-[10px]">
                                   {bill.direction === "owed_to_me" ? "To receive" : "To pay"}

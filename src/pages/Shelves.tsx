@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { printDocumentA4 } from "@/lib/printA4";
 import { toast } from "sonner";
 import {
   MapPin, Plus, Pencil, Trash2, Printer, Warehouse, LayoutGrid, Rows3, PackageSearch, ArrowRightLeft, Wand2, Search,
@@ -211,16 +212,8 @@ export default function Shelves() {
         place: current ? (locationPath(i.location_id, locations) ?? "") : "",
       })),
     });
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("aria-hidden", "true");
-    iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow?.document;
-    if (!doc) return iframe.remove();
-    doc.open();
-    doc.write(html);
-    doc.close();
-    setTimeout(() => iframe.remove(), 60_000);
+    // A4 fixed, whatever the printer's default paper (lib/printA4).
+    void printDocumentA4(html).catch(() => {});
   };
 
   const allPicked = items.length > 0 && items.every((i) => picked.has(key(i)));

@@ -1,5 +1,6 @@
 // Detailed reports hub: Sales / Purchases / Inventory / P&L / Expenses / Customers & Debts / Tax.
 // Each report has a date range, KPI cards, a sortable table, CSV export, and print-to-PDF.
+import { printCurrentPageA4 } from "@/lib/printA4";
 import { computePnl, pnlStatement, type Pnl } from "@/lib/pnl";
 import { ProfitExplainer } from "@/components/ProfitExplainer";
 import { useEffect, useMemo, useState } from "react";
@@ -125,7 +126,7 @@ function ReportToolbar<T>({ title, rows, columns, filename }: { title: string; r
       <h3 className="font-semibold">{title}</h3>
       <div className="flex gap-2 print:hidden">
         <Button size="sm" variant="outline" onClick={() => downloadCsv(filename, rows, columns)} disabled={rows.length === 0}><Download className="size-3.5 mr-1.5" />CSV</Button>
-        <Button size="sm" variant="outline" onClick={() => window.print()}><Printer className="size-3.5 mr-1.5" />PDF / Print</Button>
+        <Button size="sm" variant="outline" onClick={() => void printCurrentPageA4()}><Printer className="size-3.5 mr-1.5" />PDF / Print</Button>
       </div>
     </div>
   );
