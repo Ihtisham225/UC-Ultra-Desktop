@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, PrinterInf
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import fs from 'node:fs'
 import { autoUpdater } from 'electron-updater'
 
 const require = createRequire(import.meta.url)
@@ -140,45 +141,60 @@ ipcMain.handle('print-receipt', async (_event, html: string, printerName?: strin
   })
 })
 
-// ─── A4 printing (reports, statements, count sheets) ───────────────────────
+// ─── A4 documents (reports, statements, count sheets) ──────────────────────
 
 /**
- * ⚠️ `window.print()` lays the page out on whatever paper the chosen printer
- * defaults to. A shop with an 80mm receipt printer got its A4 reports laid out
- * 80mm wide — two columns, names cut off, a strip down the left of the sheet —
- * while "Save as PDF" (A4 by default) came out right (SHAMSHER CORPORATION).
- * These two paths fix the paper to A4; the cashier still picks the printer.
+ * Reports and statements are NOT sent to a printer. They are rendered to an A4
+ * PDF and opened in the system's default PDF viewer (Edge / Acrobat on
+ * Windows), where the shop can print to any printer or save the file.
+ *
+ * ⚠️ Why not print directly: `window.print()` laid the page out on the chosen
+ * printer's default paper, so with an 80mm receipt printer an A4 report came
+ * out 80mm wide (SHAMSHER CORPORATION); and printing from a hidden window
+ * silently did nothing on at least one till. A PDF is always A4, always opens,
+ * and the viewer's own print dialog is the one the shop already knows.
  */
-const A4_PRINT: Electron.WebContentsPrintOptions = {
-  silent: false,
-  printBackground: true,
+const A4_PDF: Electron.PrintToPDFOptions = {
   pageSize: 'A4',
-  margins: { marginType: 'default' },
+  printBackground: true,
+  preferCSSPageSize: true,
+  margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 },
 }
 
-// The page that asked — the Reports screen prints itself (its print CSS
-// shows only the report).
-ipcMain.handle('print-current-page-a4', async (event) => {
-  return new Promise((resolve) => {
-    event.sender.print(A4_PRINT, (success, reason) => resolve({ success, reason }))
-  })
+async function openPdf(data: Buffer, name: string): Promise<{ success: boolean; path?: string; reason?: string }> {
+  const safe = name.replace(/[^\w.-]+/g, '-').slice(0, 60) || 'document'
+  const file = path.join(app.getPath('temp'), `ucultra-${safe}-${Date.now()}.pdf`)
+  await fs.promises.writeFile(file, data)
+  const error = await shell.openPath(file)
+  return error ? { success: false, path: file, reason: error } : { success: true, path: file }
+}
+
+// The page that asked — the Reports screen (its print CSS shows only the report).
+ipcMain.handle('print-current-page-a4', async (event, name?: string) => {
+  try {
+    const data = await event.sender.printToPDF(A4_PDF)
+    return await openPdf(data, name || 'report')
+  } catch (e) {
+    return { success: false, reason: e instanceof Error ? e.message : String(e) }
+  }
 })
 
-// A ready-made A4 document (ledger statements, shelf count sheets).
-ipcMain.handle('print-document-a4', async (_event, html: string) => {
-  return new Promise((resolve) => {
-    const win = new BrowserWindow({
-      show: false,
-      webPreferences: { nodeIntegration: false, contextIsolation: true },
-    })
-    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-    win.webContents.once('did-finish-load', () => {
-      win.webContents.print(A4_PRINT, (success, reason) => {
-        win.destroy()
-        resolve({ success, reason })
-      })
-    })
-  })
+// A ready-made A4 document (ledger statements, shelf count sheets). Loaded from
+// a temp file rather than a data: URL, which has a size limit.
+ipcMain.handle('print-document-a4', async (_event, html: string, name?: string) => {
+  const htmlFile = path.join(app.getPath('temp'), `ucultra-print-${Date.now()}.html`)
+  const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } })
+  try {
+    await fs.promises.writeFile(htmlFile, html, 'utf8')
+    await win.loadFile(htmlFile)
+    const data = await win.webContents.printToPDF(A4_PDF)
+    return await openPdf(data, name || 'statement')
+  } catch (e) {
+    return { success: false, reason: e instanceof Error ? e.message : String(e) }
+  } finally {
+    win.destroy()
+    fs.promises.unlink(htmlFile).catch(() => {})
+  }
 })
 
 // ─── Auto-updater ──────────────────────────────────────────────────────────

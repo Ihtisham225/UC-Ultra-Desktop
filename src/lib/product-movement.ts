@@ -14,6 +14,12 @@
  *   bill, not to a product.
  * - `left` is the stock NOW, not at the end of the period: it is the figure
  *   the shop can act on. Services hold no stock, so it is null for them.
+ * - `opening` = left − bought + sold − returned: what was on the shelf when the
+ *   period began, so every row reads Opening + Bought − Net sold = Left now.
+ *   Without it 3,000 bought − 31 sold "should" leave 2,969 while the shelf
+ *   holds 2,973 — the 4 were there before the period (Tech Town, 3 in 1
+ *   Cable). Stock adjustments and goods sent back to a supplier are not listed
+ *   separately, so any in the period land in this figure.
  */
 
 export interface MovementProduct {
@@ -60,6 +66,8 @@ export interface MovementRow {
   sales_value: number;
   /** Stock now; null for a service or a product that no longer exists. */
   left: number | null;
+  /** Stock when the period began (see the header comment); null with `left`. */
+  opening: number | null;
   low: boolean;
 }
 
@@ -98,6 +106,7 @@ export function productMovement(input: {
       is_service: isService,
       bought: 0, sold: 0, returned: 0, net_sold: 0, sales_value: 0,
       left,
+      opening: null,
       low: left !== null && left > 0 && left <= threshold,
     };
   };
@@ -154,6 +163,7 @@ export function productMovement(input: {
       returned: q(r.returned),
       net_sold: q(r.sold - r.returned),
       sales_value: r2(r.sales_value),
+      opening: r.left === null ? null : q(r.left - r.bought + r.sold - r.returned),
     }))
     .sort((a, b) => b.net_sold - a.net_sold || b.sales_value - a.sales_value || a.name.localeCompare(b.name));
 }

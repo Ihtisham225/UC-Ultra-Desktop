@@ -31,11 +31,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   printReceipt: (html: string, printerName?: string, silent?: boolean): Promise<{ success: boolean }> =>
     ipcRenderer.invoke('print-receipt', html, printerName, silent),
 
-  // A4 printing: fixed paper size, whatever the printer's default (see main.ts)
-  printCurrentPageA4: (): Promise<{ success: boolean; reason?: string }> =>
-    ipcRenderer.invoke('print-current-page-a4'),
-  printDocumentA4: (html: string): Promise<{ success: boolean; reason?: string }> =>
-    ipcRenderer.invoke('print-document-a4', html),
+  // A4 documents: rendered to a PDF and opened in the default viewer (see main.ts)
+  printCurrentPageA4: (name?: string): Promise<{ success: boolean; path?: string; reason?: string }> =>
+    ipcRenderer.invoke('print-current-page-a4', name),
+  printDocumentA4: (html: string, name?: string): Promise<{ success: boolean; path?: string; reason?: string }> =>
+    ipcRenderer.invoke('print-document-a4', html, name),
 
   // Google OAuth bridge
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),

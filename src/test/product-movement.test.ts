@@ -52,3 +52,21 @@ describe("sold & left", () => {
     expect(t.not_moving).toBe(1); // the filter
   });
 });
+
+describe("opening stock", () => {
+  it("makes every row add up: Opening + Bought − Net sold = Left now (Tech Town, 3 in 1 Cable)", () => {
+    const [row] = productMovement({
+      products: [{ id: "cable", name: "3 in 1 Cable", unit: "pcs", stock: 2973 }],
+      variants: [],
+      sold: [1, 1, 30].map((q) => ({ product_id: "cable", quantity: q, line_total: q * 250 })),
+      returned: [{ product_id: "cable", quantity: 1, line_total: 250 }],
+      bought: [500, 500, 500, 1000, 500].map((q) => ({ product_id: "cable", quantity: q })),
+    });
+    expect(row).toMatchObject({ bought: 3000, net_sold: 31, left: 2973, opening: 4 });
+    expect(row.opening! + row.bought - row.net_sold).toBe(row.left);
+  });
+  it("has no opening for a service", () => {
+    const [row] = productMovement({ products: [{ id: "s", name: "Labour", is_service: true }], variants: [], sold: [], returned: [], bought: [] });
+    expect(row.opening).toBeNull();
+  });
+});
