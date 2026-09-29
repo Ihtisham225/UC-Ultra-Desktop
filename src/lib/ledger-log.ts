@@ -13,6 +13,8 @@
  * balance printed beside it. A copy of the web app's `src/lib/ledger-log.ts` — keep them in step.
  */
 
+import { groupPaymentParts } from "@/lib/payment-parts";
+
 export interface LedgerLogPayment {
   id: string;
   kind: string;
@@ -23,6 +25,8 @@ export interface LedgerLogPayment {
   created_at?: string | null;
   notes?: string | null;
   account_name?: string | null;
+  /** Shared by the parts of one payment spread over several bills. */
+  receipt_id?: string | null;
 }
 
 export interface LedgerLogRow {
@@ -178,13 +182,18 @@ export function personLedgerLog(
         change: original,
       };
     }),
-    ...mine.map((p) => {
+    // ⚠️ One payment spread over several bills is ONE line in a person's
+    // history, as it is in the account (lib/payment-parts). Listed part by
+    // part, 35,000 read as 8,070 then 26,930 — as though it had been split.
+    ...groupPaymentParts(mine).map((p) => {
       const amount = num(p.amount);
       const off = p.kind === "payment" ? num(p.discount) : 0;
       return {
         id: p.id,
         at: p.created_at ?? "",
-        date: p.payment_date,
+        // A date column can arrive as a full timestamp from the terminal's
+        // store ("2026-09-22T00:00:00.000Z"); the day is all that's shown.
+        date: String(p.payment_date ?? "").slice(0, 10),
         kind: p.kind as "increase" | "payment",
         label: null,
         notes: p.notes?.trim() || null,
