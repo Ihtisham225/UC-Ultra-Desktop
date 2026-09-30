@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import { format } from "date-fns";
 import { toast } from "sonner";
 import { MessageCircle, Printer, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,7 @@ import {
   type PaymentSlipShop,
 } from "@/lib/payment-receipt";
 import { matchPosShortcut } from "@/lib/pos-shortcuts";
+import { fmtDateTime } from "@/lib/date-format";
 
 /**
  * The receipt for a khata payment — opened straight after the payment is
@@ -35,7 +35,7 @@ export function PaymentReceiptDialog({
   shop: PaymentSlipShop | null;
   onClose: () => void;
 }) {
-  const date = receipt ? format(new Date(receipt.created_at), "dd/MM/yyyy h:mm a") : "";
+  const date = receipt ? fmtDateTime(receipt.created_at) : "";
   const cur = shop?.currency ?? "PKR";
   const words = receipt ? paymentSlipWords(receipt) : null;
   const after = receipt ? balanceAfterLine(receipt.balance_after) : null;

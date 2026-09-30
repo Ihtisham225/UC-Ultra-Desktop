@@ -17,6 +17,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Download, Search, RotateCcw, Laptop, Globe, Server, KeyRound } from "lucide-react";
+import { DateInput } from "@/components/DateInput";
+import { fmtDateTime } from "@/lib/date-format";
 
 // Infinite scroll: each batch is appended as the end of the list comes into view.
 const PAGE_SIZE = SCROLL_BATCH;
@@ -236,11 +238,11 @@ export default function AdminAudit() {
           <div className="flex gap-2">
             <div className="flex-1">
               <Label className="text-xs text-muted-foreground">Since</Label>
-              <Input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="h-9" />
+              <DateInput value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="h-9" />
             </div>
             <div className="flex-1">
               <Label className="text-xs text-muted-foreground">Until</Label>
-              <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="h-9" />
+              <DateInput value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="h-9" />
             </div>
           </div>
         </div>
@@ -274,7 +276,7 @@ export default function AdminAudit() {
                     <td className="ps-4 p-2.5 whitespace-nowrap text-muted-foreground">
                       <div className="flex items-center gap-2">
                         <SeverityDot severity={r.severity} />
-                        <span title={new Date(r.created_at).toLocaleString()}>{ago(r.created_at)}</span>
+                        <span title={fmtDateTime(r.created_at)}>{ago(r.created_at)}</span>
                       </div>
                     </td>
                     <td className="p-2.5 whitespace-nowrap">
@@ -317,7 +319,7 @@ export default function AdminAudit() {
               <p>{detail.summary}</p>
               <dl className="grid grid-cols-3 gap-x-3 gap-y-2 text-xs">
                 <dt className="text-muted-foreground">When</dt>
-                <dd className="col-span-2">{new Date(detail.created_at).toLocaleString()}</dd>
+                <dd className="col-span-2">{fmtDateTime(detail.created_at)}</dd>
                 <dt className="text-muted-foreground">Who</dt>
                 <dd className="col-span-2">
                   {detail.actor_name ?? "System"}

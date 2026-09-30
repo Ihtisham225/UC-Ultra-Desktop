@@ -3,9 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/format";
-import { format } from "date-fns";
 import { useShop } from "@/contexts/ShopContext";
 import { printThermalHtml } from "@/lib/printThermal";
+import { fmtDateTime } from "@/lib/date-format";
 
 const escapeHtml = (value: string) =>
   value
@@ -44,7 +44,7 @@ const buildPrintHtml = ({ purchase, shop, currency }: { purchase: Purchase; shop
   const balance = Number(purchase.total) - Number(purchase.paid_amount);
   const metaRows = [
     { label: "Voucher", value: purchase.reference_number ?? "" },
-    { label: "Date", value: format(new Date(purchase.created_at), "Pp") },
+    { label: "Date", value: fmtDateTime(purchase.created_at) },
     ...(purchase.suppliers?.name ? [{ label: "Supplier", value: purchase.suppliers.name }] : []),
     ...(purchase.suppliers?.phone ? [{ label: "Phone", value: purchase.suppliers.phone }] : []),
   ];
@@ -169,7 +169,7 @@ export const PurchaseReceiptDialog = ({ purchase, onClose }: { purchase: Purchas
             <div className="border-t border-black my-2" />
             <div className="text-[11px] space-y-0.5">
               <div className="flex justify-between gap-2"><span className="shrink-0">Voucher</span><span className="text-right break-words">{purchase.reference_number}</span></div>
-              <div className="flex justify-between gap-2"><span className="shrink-0">Date</span><span className="text-right break-words">{format(new Date(purchase.created_at), "Pp")}</span></div>
+              <div className="flex justify-between gap-2"><span className="shrink-0">Date</span><span className="text-right break-words">{fmtDateTime(purchase.created_at)}</span></div>
               {purchase.suppliers?.name && <div className="flex justify-between gap-2"><span className="shrink-0">Supplier</span><span className="text-right break-words">{purchase.suppliers.name}</span></div>}
             </div>
             <div className="border-t border-black my-2" />

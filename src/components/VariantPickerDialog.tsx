@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useShop } from "@/contexts/ShopContext";
 import { Check, Package, Plus, Search } from "lucide-react";
+import { fmtDate } from "@/lib/date-format";
 
 export interface VariantOption {
   id: string;
@@ -199,7 +200,7 @@ export const VariantPickerDialog = ({
                         const soon = d !== null && d >= 0 && d <= 30;
                         return (
                           <div className={`text-xs truncate ${bad ? "text-destructive font-medium" : soon ? "text-amber-600" : "text-muted-foreground"}`}>
-                            {bad ? "EXPIRED" : "Expires"} {v.expiry_date}
+                            {bad ? "EXPIRED" : "Expires"} {fmtDate(v.expiry_date)}
                             {!bad && d !== null && <span className="ms-1">({d}d)</span>}
                           </div>
                         );

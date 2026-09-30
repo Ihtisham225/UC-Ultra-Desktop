@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { format } from "date-fns";
+
 import { toast } from "sonner";
 import { MessageCircle, Printer, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { formatMoney } from "@/lib/format";
 import { buildWaReminderUrl } from "@/lib/debt-reminder";
 import { buildReturnMessage, buildReturnPrintHtml, balanceAfterLabel, refundedVia, returnSlipBalance, returnSlipLedger, type ReturnSlip } from "@/lib/return-receipt";
 import { matchPosShortcut } from "@/lib/pos-shortcuts";
+import { fmtDateTime } from "@/lib/date-format";
 
 /** Print a standalone HTML page through a hidden frame, like the sale receipt. */
 export function printHtmlPage(html: string) {
@@ -33,7 +34,7 @@ export function printHtmlPage(html: string) {
  * (and the same Ctrl/Cmd+P).
  */
 export function ReturnReceiptDialog({ slip, onClose }: { slip: ReturnSlip | null; onClose: () => void }) {
-  const date = slip ? format(new Date(slip.created_at), "dd/MM/yyyy h:mm a") : "";
+  const date = slip ? fmtDateTime(slip.created_at) : "";
   const cur = slip?.shop.currency ?? "USD";
 
   const print = () => {

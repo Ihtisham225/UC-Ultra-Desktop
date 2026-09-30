@@ -31,7 +31,6 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 import { cn } from "@/lib/utils";
 import { isLabEnabled } from "@/lib/lab";
 import { isOil, normalizePlate, tidyPlate } from "@/lib/oil";
-import { format } from "date-fns";
 import { VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft } from "@/components/VehicleFields";
 import { VehiclePicker, type VehicleLite } from "@/components/VehiclePicker";
 import { useLocalStore } from "@/hooks/useLocalStore";
@@ -40,6 +39,7 @@ import { isPlainEnter, matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcu
 import { useIsMac } from "@/hooks/useIsMac";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useAddNew } from "@/hooks/useAddNew";
+import { fmtDate, fmtTime } from "@/lib/date-format";
 
 interface Variant {
   id: string;
@@ -955,7 +955,7 @@ export default function POS() {
         )}
         {isOnline && lastSynced && (
           <div className="text-[11px] text-muted-foreground px-1">
-            Last synced: {lastSynced.toLocaleTimeString()}
+            Last synced: {fmtTime(lastSynced)}
           </div>
         )}
 
@@ -1272,7 +1272,7 @@ export default function POS() {
                       <>
                         {knownVehicle && (
                           <p className="text-[11px] text-primary">
-                            Last in {format(new Date(knownVehicle.serviced_at), "d MMM yyyy")}
+                            Last in {fmtDate(knownVehicle.serviced_at)}
                             {knownVehicle.next_km != null && ` · was due at ${knownVehicle.next_km.toLocaleString()} km`}
                           </p>
                         )}
@@ -1334,7 +1334,6 @@ export default function POS() {
               {taxRate > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{t("common.tax")} ({taxRate}%)</span><span className="tabular-nums">{formatMoney(tax, cur)}</span></div>}
               <div className="flex justify-between text-lg font-bold pt-1 border-t"><span>{t("common.total")}</span><span className="tabular-nums text-primary">{formatMoney(total, cur)}</span></div>
             </div>
-
 
             {/* Tender lines: the bill can be settled across several accounts,
                 and whatever is left over becomes the customer's balance. */}

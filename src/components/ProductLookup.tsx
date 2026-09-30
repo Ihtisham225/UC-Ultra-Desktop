@@ -13,6 +13,7 @@ import { formatQty } from "@/lib/format";
 import { CHALLAN_KIND, type ChallanKindValue } from "@/lib/handicraft";
 import { rpc } from "@/lib/apiClient";
 import type { ChallanProductDto, ChallanProductDetailDto } from "@/lib/handicraftTypes";
+import { fmtDate } from "@/lib/date-format";
 
 /** The screen's date / party / status filters, as the action takes them. */
 export interface ProductFilters {
@@ -169,7 +170,7 @@ export function ProductLookup({
                   <p className="text-xs text-muted-foreground">
                     {detail.challans_count} challan{detail.challans_count === 1 ? "" : "s"} ·{" "}
                     {detail.parties_count} {detail.parties_count === 1 ? copy.party.toLowerCase() : copy.partyPlural.toLowerCase()} ·{" "}
-                    {detail.open_challans} still open · last sent {detail.last_date}
+                    {detail.open_challans} still open · last sent {fmtDate(detail.last_date)}
                   </p>
                 </div>
                 <div className="grid gap-3 mt-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -229,11 +230,11 @@ export function ProductLookup({
                           )}
                           {c.bills.length > 0 && (
                             <div className="text-[11px] text-muted-foreground mt-0.5">
-                              {c.bills.map((b) => `#${b.number} (${b.date}): ${formatQty(b.received)}`).join(" · ")}
+                              {c.bills.map((b) => `#${b.number} (${fmtDate(b.date)}): ${formatQty(b.received)}`).join(" · ")}
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap">{c.date}</TableCell>
+                        <TableCell className="whitespace-nowrap">{fmtDate(c.date)}</TableCell>
                         <TableCell className="font-medium">{c.supplier_name}</TableCell>
                         <TableCell className="text-end">{formatQty(c.sent)}</TableCell>
                         <TableCell className="text-end text-success">{formatQty(c.received)}</TableCell>

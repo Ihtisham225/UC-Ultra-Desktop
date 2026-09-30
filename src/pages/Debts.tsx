@@ -45,6 +45,8 @@ import { LedgerPersonPicker, type LedgerPerson } from "@/components/LedgerPerson
 import { useAddNew } from "@/hooks/useAddNew";
 import { useDaybookHandoff } from "@/hooks/useDaybookHandoff";
 import type { DaybookEntryDto } from "@/lib/daybookTypes";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 type Direction = "owed_to_me" | "i_owe";
 type Status = "open" | "settled";
@@ -659,7 +661,7 @@ export default function Debts() {
             status: "open",
             advance_account_id: payAccountId || null,
             due_date: null,
-            notes: `Paid ${currentShop.currency ?? ""} ${excess.toLocaleString()} more than was owed on ${paymentForm.payment_date}`.replace("  ", " ") +
+            notes: `Paid ${currentShop.currency ?? ""} ${excess.toLocaleString()} more than was owed on ${fmtDate(paymentForm.payment_date)}`.replace("  ", " ") +
               (paymentForm.notes.trim() ? ` — ${paymentForm.notes.trim()}` : ""),
             created_at: now,
             updated_at: now,
@@ -1088,7 +1090,7 @@ export default function Debts() {
               </div>
               <div className="space-y-1.5">
                 <Label>Due date (optional)</Label>
-                <Input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
+                <DateInput value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -1237,8 +1239,7 @@ export default function Debts() {
                     )}
                     <div className="space-y-1.5">
                       <Label>Date</Label>
-                      <Input
-                        type="date"
+                      <DateInput
                         value={paymentForm.payment_date}
                         onChange={(e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value })}
                       />
@@ -1266,7 +1267,7 @@ export default function Debts() {
                       </div>
                       <div className="space-y-1.5">
                         <Label>Cheque date</Label>
-                        <Input type="date" value={paymentForm.cheque_date} onChange={(e) => setPaymentForm({ ...paymentForm, cheque_date: e.target.value })} />
+                        <DateInput value={paymentForm.cheque_date} onChange={(e) => setPaymentForm({ ...paymentForm, cheque_date: e.target.value })} />
                       </div>
                     </div>
                   ) : (
@@ -1409,7 +1410,7 @@ export default function Debts() {
             { label: "Total amount", value: formatMoney(detailsGroup.amount, detailsGroup.currency ?? cur) },
             { label: "Paid", value: formatMoney(detailsGroup.paid, detailsGroup.currency ?? cur) },
             { label: "Remaining", value: formatMoney(detailsGroup.remaining, detailsGroup.currency ?? cur) },
-            { label: "Since", value: new Date(detailsGroup.debts[0].created_at).toLocaleString() },
+            { label: "Since", value: fmtDateTime(detailsGroup.debts[0].created_at) },
           ]}
           wide
         >
@@ -1440,7 +1441,7 @@ export default function Debts() {
                             <div className="text-xs text-muted-foreground break-words">{d.notes}</div>
                           )}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap">{new Date(d.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell className="whitespace-nowrap">{fmtDate(d.created_at)}</TableCell>
                         <TableCell className="text-right tabular-nums">{money(d.amount)}</TableCell>
                         <TableCell className="text-right tabular-nums">{money(d.paid_amount ?? 0)}</TableCell>
                         <TableCell className="text-right tabular-nums font-medium">{money(getRemainingAmount(d))}</TableCell>

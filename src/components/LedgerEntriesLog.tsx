@@ -1,7 +1,8 @@
-import { format } from "date-fns";
+
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatMoney } from "@/lib/format";
 import { personLedgerLog, type LedgerLogPayment, type PersonLogDebt } from "@/lib/ledger-log";
+import { fmtDate } from "@/lib/date-format";
 
 /** A yyyy-mm-dd is a calendar day; build it in local time, not as UTC midnight. */
 const day = (v: string) => new Date(Number(v.slice(0, 4)), Number(v.slice(5, 7)) - 1, Number(v.slice(8, 10)));
@@ -57,7 +58,7 @@ export function LedgerEntriesTable({
                   const charge = r.kind !== "payment";
                   return (
                     <TableRow key={r.id}>
-                      <TableCell className="whitespace-nowrap">{format(day(r.date), "d MMM yyyy")}</TableCell>
+                      <TableCell className="whitespace-nowrap">{fmtDate(day(r.date))}</TableCell>
                       <TableCell>
                         <div className={charge ? "text-destructive" : "text-success"}>
                           {r.kind === "bill" ? (r.label ?? "Bill") : r.kind === "increase" ? "Added to the khata" : "Payment"}

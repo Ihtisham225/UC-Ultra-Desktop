@@ -17,6 +17,7 @@ import { format } from "date-fns";
 import { normalizePlate, tidyPlate } from "@/lib/oil";
 import type { LocalVehicle } from "@/components/VehiclePicker";
 import { useAddNew } from "@/hooks/useAddNew";
+import { fmtDate } from "@/lib/date-format";
 
 type Draft = { id?: string; vehicle_number: string; make: string; model_number: string; notes: string };
 const blank: Draft = { vehicle_number: "", make: "", model_number: "", notes: "" };
@@ -211,7 +212,7 @@ export default function VehiclesTab({
                         ) : "—"}
                       </td>
                       <td className="p-3 whitespace-nowrap">
-                        {st?.last ? format(new Date(st.last.serviced_at), "d MMM yyyy") : "—"}
+                        {st?.last ? fmtDate(st.last.serviced_at) : "—"}
                       </td>
                       <td className="p-3 text-end tabular-nums">
                         {due == null ? "—" : `${due.toLocaleString()} km`}

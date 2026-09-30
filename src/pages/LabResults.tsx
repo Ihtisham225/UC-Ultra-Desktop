@@ -6,13 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ClipboardCheck, Printer, Search, Eye } from "lucide-react";
-import { format } from "date-fns";
 import { toast } from "sonner";
 import { LabReportDialog } from "@/components/LabReportDialog";
 import { rpc } from "@/lib/apiClient";
 import type { LabOrderDto } from "@/lib/labTypes";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { isLabEnabled } from "@/lib/lab";
+import { fmtDateTime } from "@/lib/date-format";
 
 /** Every completed test, searchable — the shop's result archive. */
 export default function LabResultsClient() {
@@ -103,7 +103,7 @@ export default function LabResultsClient() {
                   <Badge variant="secondary">{o.results.filter((r) => r.value).length}/{o.results.length}</Badge>
                 </TableCell>
                 <TableCell className="text-sm">
-                  {o.completed_at ? format(new Date(o.completed_at), "MMM d, HH:mm") : "—"}
+                  {o.completed_at ? fmtDateTime(o.completed_at) : "—"}
                 </TableCell>
                 <TableCell className="text-end">
                   <div className="flex justify-end gap-2">

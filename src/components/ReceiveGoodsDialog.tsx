@@ -9,6 +9,7 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { AttachmentsField, uploadPendingAttachments } from "@/components/AttachmentsField";
 import { rpc } from "@/lib/apiClient";
 import type { JobProcessDto, ReceiptDraft, ReceiptDto } from "@/lib/handicraftTypes";
+import { DateInput } from "@/components/DateInput";
 
 type ChargeDraft = {
   process_id: string | null;
@@ -302,7 +303,7 @@ export function ReceiveGoodsDialog({
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1.5">
                 <Label>Date *</Label>
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label>Book no.</Label>

@@ -18,6 +18,8 @@ import {
   NISAB_GRAMS, ZAKAT_RATE, computeZakat, type NisabBasis, type StockValuation, type ZakatLine,
 } from "@/lib/zakat";
 import { rpc } from "@/lib/apiClient";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 /*
  * Port of the web app's Zakat page. The figures come from the server's books
@@ -156,7 +158,7 @@ export default function Zakat() {
 
   const remove = async (r: ZakatRecordDto) => {
     const ok = await confirm({
-      title: `Delete the record of ${format(new Date(r.calculated_on), "d MMM yyyy")}?`,
+      title: `Delete the record of ${fmtDate(r.calculated_on)}?`,
       description: r.amount_paid > 0 ? "The payment recorded against it is taken out of the account too." : "Only the saved calculation is removed.",
       confirmLabel: "Delete",
       variant: "destructive",
@@ -190,7 +192,7 @@ export default function Zakat() {
       <Card className="p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-1.5">
           <Label>Counted on</Label>
-          <Input type="date" value={countedOn} onChange={(e) => setCountedOn(e.target.value)} />
+          <DateInput value={countedOn} onChange={(e) => setCountedOn(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <Label>Value stock at</Label>
@@ -297,7 +299,7 @@ export default function Zakat() {
                   <tr key={r.id} className="border-t">
                     <td className="p-3">
                       <button type="button" className="font-medium hover:underline" onClick={() => setViewing(r)}>
-                        {format(new Date(r.calculated_on), "d MMM yyyy")}
+                        {fmtDate(r.calculated_on)}
                       </button>
                       <div className="text-xs text-muted-foreground">
                         {r.nisab_basis === "gold" ? "Gold" : "Silver"} nisab · stock at {r.stock_valuation === "sale" ? "selling price" : "cost"}
@@ -352,7 +354,7 @@ export default function Zakat() {
               </div>
               <div className="space-y-1.5">
                 <Label>Paid on</Label>
-                <Input type="date" value={paying.date} onChange={(e) => setPaying({ ...paying, date: e.target.value })} />
+                <DateInput value={paying.date} onChange={(e) => setPaying({ ...paying, date: e.target.value })} />
               </div>
               <AccountPicker value={paying.account_id} onChange={(id) => setPaying({ ...paying, account_id: id })} label="Paid from" />
             </div>
@@ -369,7 +371,7 @@ export default function Zakat() {
           {viewing && (
             <>
               <DialogHeader>
-                <DialogTitle>Zakat — {format(new Date(viewing.calculated_on), "d MMM yyyy")}</DialogTitle>
+                <DialogTitle>Zakat — {fmtDate(viewing.calculated_on)}</DialogTitle>
                 <DialogDescription>
                   {viewing.nisab_basis === "gold" ? "Gold" : "Silver"} at {formatMoney(viewing.price_per_gram, cur)}/g · nisab {formatMoney(viewing.nisab, cur)}
                 </DialogDescription>

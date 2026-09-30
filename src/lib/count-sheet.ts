@@ -1,3 +1,4 @@
+import { fmtDate } from "@/lib/date-format";
 /**
  * A printable stock-count sheet for one shelf (or everything not on a shelf):
  * what the system says is there, and blank columns to write what's counted.
@@ -60,7 +61,7 @@ export function buildCountSheetHtml(args: { shopName: string; place: string; ite
 </style></head>
 <body>
   <header>
-    <div><div class="shop">${esc(shopName)}</div><div class="muted">Stock count · ${esc(new Date().toLocaleDateString())}</div></div>
+    <div><div class="shop">${esc(shopName)}</div><div class="muted">Stock count · ${esc(fmtDate(new Date()))}</div></div>
     <div class="place">${esc(place)}<div class="muted">${items.length} item${items.length === 1 ? "" : "s"}</div></div>
   </header>
   <table>

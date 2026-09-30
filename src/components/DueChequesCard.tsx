@@ -2,6 +2,7 @@ import { FileCheck2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { formatMoney } from "@/lib/format";
 import { daysUntil, dueLabel, type ChequeDto } from "@/lib/cheques";
+import { fmtDate } from "@/lib/date-format";
 
 /**
  * The dashboard's cheque warning: every pending cheque whose date falls within
@@ -36,7 +37,7 @@ export function DueChequesCard({
             <div key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
               <div className="min-w-0">
                 <div className="font-medium truncate">#{c.cheque_number} · {c.person_name}</div>
-                <div className="text-xs text-muted-foreground">{c.bank_name ?? "Cheque"} · {c.cheque_date}</div>
+                <div className="text-xs text-muted-foreground">{c.bank_name ?? "Cheque"} · {fmtDate(c.cheque_date)}</div>
               </div>
               <div className="text-end shrink-0">
                 <div className="tabular-nums font-semibold">{formatMoney(c.amount, currency)}</div>

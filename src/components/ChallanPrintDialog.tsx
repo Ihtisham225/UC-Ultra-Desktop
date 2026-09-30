@@ -5,6 +5,7 @@ import { useShop } from "@/contexts/ShopContext";
 import { UR, URDU_FONT_STACK, printCss } from "@/lib/urdu-print";
 import { CHALLAN_KIND } from "@/lib/handicraft";
 import type { ChallanDto, JobProcessDto } from "@/lib/handicraftTypes";
+import { fmtDate } from "@/lib/date-format";
 
 const ID = "challan-print";
 
@@ -53,7 +54,7 @@ export function ChallanPrintDialog({
             </div>
             <div className="flex gap-4">
               <span><b>{UR.billNumber}:</b> {challan.book_number || challan.number}</span>
-              <span><b>{UR.date}:</b> {challan.date}</span>
+              <span><b>{fmtDate(UR.date)}:</b> {fmtDate(challan.date)}</span>
             </div>
           </div>
 

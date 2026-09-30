@@ -18,6 +18,8 @@ import {
   ScrollText, Search, RotateCcw, Laptop, Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DateInput } from "@/components/DateInput";
+import { fmtDateTime } from "@/lib/date-format";
 
 // Infinite scroll: each batch is appended as the end of the list comes into view.
 const PAGE_SIZE = SCROLL_BATCH;
@@ -186,11 +188,11 @@ export default function Activity() {
             <div className="flex gap-2">
               <div className="flex-1">
                 <Label className="text-xs text-muted-foreground">From</Label>
-                <Input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="h-9" />
+                <DateInput value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="h-9" />
               </div>
               <div className="flex-1">
                 <Label className="text-xs text-muted-foreground">To</Label>
-                <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="h-9" />
+                <DateInput value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="h-9" />
               </div>
             </div>
           </div>
@@ -224,7 +226,7 @@ export default function Activity() {
                         {r.actor_name ?? r.actor_email ?? "System"}
                       </span>
                       <span>·</span>
-                      <span>{new Date(r.created_at).toLocaleString()}</span>
+                      <span>{fmtDateTime(r.created_at)}</span>
                       <span>·</span>
                       <span className="inline-flex items-center gap-1">
                         {r.source === "desktop"
@@ -254,7 +256,7 @@ export default function Activity() {
               <p>{detail.summary}</p>
               <dl className="grid grid-cols-3 gap-x-3 gap-y-2 text-xs">
                 <dt className="text-muted-foreground">When</dt>
-                <dd className="col-span-2">{new Date(detail.created_at).toLocaleString()}</dd>
+                <dd className="col-span-2">{fmtDateTime(detail.created_at)}</dd>
                 <dt className="text-muted-foreground">Who</dt>
                 <dd className="col-span-2">{detail.actor_name ?? detail.actor_email ?? "System"}</dd>
                 <dt className="text-muted-foreground">Record</dt>

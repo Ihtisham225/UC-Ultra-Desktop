@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  DATE_FORMATS, TIME_FORMATS, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, fmtDate, fmtDateTime, getDatePrefs, isDateFormat,
+  type DateFormatId, type TimeFormatId,
+} from "@/lib/date-format";
 import { useNavigate } from "react-router-dom";
 import { leaveDeletedShop, refreshShops } from "@/lib/deviceSession";
 import { useTranslation } from "react-i18next";
@@ -30,6 +34,9 @@ import { SignInMethodsCard } from "@/components/SignInMethodsCard";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR", "JOD", "EGP", "INR", "PKR", "NGN", "KES", "ZAR", "BRL", "MXN"];
 
+/** The example date in the Date & time picker — an afternoon, so the time shows PM. */
+const SAMPLE_DATE = new Date(2026, 8, 30, 14, 30);
+
 export default function Settings() {
   usePageMeta({ title: "Shop Settings — UCU", description: "Configure your shop name, logo, currency, tax and receipt details.", path: "/settings" });
   const { t } = useTranslation();
@@ -56,6 +63,8 @@ export default function Settings() {
   const [chequesOn, setChequesOn] = useState(false);
   const [chequeDays, setChequeDays] = useState("10");
   const [daybookOn, setDaybookOn] = useState(false);
+  const [dateFormat, setDateFormat] = useState<string>(DEFAULT_DATE_FORMAT);
+  const [timeFormat, setTimeFormat] = useState<string>(DEFAULT_TIME_FORMAT);
   const [showCostInPos, setShowCostInPos] = useState(false);
   // Custom order numbering. A blank next-number keeps the automatic code, so
   // shops that never configure this are untouched.
@@ -105,6 +114,8 @@ export default function Settings() {
       setChequesOn(!!currentShop.cheques_enabled);
       setChequeDays(String(currentShop.cheque_reminder_days ?? 10));
       setDaybookOn(!!currentShop.daybook_enabled);
+      setDateFormat(isDateFormat(currentShop.date_format) ? currentShop.date_format : DEFAULT_DATE_FORMAT);
+      setTimeFormat(currentShop.time_format === "24h" ? "24h" : DEFAULT_TIME_FORMAT);
       setShowCostInPos(!!currentShop.show_cost_in_pos);
       setReceiptPrefix(currentShop.receipt_prefix ?? "");
       setReceiptNext(currentShop.receipt_next_number == null ? "" : String(currentShop.receipt_next_number));
@@ -190,6 +201,8 @@ export default function Settings() {
         cheques_enabled: chequesOn,
         cheque_reminder_days: Math.min(90, Math.max(0, parseInt(chequeDays, 10) || 0)),
         daybook_enabled: daybookOn,
+        date_format: dateFormat,
+        time_format: timeFormat,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
     } catch (e) {
@@ -198,6 +211,14 @@ export default function Settings() {
       setBusy(false);
     }
     toast.success(t("settings.shop.shopSaved"));
+    // Dates are formatted all over the app from module state, so a new format
+    // needs a fresh window — pull the shop first so the reload starts with it.
+    const prefs = getDatePrefs();
+    if (prefs.date !== dateFormat || prefs.time !== timeFormat) {
+      await refresh();
+      window.location.reload();
+      return;
+    }
     refresh();
   };
 
@@ -418,6 +439,31 @@ export default function Settings() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5"><Label>{t("common.phone")}</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.phonePlaceholder")} /></div>
               <div className="space-y-1.5"><Label>{t("common.email")}</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.emailPlaceholder")} /></div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Date &amp; time format</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <Select value={dateFormat} onValueChange={setDateFormat} disabled={!canEditShop}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {DATE_FORMATS.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.label} <span className="text-muted-foreground">— {fmtDate(SAMPLE_DATE, f.id)}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={timeFormat} onValueChange={setTimeFormat} disabled={!canEditShop}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {TIME_FORMATS.map((f) => <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                How dates are shown and typed everywhere — lists, forms, reports and receipts. For example:{" "}
+                <b>{fmtDateTime(SAMPLE_DATE, dateFormat as DateFormatId, timeFormat as TimeFormatId)}</b>.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label>Store type</Label>

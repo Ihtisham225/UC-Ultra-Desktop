@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Download, Search } from "lucide-react";
 import { downloadCsv } from "@/lib/csv";
 import { format } from "date-fns";
+import { DateInput } from "@/components/DateInput";
+import { fmtDateTime } from "@/lib/date-format";
 
 type MovementType =
   | "sale" | "sale_delete"
@@ -142,10 +144,10 @@ export function MovementHistoryTable({ productId, variantId, compact }: Props) {
             </SelectContent>
           </Select>
           <label className="text-xs text-muted-foreground flex flex-col gap-1">From
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-[140px]" />
+            <DateInput value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-[140px]" />
           </label>
           <label className="text-xs text-muted-foreground flex flex-col gap-1">To
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-[140px]" />
+            <DateInput value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-[140px]" />
           </label>
           <Button variant="outline" size="sm" onClick={exportCsv} className="h-9">
             <Download className="size-4 me-1" /> CSV
@@ -173,7 +175,7 @@ export function MovementHistoryTable({ productId, variantId, compact }: Props) {
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No movements yet.</TableCell></TableRow>
             ) : filtered.map(r => (
               <TableRow key={r.id}>
-                <TableCell className="text-xs whitespace-nowrap">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
+                <TableCell className="text-xs whitespace-nowrap">{fmtDateTime(r.created_at)}</TableCell>
                 {!productId && (
                   <TableCell>
                     <div className="font-medium text-sm">{r.product_name || "—"}</div>

@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FlaskConical, Printer, RefreshCw, ClipboardList, Ticket, Pencil } from "lucide-react";
-import { format } from "date-fns";
 import { toast } from "sonner";
 import { LabReportDialog } from "@/components/LabReportDialog";
 import { LabTokenDialog } from "@/components/LabTokenDialog";
@@ -17,6 +16,7 @@ import { rpc } from "@/lib/apiClient";
 import type { LabOrderDto } from "@/lib/labTypes";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { isLabEnabled } from "@/lib/lab";
+import { fmtDateTime } from "@/lib/date-format";
 
 export default function LabClient() {
   usePageMeta({ title: "Lab — UCU", description: "Lab tests waiting for results.", path: "/lab" });
@@ -161,7 +161,7 @@ export default function LabClient() {
                     </div>
                   )}
                 </TableCell>
-                <TableCell className="text-sm">{format(new Date(o.created_at), "MMM d, HH:mm")}</TableCell>
+                <TableCell className="text-sm">{fmtDateTime(o.created_at)}</TableCell>
                 <TableCell>
                   {o.status === "pending"
                     ? <Badge variant="secondary">Pending</Badge>

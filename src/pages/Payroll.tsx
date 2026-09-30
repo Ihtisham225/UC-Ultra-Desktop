@@ -29,6 +29,8 @@ import {
   type SalaryPeriod,
 } from "@/lib/salary-period";
 import { useAddNew } from "@/hooks/useAddNew";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 type PaymentType = "advance" | "salary" | "bonus";
 interface StaffPayrollDto {
@@ -245,7 +247,7 @@ export default function Payroll() {
           <Label htmlFor="pr-on" className="text-xs">Showing the period covering</Label>
           <div className="flex items-center gap-1">
             <Button variant="outline" size="icon" title="Previous period" onClick={() => step(-1)}><ChevronLeft className="size-4" /></Button>
-            <Input id="pr-on" type="date" className="w-fit" value={on} onChange={(e) => setOn(e.target.value || todayISO())} />
+            <DateInput id="pr-on" className="w-fit" value={on} onChange={(e) => setOn(e.target.value || todayISO())} />
             <Button variant="outline" size="icon" title="Next period" onClick={() => step(1)}><ChevronRight className="size-4" /></Button>
             <Button variant="ghost" size="sm" onClick={() => setOn(todayISO())}>Today</Button>
           </div>
@@ -354,7 +356,7 @@ export default function Payroll() {
                   <TableRow><TableCell colSpan={canManage ? 6 : 5} className="text-center text-muted-foreground py-10">No payments recorded yet.</TableCell></TableRow>
                 ) : payments.map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell className="tabular-nums whitespace-nowrap">{p.date}</TableCell>
+                    <TableCell className="tabular-nums whitespace-nowrap">{fmtDate(p.date)}</TableCell>
                     <TableCell className="font-medium">{p.staff_name}</TableCell>
                     <TableCell><Badge variant="secondary">{TYPE_LABELS[p.type]}</Badge></TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{p.note ?? "—"}</TableCell>
@@ -403,7 +405,7 @@ export default function Payroll() {
               {anchorHelp(salaryEdit.period) && (
                 <div className="space-y-1.5">
                   <Label>Cycle starts on</Label>
-                  <Input type="date" value={salaryEdit.anchor}
+                  <DateInput value={salaryEdit.anchor}
                     onChange={(e) => setSalaryEdit({ ...salaryEdit, anchor: e.target.value })} />
                   <p className="text-xs text-muted-foreground">{anchorHelp(salaryEdit.period)}</p>
                 </div>
@@ -438,7 +440,7 @@ export default function Payroll() {
                 </Select>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5"><Label>Date</Label><Input type="date" value={pay.date} onChange={(e) => setPay({ ...pay, date: e.target.value })} /></div>
+                <div className="space-y-1.5"><Label>Date</Label><DateInput value={pay.date} onChange={(e) => setPay({ ...pay, date: e.target.value })} /></div>
                 <div className="space-y-1.5">
                   <Label>Type</Label>
                   <Select value={pay.type} onValueChange={(v) => setPay({ ...pay, type: v as PaymentType })}>

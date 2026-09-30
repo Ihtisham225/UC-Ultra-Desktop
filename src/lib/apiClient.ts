@@ -91,6 +91,9 @@ export interface DeviceShop {
   show_imei_on_receipt?: boolean;
   show_previous_balance_on_receipt?: boolean;
   show_notes_on_receipt?: boolean;
+  /** Settings → Shop → Date & time (lib/date-format); null = the default. */
+  date_format?: string | null;
+  time_format?: string | null;
   /** Cheques on the khata (Settings → Shop). */
   cheques_enabled?: boolean;
   /** Days before a cheque's date that it shows as due. */

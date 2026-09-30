@@ -8,6 +8,7 @@
  */
 
 import { personLedgerLog } from "@/lib/ledger-log";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 export interface StatementPayment {
   id: string;
@@ -65,7 +66,6 @@ const amt = (n: number) =>
   Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** A yyyy-mm-dd as the shop writes a date: 14/09/2026. */
-const dmy = (v: string) => (/^\d{4}-\d{2}-\d{2}/.test(v) ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}` : v);
 
 function statementBody(ledger: StatementLedger, currency: string): string {
   const owedToUs = ledger.direction === "owed_to_me";
@@ -92,7 +92,7 @@ function statementBody(ledger: StatementLedger, currency: string): string {
       const charge = r.kind !== "payment";
       return `
         <tr>
-          <td>${esc(dmy(r.date))}</td>
+          <td>${esc(fmtDate(r.date) || r.date)}</td>
           <td>${detail}${sub ? `<div class="sub">${sub}</div>` : ""}</td>
           <td class="num">${charge ? amt(r.amount) : ""}</td>
           <td class="num">${charge ? "" : amt(r.amount)}</td>
@@ -152,7 +152,7 @@ export function buildLedgerStatementHtml(args: {
   subtitle?: string;
 }): string {
   const { shop, ledgers, currency, subtitle } = args;
-  const printedOn = new Date().toLocaleString();
+  const printedOn = fmtDateTime(new Date());
 
   // Several parties print as several sheets — one account per page is what
   // makes them handable to different people.

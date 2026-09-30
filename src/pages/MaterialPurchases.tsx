@@ -34,6 +34,8 @@ import type {
   PartyOption, MaterialPurchaseDto, PartyPaymentDto, LedgerResult,
 } from "@/lib/handicraftTypes";
 import { useAddNew } from "@/hooks/useAddNew";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 const ALL = "all";
 
@@ -346,7 +348,7 @@ export default function MaterialPurchases() {
   const removePayment = async (p: PartyPaymentDto) => {
     const ok = await confirm({
       title: "Delete this payment?",
-      description: `${p.supplier_name} · ${formatMoney(p.amount, currency)} on ${p.date}.`,
+      description: `${p.supplier_name} · ${formatMoney(p.amount, currency)} on ${fmtDate(p.date)}.`,
       variant: "destructive",
     });
     if (!ok) return;
@@ -453,11 +455,11 @@ export default function MaterialPurchases() {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <DateInput value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <DateInput value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div className="flex items-end gap-2">
             {(from || to || party !== ALL) && (
@@ -523,7 +525,7 @@ export default function MaterialPurchases() {
                     purchasePages.visible.map((p) => (
                       <TableRow key={p.id}>
                         <TableCell className="text-muted-foreground">{p.number}</TableCell>
-                        <TableCell className="whitespace-nowrap">{p.date}</TableCell>
+                        <TableCell className="whitespace-nowrap">{fmtDate(p.date)}</TableCell>
                         <TableCell className="font-medium">{p.supplier_name}</TableCell>
                         <TableCell>{p.city ?? ""}</TableCell>
                         <TableCell>{p.bilty_number ?? ""}</TableCell>
@@ -588,7 +590,7 @@ export default function MaterialPurchases() {
                   ) : (
                     paymentPages.visible.map((p) => (
                       <TableRow key={p.id}>
-                        <TableCell className="whitespace-nowrap">{p.date}</TableCell>
+                        <TableCell className="whitespace-nowrap">{fmtDate(p.date)}</TableCell>
                         <TableCell className="font-medium">{p.supplier_name}</TableCell>
                         <TableCell>{p.method}</TableCell>
                         <TableCell>{p.reference ?? ""}</TableCell>
@@ -599,7 +601,7 @@ export default function MaterialPurchases() {
                             variant="ghost"
                             size="icon"
                             title={photoCounts[p.id] ? `${photoCounts[p.id]} photo(s)` : "Attach the slip"}
-                            onClick={() => setViewing({ type: "party_payment", id: p.id, title: `Payment — ${p.supplier_name} · ${p.date}` })}
+                            onClick={() => setViewing({ type: "party_payment", id: p.id, title: `Payment — ${p.supplier_name} · ${fmtDate(p.date)}` })}
                           >
                             <Paperclip className={`size-4 ${photoCounts[p.id] ? "text-primary" : "text-muted-foreground/50"}`} />
                           </Button>
@@ -674,7 +676,7 @@ export default function MaterialPurchases() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Date *</Label>
-                  <Input type="date" value={purchaseDraft.date} onChange={(e) => setPurchaseDraft({ ...purchaseDraft, date: e.target.value })} />
+                  <DateInput value={purchaseDraft.date} onChange={(e) => setPurchaseDraft({ ...purchaseDraft, date: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Book no.</Label>
@@ -843,7 +845,7 @@ export default function MaterialPurchases() {
         open={!!viewingPurchase}
         onClose={() => setViewingPurchase(null)}
         title={`Purchase #${viewingPurchase?.number ?? ""}`}
-        subtitle={viewingPurchase ? `${viewingPurchase.supplier_name} · ${viewingPurchase.date}` : undefined}
+        subtitle={viewingPurchase ? `${viewingPurchase.supplier_name} · ${fmtDate(viewingPurchase.date)}` : undefined}
         fields={
           viewingPurchase
             ? [

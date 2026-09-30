@@ -35,6 +35,8 @@ import { ChallanPrintDialog } from "@/components/ChallanPrintDialog";
 import { RecordDetailsDialog } from "@/components/RecordDetailsDialog";
 import { JobWorkBillPrintDialog } from "@/components/JobWorkBillPrintDialog";
 import { useAddNew } from "@/hooks/useAddNew";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 const ALL = "all";
 
@@ -427,7 +429,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
   const removePayment = async (p: PartyPaymentDto) => {
     const ok = await confirm({
       title: "Delete this payment?",
-      description: `${p.supplier_name} · ${formatMoney(p.amount, currency)} on ${p.date}.`,
+      description: `${p.supplier_name} · ${formatMoney(p.amount, currency)} on ${fmtDate(p.date)}.`,
       variant: "destructive",
     });
     if (!ok) return;
@@ -506,11 +508,11 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <DateInput value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <DateInput value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div className="flex items-end">
             {(from || to || party !== ALL || status !== "all" || productKey) && (
@@ -602,7 +604,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                               </Button>
                             </TableCell>
                             <TableCell className="text-muted-foreground">{c.number}</TableCell>
-                            <TableCell className="whitespace-nowrap">{c.date}</TableCell>
+                            <TableCell className="whitespace-nowrap">{fmtDate(c.date)}</TableCell>
                             <TableCell className="font-medium">{c.supplier_name}</TableCell>
                             <TableCell>{c.book_number ?? ""}</TableCell>
                             <TableCell className="text-end">{c.total_qty}</TableCell>
@@ -744,7 +746,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                     receiptPages.visible.map((r) => (
                       <TableRow key={r.id}>
                         <TableCell className="text-muted-foreground">{r.number}</TableCell>
-                        <TableCell className="whitespace-nowrap">{r.date}</TableCell>
+                        <TableCell className="whitespace-nowrap">{fmtDate(r.date)}</TableCell>
                         <TableCell className="font-medium">{r.supplier_name}</TableCell>
                         <TableCell>#{r.challan_number}</TableCell>
                         <TableCell>{r.book_number ?? ""}</TableCell>
@@ -815,7 +817,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                   ) : (
                     paymentPages.visible.map((p) => (
                       <TableRow key={p.id}>
-                        <TableCell className="whitespace-nowrap">{p.date}</TableCell>
+                        <TableCell className="whitespace-nowrap">{fmtDate(p.date)}</TableCell>
                         <TableCell className="font-medium">{p.supplier_name}</TableCell>
                         <TableCell>{p.method}</TableCell>
                         <TableCell>{p.reference ?? ""}</TableCell>
@@ -894,7 +896,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Date *</Label>
-                  <Input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
+                  <DateInput value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Book no.</Label>
@@ -1149,7 +1151,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                         {c.book_number && <span className="text-muted-foreground font-normal"> (book {c.book_number})</span>}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        sent {c.date} · {c.items.length} line{c.items.length === 1 ? "" : "s"}
+                        sent {fmtDate(c.date)} · {c.items.length} line{c.items.length === 1 ? "" : "s"}
                       </div>
                     </div>
                     <div className="text-end shrink-0">
@@ -1168,7 +1170,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         open={!!viewingChallan}
         onClose={() => setViewingChallan(null)}
         title={`Challan #${viewingChallan?.number ?? ""}`}
-        subtitle={viewingChallan ? `${viewingChallan.supplier_name} · ${viewingChallan.date}` : undefined}
+        subtitle={viewingChallan ? `${viewingChallan.supplier_name} · ${fmtDate(viewingChallan.date)}` : undefined}
         fields={
           viewingChallan
             ? [
@@ -1245,7 +1247,7 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
         open={!!viewingBill}
         onClose={() => setViewingBill(null)}
         title={`Bill #${viewingBill?.number ?? ""}`}
-        subtitle={viewingBill ? `${viewingBill.supplier_name} · ${viewingBill.date}` : undefined}
+        subtitle={viewingBill ? `${viewingBill.supplier_name} · ${fmtDate(viewingBill.date)}` : undefined}
         fields={
           viewingBill
             ? [

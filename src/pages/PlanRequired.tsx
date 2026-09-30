@@ -4,7 +4,7 @@ import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Lock, Sparkles, MessageCircle, Mail, Phone, CheckCircle2 } from "lucide-react";
-import { format } from "date-fns";
+import { fmtDate } from "@/lib/date-format";
 
 export default function PlanRequired() {
   const { signOut } = useAuth();
@@ -29,7 +29,7 @@ export default function PlanRequired() {
           {isNew
             ? "Welcome! Your account is ready. To activate your subscription, please contact Tech Town Swat."
             : expired
-              ? <>Your free trial ended on <span className="font-semibold">{proUntil ? format(proUntil, "PP") : ""}</span>. To keep using UCU, please contact <span className="font-semibold">Tech Town Swat</span> to activate a paid plan.</>
+              ? <>Your free trial ended on <span className="font-semibold">{proUntil ? fmtDate(proUntil) : ""}</span>. To keep using UCU, please contact <span className="font-semibold">Tech Town Swat</span> to activate a paid plan.</>
               : "This shop does not have an active subscription. Please contact Tech Town Swat to activate your plan."}
         </p>
 
@@ -67,7 +67,6 @@ export default function PlanRequired() {
               <CheckCircle2 className="size-3 text-success" /> Once activated, your account unlocks instantly.
             </p>
           </div>
-
 
         <Button variant="outline" onClick={() => signOut()} className="w-full">Sign out</Button>
       </div>

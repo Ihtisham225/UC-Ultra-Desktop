@@ -16,6 +16,7 @@ import { isLabEnabled } from "@/lib/lab";
 import { isOil, OIL_UNIT_SUGGESTIONS } from "@/lib/oil";
 import { LocationSelect } from "@/components/LocationSelect";
 import type { LocationRow } from "@/lib/storage-locations";
+import { DateInput } from "@/components/DateInput";
 
 /**
  * Shape the shared fields read/write. Deliberately loose so both the Products
@@ -292,8 +293,7 @@ export function ProductFormFields<T extends ProductFormValue>({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Expiry date</Label>
-              <Input
-                type="date"
+              <DateInput
                 value={value.expiry_date ?? ""}
                 onChange={(e) => set({ expiry_date: e.target.value })}
               />

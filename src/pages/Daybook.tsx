@@ -34,6 +34,8 @@ import type {
   DaybookEntryDto, DaybookEntryInput, DaybookFilters, DaybookSummary,
 } from "@/lib/daybookTypes";
 import { useAddNew } from "@/hooks/useAddNew";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 /**
  * Every action lives on the server — the daybook is not a synced table.
@@ -181,7 +183,7 @@ export default function Daybook() {
 
   const rangeLabel =
     from && to && from === to
-      ? from === today ? "today" : format(new Date(`${from}T00:00:00`), "d MMM yyyy")
+      ? from === today ? "today" : fmtDate(new Date(`${from}T00:00:00`))
       : from || to
         ? `${from || "the beginning"} → ${to || "now"}`
         : "the whole book";
@@ -391,11 +393,11 @@ export default function Daybook() {
           </div>
           <div>
             <Label className="text-xs">From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-40" />
+            <DateInput value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-40" />
           </div>
           <div>
             <Label className="text-xs">To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-40" />
+            <DateInput value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-40" />
           </div>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" onClick={() => { const d = format(subDays(new Date(), 1), "yyyy-MM-dd"); setRange(d, d); }}>
@@ -467,7 +469,7 @@ export default function Daybook() {
                     return (
                       <TableRow key={e.id} className={e.completed_at ? "opacity-70" : undefined}>
                         <TableCell className="tabular-nums text-muted-foreground">{e.number}</TableCell>
-                        <TableCell className="tabular-nums whitespace-nowrap">{e.date}</TableCell>
+                        <TableCell className="tabular-nums whitespace-nowrap">{fmtDate(e.date)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={inbound ? "text-success border-success/40" : "text-warning border-warning/40"}>
                             {inbound ? <ArrowDownLeft className="size-3 me-1" /> : <ArrowUpRight className="size-3 me-1" />}
@@ -611,7 +613,7 @@ export default function Daybook() {
                 </div>
                 <div>
                   <Label className="text-xs">Date</Label>
-                  <Input type="date" value={draft.date} onChange={(ev) => setDraft({ ...draft, date: ev.target.value })} />
+                  <DateInput value={draft.date} onChange={(ev) => setDraft({ ...draft, date: ev.target.value })} />
                 </div>
               </div>
 

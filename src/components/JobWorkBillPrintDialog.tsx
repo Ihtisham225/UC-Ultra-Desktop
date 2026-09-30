@@ -5,6 +5,7 @@ import { useShop } from "@/contexts/ShopContext";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { UR, URDU_FONT_STACK, printCss } from "@/lib/urdu-print";
 import type { ReceiptDto } from "@/lib/handicraftTypes";
+import { fmtDate } from "@/lib/date-format";
 
 const ID = "job-bill-print";
 
@@ -54,7 +55,7 @@ export function JobWorkBillPrintDialog({
             <div className="flex gap-4">
               <span><b>{UR.billNumber}:</b> {receipt.book_number || receipt.number}</span>
               <span dir="ltr"><b>challan</b> #{receipt.challan_number}</span>
-              <span><b>{UR.date}:</b> {receipt.date}</span>
+              <span><b>{fmtDate(UR.date)}:</b> {fmtDate(receipt.date)}</span>
             </div>
           </div>
 

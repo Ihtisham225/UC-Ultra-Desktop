@@ -1,3 +1,4 @@
+import { fmtDate } from "@/lib/date-format";
 /**
  * Client-side helpers for sending a debt reminder over WhatsApp via a wa.me
  * click-to-chat link. The message opens in the shop owner's own WhatsApp with
@@ -38,7 +39,7 @@ export function buildDebtReminderMessage(i: DebtReminderInput): string {
     `This is a payment reminder from ${i.shopName}.`,
     `Outstanding balance: ${i.formatMoney(i.balance, i.currency)}`,
   ];
-  if (i.dueDate) lines.push(`Due date: ${i.dueDate}`);
+  if (i.dueDate) lines.push(`Due date: ${fmtDate(i.dueDate)}`);
   lines.push("", "Kindly clear your dues at your earliest convenience. Thank you!");
   return lines.join("\n");
 }

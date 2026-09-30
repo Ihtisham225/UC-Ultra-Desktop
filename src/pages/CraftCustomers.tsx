@@ -28,6 +28,8 @@ import type {
   CustomerPaymentDto,
 } from "@/lib/craftCustomerTypes";
 import { useAddNew } from "@/hooks/useAddNew";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 /** What every craft-customer action returns over RPC. */
 type Res = {
@@ -492,7 +494,7 @@ export default function CraftCustomers() {
                 {challans.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="font-mono">{c.number}</TableCell>
-                    <TableCell>{c.date}</TableCell>
+                    <TableCell>{fmtDate(c.date)}</TableCell>
                     <TableCell className="font-medium">{c.customer_name}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {[c.bill_no, c.bilty_no].filter(Boolean).join(" · ") || "—"}
@@ -544,7 +546,7 @@ export default function CraftCustomers() {
                 {payments.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell className="font-mono">{p.number}</TableCell>
-                    <TableCell>{p.date}</TableCell>
+                    <TableCell>{fmtDate(p.date)}</TableCell>
                     <TableCell className="font-medium">{p.customer_name}</TableCell>
                     <TableCell className="text-xs">
                       {p.method}
@@ -594,16 +596,14 @@ export default function CraftCustomers() {
               </div>
               <div className="space-y-1.5">
                 <Label>Date</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={challanForm.date}
                   onChange={(e) => setChallanForm((f) => ({ ...f, date: e.target.value }))}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label>Due date</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={challanForm.due_date}
                   onChange={(e) => setChallanForm((f) => ({ ...f, due_date: e.target.value }))}
                 />
@@ -664,8 +664,7 @@ export default function CraftCustomers() {
               </div>
               <div className="space-y-1.5">
                 <Label>Date</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={paymentForm.date}
                   onChange={(e) => setPaymentForm((f) => ({ ...f, date: e.target.value }))}
                 />

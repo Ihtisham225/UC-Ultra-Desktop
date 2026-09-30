@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { format } from "date-fns";
 import { toast } from "sonner";
 import { Check, ChevronsUpDown, Plus, Receipt, Trash2, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { AccountPicker } from "@/components/AccountPicker";
 import { formatMoney } from "@/lib/format";
+import { fmtDate } from "@/lib/date-format";
 
 export interface ReturnProductOption {
   product_id: string;
@@ -354,7 +354,7 @@ export function NewReturnDialog({
                         <Receipt className="size-4 shrink-0" />
                         <span className="truncate">
                           {bill
-                            ? `${bill.receipt_number ?? "Pending sync"} · ${format(new Date(bill.created_at), "dd MMM yyyy")}${bill.customer_name ? ` · ${bill.customer_name}` : ""}`
+                            ? `${bill.receipt_number ?? "Pending sync"} · ${fmtDate(bill.created_at)}${bill.customer_name ? ` · ${bill.customer_name}` : ""}`
                             : "No bill — search by number, customer or phone"}
                         </span>
                       </span>
@@ -380,7 +380,7 @@ export function NewReturnDialog({
                               <Check className={`size-4 me-2 shrink-0 ${bill?.id === b.id ? "opacity-100" : "opacity-0"}`} />
                               <span className="flex-1 min-w-0 truncate">
                                 <span className="font-mono">{b.receipt_number ?? "Pending sync"}</span>
-                                <span className="text-muted-foreground"> · {format(new Date(b.created_at), "dd MMM")}{b.customer_name ? ` · ${b.customer_name}` : ""}</span>
+                                <span className="text-muted-foreground"> · {fmtDate(b.created_at)}{b.customer_name ? ` · ${b.customer_name}` : ""}</span>
                               </span>
                               <span className="ms-2 text-xs tabular-nums">{formatMoney(b.total, currency)}</span>
                             </CommandItem>
