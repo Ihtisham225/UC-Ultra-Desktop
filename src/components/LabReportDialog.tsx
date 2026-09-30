@@ -2,8 +2,8 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { useShop } from "@/contexts/ShopContext";
-import { format } from "date-fns";
 import type { LabOrderDto } from "@/lib/labTypes";
+import { fmtDateTime } from "@/lib/date-format";
 
 /**
  * Printable A4 lab report. Print styling hides the app chrome so a normal
@@ -30,7 +30,7 @@ export function LabReportDialog({ order, onClose }: { order: LabOrderDto | null;
             <div><span className="text-gray-600">Age / Sex:</span> {[order.patient_age, order.patient_gender].filter(Boolean).join(" / ") || "—"}</div>
             <div><span className="text-gray-600">Test:</span> <b>{order.test_name}</b></div>
             <div><span className="text-gray-600">Phone:</span> {order.patient_phone || "—"}</div>
-            <div><span className="text-gray-600">Date:</span> {format(new Date(order.completed_at ?? order.created_at), "PPp")}</div>
+            <div><span className="text-gray-600">Date:</span> {fmtDateTime(new Date(order.completed_at ?? order.created_at))}</div>
           </div>
 
           <table className="w-full text-sm border-collapse">
@@ -62,7 +62,7 @@ export function LabReportDialog({ order, onClose }: { order: LabOrderDto | null;
           )}
 
           <div className="mt-10 flex justify-between text-xs text-gray-600">
-            <div>Printed {format(new Date(), "PPp")}</div>
+            <div>Printed {fmtDateTime(new Date())}</div>
             <div className="text-center">
               <div className="border-t border-black w-40 pt-1">Authorised signature</div>
             </div>

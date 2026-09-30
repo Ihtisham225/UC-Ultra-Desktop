@@ -20,6 +20,8 @@ import { useAddNew } from "@/hooks/useAddNew";
 import { monthlyDepreciation } from "@/lib/assets";
 import { rpc } from "@/lib/apiClient";
 import { syncNow } from "@/lib/syncEngine";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 /*
  * Port of the web app's Assets page — online, over /api/desktop/rpc, like the
@@ -279,7 +281,7 @@ export default function Assets() {
                       </div>
                       <div className="text-xs text-muted-foreground">{a.category ?? "—"}</div>
                     </td>
-                    <td className="p-3 hidden md:table-cell whitespace-nowrap">{format(new Date(a.purchase_date), "d MMM yyyy")}</td>
+                    <td className="p-3 hidden md:table-cell whitespace-nowrap">{fmtDate(a.purchase_date)}</td>
                     <td className="p-3 text-end tabular-nums">{formatMoney(a.cost, cur)}</td>
                     <td className="p-3 text-end tabular-nums hidden md:table-cell">
                       {a.status === "active" && a.end_of_life > todayYmd() ? formatMoney(a.monthly_depreciation, cur) : "—"}
@@ -333,7 +335,7 @@ export default function Assets() {
               </div>
               <div className="space-y-1.5">
                 <Label>Bought on *</Label>
-                <Input type="date" value={draft.purchase_date} onChange={(e) => setDraft({ ...draft, purchase_date: e.target.value })} />
+                <DateInput value={draft.purchase_date} onChange={(e) => setDraft({ ...draft, purchase_date: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label>Cost *</Label>
@@ -399,7 +401,7 @@ export default function Assets() {
                 <DialogDescription>{details.category ?? "Asset"}{details.serial_number ? ` · ${details.serial_number}` : ""}</DialogDescription>
               </DialogHeader>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <Fact label="Bought" value={format(new Date(details.purchase_date), "d MMM yyyy")} />
+                <Fact label="Bought" value={fmtDate(details.purchase_date)} />
                 <Fact label="From" value={details.supplier_name ?? "—"} />
                 <Fact label="Cost" value={formatMoney(details.cost, cur)} />
                 <Fact label="Paid then" value={formatMoney(details.amount_paid, cur)} />
@@ -411,7 +413,7 @@ export default function Assets() {
                   <Fact label="Book value today" value={formatMoney(details.book_value, cur)} strong />
                 ) : (
                   <>
-                    <Fact label={details.status === "sold" ? "Sold on" : "Written off on"} value={details.disposed_at ? format(new Date(details.disposed_at), "d MMM yyyy") : "—"} />
+                    <Fact label={details.status === "sold" ? "Sold on" : "Written off on"} value={details.disposed_at ? fmtDate(details.disposed_at) : "—"} />
                     <Fact label="Fetched" value={formatMoney(details.disposal_amount ?? 0, cur)} />
                     <Fact
                       label={(details.disposal_gain ?? 0) >= 0 ? "Gain on the books" : "Loss on the books"}
@@ -472,7 +474,7 @@ export default function Assets() {
               </div>
               <div className="space-y-1.5">
                 <Label>On</Label>
-                <Input type="date" value={disposing.date} onChange={(e) => setDisposing({ ...disposing, date: e.target.value })} />
+                <DateInput value={disposing.date} onChange={(e) => setDisposing({ ...disposing, date: e.target.value })} />
               </div>
               {disposing.kind === "sold" && (
                 <>

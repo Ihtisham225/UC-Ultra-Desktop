@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useShop } from "@/contexts/ShopContext";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
+import { DateInput } from "@/components/DateInput";
 
 export interface ManualSaleProduct {
   id: string;
@@ -155,7 +156,7 @@ export function ManualSaleDialog({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Date of sale</Label>
-              <Input type="date" value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} />
+              <DateInput value={date} max={todayLocal()} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label>Customer {owed > 0 && <span className="text-warning">(required — part unpaid)</span>}</Label>

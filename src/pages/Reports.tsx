@@ -26,6 +26,8 @@ import { groupLedgers } from "@/lib/ledger-groups";
 import { derivePaidAmount } from "@/lib/ledger";
 import { productMovement, movementTotals, type MovementRow } from "@/lib/product-movement";
 import { formatQty } from "@/lib/format";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 type Rng = { from: string; to: string };
 
@@ -61,8 +63,8 @@ export default function Reports() {
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex items-end gap-2">
-            <label className="text-xs text-muted-foreground flex flex-col gap-1">From<Input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} className="h-9 w-[170px] min-w-[170px] shrink-0" /></label>
-            <label className="text-xs text-muted-foreground flex flex-col gap-1">To<Input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} className="h-9 w-[170px] min-w-[170px] shrink-0" /></label>
+            <label className="text-xs text-muted-foreground flex flex-col gap-1">From<DateInput value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} className="h-9 w-[170px] min-w-[170px] shrink-0" /></label>
+            <label className="text-xs text-muted-foreground flex flex-col gap-1">To<DateInput value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} className="h-9 w-[170px] min-w-[170px] shrink-0" /></label>
           </div>
           <div className="flex gap-1 p-1 bg-muted rounded-lg">
             {[7, 30, 90, 365].map((d) => (
@@ -88,7 +90,7 @@ export default function Reports() {
         <div id="report-print-area" className="space-y-4">
           <div className="hidden print:block mb-4">
             <h2 className="text-2xl font-bold">{currentShop.name} — Report</h2>
-            <p className="text-sm text-muted-foreground">{range.from} → {range.to} · Generated {format(new Date(), "PPpp")}</p>
+            <p className="text-sm text-muted-foreground">{fmtDate(range.from)} → {fmtDate(range.to)} · Generated {fmtDateTime(new Date())}</p>
           </div>
 
           <TabsContent value="sales"><SalesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
@@ -247,7 +249,7 @@ function SalesReport({ shopId, range, formatMoney, cur }: ReportProps) {
               <TableBody>
                 {rows.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="text-xs">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
+                    <TableCell className="text-xs">{fmtDateTime(r.created_at)}</TableCell>
                     <TableCell className="font-mono text-xs">{r.receipt_number ?? r.id.slice(0, 8)}</TableCell>
                     <TableCell>{r.customers?.name ?? "Walk-in"}</TableCell>
                     <TableCell>
@@ -355,7 +357,7 @@ function PurchasesReport({ shopId, range, formatMoney, cur }: ReportProps) {
               <TableBody>
                 {rows.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="text-xs">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
+                    <TableCell className="text-xs">{fmtDateTime(r.created_at)}</TableCell>
                     <TableCell className="font-mono text-xs">{r.reference_number ?? r.id.slice(0, 8)}</TableCell>
                     <TableCell>{r.suppliers?.name ?? "—"}</TableCell>
                     <TableCell className="capitalize">{r.payment_method}</TableCell>
@@ -626,7 +628,7 @@ function ExpensesReport({ shopId, range, formatMoney, cur }: ReportProps) {
               <TableBody>
                 {rows.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="text-xs">{r.expense_date}</TableCell>
+                    <TableCell className="text-xs">{fmtDate(r.expense_date)}</TableCell>
                     <TableCell>{r.expense_categories?.name ?? "Uncategorized"}</TableCell>
                     <TableCell>{r.paid_to ?? "—"}</TableCell>
                     <TableCell className="max-w-[260px] truncate">{r.description ?? "—"}</TableCell>
@@ -982,7 +984,7 @@ function LedgerReport({ shopId, range, formatMoney, cur }: ReportProps) {
               <TableBody>
                 {movements.map((m, i) => (
                   <TableRow key={i}>
-                    <TableCell>{m.date}</TableCell>
+                    <TableCell>{fmtDate(m.date)}</TableCell>
                     <TableCell className="font-medium">{m.person_name}</TableCell>
                     <TableCell className="text-xs">
                       {m.kind === "increase" ? "Added to account" : m.direction === "owed_to_me" ? "Collected" : "Paid out"}

@@ -23,9 +23,8 @@ import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { syncNow } from "@/lib/syncEngine";
 import { bulkUpsertLocal, notifyChange } from "@/lib/localDb";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
-import { format } from "date-fns";
 import { toast } from "sonner";
-
+import { fmtDateTime } from "@/lib/date-format";
 
 interface CustomerReturnRow {
   id: string;
@@ -341,7 +340,7 @@ export default function Returns() {
                   <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-12">{t("returns.empty")}</TableCell></TableRow>
                 ) : custRows.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
+                    <TableCell className="tabular-nums whitespace-nowrap">{fmtDateTime(r.created_at)}</TableCell>
                     <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
                     <TableCell className="text-xs">
                       <div className="font-mono">{r.sales?.receipt_number ?? (r.sale_id ? "—" : "No bill")}</div>
@@ -407,7 +406,7 @@ export default function Returns() {
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-12">No supplier returns yet. Open a purchase and click the return icon.</TableCell></TableRow>
                 ) : supRows.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
+                    <TableCell className="tabular-nums whitespace-nowrap">{fmtDateTime(r.created_at)}</TableCell>
                     <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
                     <TableCell>{r.suppliers?.name ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">{r.purchases?.reference_number ?? "—"}</TableCell>
@@ -442,7 +441,7 @@ export default function Returns() {
           open={!!custDetails}
           onClose={() => setCustDetails(null)}
           title={custDetails.return_number ?? t("returns.title")}
-          subtitle={`${format(new Date(custDetails.created_at), "PPp")} · ${t("returns.receiptCol")} ${custDetails.sales?.receipt_number ?? "—"}`}
+          subtitle={`${fmtDateTime(custDetails.created_at)} · ${t("returns.receiptCol")} ${custDetails.sales?.receipt_number ?? "—"}`}
           rows={[
             { label: t("returns.refundMethod"), value: <span className="capitalize">{custDetails.refund_method}</span> },
             ...(Number(custDetails.deduction ?? 0) > 0
@@ -473,7 +472,7 @@ export default function Returns() {
           open={!!supDetails}
           onClose={() => setSupDetails(null)}
           title={supDetails.return_number ?? "Supplier return"}
-          subtitle={`${format(new Date(supDetails.created_at), "PPp")} · ${supDetails.suppliers?.name ?? "—"}`}
+          subtitle={`${fmtDateTime(supDetails.created_at)} · ${supDetails.suppliers?.name ?? "—"}`}
           rows={[
             { label: "Purchase ref", value: supDetails.purchases?.reference_number ?? "—" },
             { label: t("returns.refundMethod"), value: <span className="capitalize">{supDetails.refund_method}</span> },

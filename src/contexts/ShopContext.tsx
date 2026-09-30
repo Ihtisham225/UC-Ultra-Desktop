@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 import { getSession, subscribe, switchToShop, refreshShops } from "@/lib/deviceSession";
 import type { DeviceShop, ShopRole } from "@/lib/apiClient";
+import { setDatePrefs } from "@/lib/date-format";
 
 export type { ShopRole };
 export type Shop = DeviceShop;
@@ -31,6 +32,10 @@ function derive() {
 export const ShopProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState(derive);
   const [loading, setLoading] = useState(false);
+  // Set while rendering, before any child formats a date. A change made on
+  // the web arrives with the next shop refresh; screens pick it up as they
+  // re-render (Settings here reloads the window instead).
+  setDatePrefs(state.currentShop?.date_format, state.currentShop?.time_format);
 
   useEffect(() => {
     setState(derive());

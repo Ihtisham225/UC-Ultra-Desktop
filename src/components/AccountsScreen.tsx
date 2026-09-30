@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Wallet, Landmark, Banknote, Plus, ArrowLeftRight, History, Pencil, Archive, ArchiveRestore, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
 import { useShop } from "@/contexts/ShopContext";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useAddNew } from "@/hooks/useAddNew";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 export interface AccountRow {
   id: string;
@@ -325,7 +326,7 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
             </div>
             <div className="space-y-1.5">
               <Label>Date</Label>
-              <Input type="date" value={moveForm.date} onChange={(e) => setMoveForm({ ...moveForm, date: e.target.value })} />
+              <DateInput value={moveForm.date} onChange={(e) => setMoveForm({ ...moveForm, date: e.target.value })} />
             </div>
             <div className="space-y-1.5">
               <Label>Note (optional)</Label>
@@ -371,7 +372,7 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
             </div>
             <div className="space-y-1.5">
               <Label>Date</Label>
-              <Input type="date" value={transferForm.date} onChange={(e) => setTransferForm({ ...transferForm, date: e.target.value })} />
+              <DateInput value={transferForm.date} onChange={(e) => setTransferForm({ ...transferForm, date: e.target.value })} />
             </div>
             <div className="space-y-1.5">
               <Label>Note (optional)</Label>
@@ -406,7 +407,7 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
               <TableBody>
                 {entries.map((e) => (
                   <TableRow key={e.id}>
-                    <TableCell className="text-sm whitespace-nowrap">{format(new Date(e.date + "T00:00:00"), "MMM d, yyyy")}</TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{fmtDate(new Date(e.date + "T00:00:00"))}</TableCell>
                     <TableCell className="text-sm">
                       {KIND_LABEL[e.kind] ?? e.kind}
                       {e.transfer_name && <span className="text-muted-foreground"> · {e.transfer_name}</span>}

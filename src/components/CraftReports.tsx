@@ -16,6 +16,8 @@ import { rpc } from "@/lib/apiClient";
 import type {
   PurchasesByPartyRow, JobWorkByProcessRow, PendingAtCompanyRow, PartyBalanceReportRow,
 } from "@/lib/handicraftTypes";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 const todayISO = () => format(new Date(), "yyyy-MM-dd");
 const daysAgoISO = (n: number) => format(subDays(new Date(), n), "yyyy-MM-dd");
@@ -113,11 +115,11 @@ export default function CraftReports() {
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-xs text-muted-foreground flex flex-col gap-1">
             From
-            <Input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} className="h-9 w-[170px]" />
+            <DateInput value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} className="h-9 w-[170px]" />
           </label>
           <label className="text-xs text-muted-foreground flex flex-col gap-1">
             To
-            <Input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} className="h-9 w-[170px]" />
+            <DateInput value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} className="h-9 w-[170px]" />
           </label>
           <div className="flex gap-1 p-1 bg-muted rounded-lg">
             {[7, 30, 90, 365].map((d) => (
@@ -289,7 +291,7 @@ export default function CraftReports() {
                         {r.city && <span className="text-xs text-muted-foreground"> · {r.city}</span>}
                       </TableCell>
                       <TableCell>#{r.challan_number}{r.book_number ? ` (${r.book_number})` : ""}</TableCell>
-                      <TableCell className="whitespace-nowrap">{r.date}</TableCell>
+                      <TableCell className="whitespace-nowrap">{fmtDate(r.date)}</TableCell>
                       <TableCell className={`text-end ${r.days_out > 30 ? "text-destructive font-medium" : ""}`}>{r.days_out}</TableCell>
                       <TableCell>{r.description}</TableCell>
                       <TableCell className="text-end">{r.sent}</TableCell>

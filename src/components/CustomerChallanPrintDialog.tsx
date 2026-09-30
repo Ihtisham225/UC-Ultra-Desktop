@@ -5,6 +5,7 @@ import { useShop } from "@/contexts/ShopContext";
 import { UR, URDU_FONT_STACK, printCss } from "@/lib/urdu-print";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import type { CustomerChallanDto } from "@/lib/craftCustomerTypes";
+import { fmtDate } from "@/lib/date-format";
 
 const ID = "customer-challan-print";
 
@@ -57,7 +58,7 @@ export function CustomerChallanPrintDialog({
               {UR.billNumber}: {challan.number}
             </span>
             <span>
-              {UR.date}: {challan.date}
+              {fmtDate(UR.date)}: {fmtDate(challan.date)}
             </span>
           </div>
 

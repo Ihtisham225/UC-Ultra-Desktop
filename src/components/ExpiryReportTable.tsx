@@ -3,6 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { rpc } from "@/lib/apiClient";
+import { fmtDate } from "@/lib/date-format";
 
 export interface ExpiryRow {
   id: string;
@@ -81,7 +82,7 @@ export function ExpiryReportTable() {
                   <TableCell className="font-medium">{r.name}</TableCell>
                   <TableCell className="font-mono text-xs">{r.batch_no ?? "—"}</TableCell>
                   <TableCell className="text-xs">{r.shelf_location ?? "—"}</TableCell>
-                  <TableCell className="tabular-nums">{r.expiry_date}</TableCell>
+                  <TableCell className="tabular-nums">{fmtDate(r.expiry_date)}</TableCell>
                   <TableCell className="text-right tabular-nums">{r.stock}</TableCell>
                   <TableCell>
                     {r.days_left < 0 ? (

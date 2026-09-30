@@ -9,6 +9,7 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useShop } from "@/contexts/ShopContext";
 import { LocationSelect } from "@/components/LocationSelect";
 import type { LocationRow } from "@/lib/storage-locations";
+import { DateInput } from "@/components/DateInput";
 
 /**
  * Public shape used by the parent (Products page).
@@ -400,7 +401,7 @@ export const VariantsBuilder = ({ productName, basePrice, value, onChange, locat
                       </div>
                       {isPharmacy && (
                         <div className="grid grid-cols-2 gap-2 mt-1.5">
-                          <Input type="date" value={v.expiry_date ?? ""} onChange={(e) => updateVariantField(idx, "expiry_date", e.target.value)} title="Expiry date" className="h-8 text-xs" />
+                          <DateInput value={v.expiry_date ?? ""} onChange={(e) => updateVariantField(idx, "expiry_date", e.target.value)} title="Expiry date" className="h-8 text-xs" />
                           <Input value={v.batch_no ?? ""} onChange={(e) => updateVariantField(idx, "batch_no", e.target.value)} placeholder="Batch no." className="h-8 text-xs" />
                         </div>
                       )}

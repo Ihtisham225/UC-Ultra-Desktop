@@ -4,7 +4,7 @@ import { Printer } from "lucide-react";
 import { toast } from "sonner";
 import { useShop } from "@/contexts/ShopContext";
 import { printThermalHtml } from "@/lib/printThermal";
-import { format } from "date-fns";
+import { fmtDateTime } from "@/lib/date-format";
 
 export interface LabTokenOrder {
   id: string;
@@ -56,7 +56,7 @@ const buildTokenPrintHtml = (orders: LabTokenOrder[], shop: { name?: string; add
       <div class="row"><span>Age / Sex</span><span>${esc([o.patient_age, o.patient_gender].filter(Boolean).join(" / ") || "—")}</span></div>
       <div class="row"><span>Phone</span><span>${esc(o.patient_phone || "—")}</span></div>
       <div class="row"><span>Test</span><span>${esc(o.test_name)}</span></div>
-      <div class="row"><span>Date</span><span>${esc(format(new Date(o.created_at), "Pp"))}</span></div>
+      <div class="row"><span>Date</span><span>${esc(fmtDateTime(o.created_at))}</span></div>
       <div class="rule"></div>
       <div class="center small">Please keep this slip to collect your report.</div>
     </div>`).join("")}
@@ -98,7 +98,7 @@ export function LabTokenDialog({ orders, onClose }: { orders: LabTokenOrder[] | 
                 <div className="flex justify-between gap-2"><span>Age / Sex</span><span className="text-right">{[o.patient_age, o.patient_gender].filter(Boolean).join(" / ") || "—"}</span></div>
                 <div className="flex justify-between gap-2"><span>Phone</span><span className="text-right">{o.patient_phone || "—"}</span></div>
                 <div className="flex justify-between gap-2"><span>Test</span><span className="text-right">{o.test_name}</span></div>
-                <div className="flex justify-between gap-2"><span>Date</span><span className="text-right">{format(new Date(o.created_at), "Pp")}</span></div>
+                <div className="flex justify-between gap-2"><span>Date</span><span className="text-right">{fmtDateTime(o.created_at)}</span></div>
               </div>
               <div className="border-t border-black my-2" />
               <div className="text-center text-[11px]">Please keep this slip to collect your report.</div>

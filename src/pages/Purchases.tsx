@@ -31,7 +31,6 @@ import { Pagination } from "@/components/Pagination";
 import { SCROLL_BATCH } from "@/hooks/usePagination";
 import { toast } from "sonner";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
-import { format } from "date-fns";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { syncNow } from "@/lib/syncEngine";
 import { useLocalStore } from "@/hooks/useLocalStore";
@@ -43,7 +42,8 @@ import { ProductFormFields, type ProductFormValue } from "@/components/ProductFo
 import { AccountPicker } from "@/components/AccountPicker";
 import { PartySelect } from "@/components/PartySelect";
 import { useAddNew } from "@/hooks/useAddNew";
-
+import { DateInput } from "@/components/DateInput";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 interface Supplier { id: string; name: string; phone: string | null; }
 interface Investor { id: string; name: string; balance: number; }
@@ -365,7 +365,6 @@ export default function Purchases() {
   }, [currentShop, investorsEnabled]);
 
   useEffect(() => { load(); }, [load]);
-
 
   const subtotal = useMemo(() => lines.reduce((a, l) => a + (l.unit_cost ?? 0) * (l.quantity ?? 0), 0), [lines]);
   const expensesTotal = useMemo(() => lines.reduce((a, l) => a + (l.expense_amount ?? 0), 0), [lines]);
@@ -867,7 +866,7 @@ export default function Purchases() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label>Expiry</Label>
-                    <Input type="date" value={newBatch.expiry_date} onChange={(e) => setNewBatch({ ...newBatch, expiry_date: e.target.value })} />
+                    <DateInput value={newBatch.expiry_date} onChange={(e) => setNewBatch({ ...newBatch, expiry_date: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Sale price</Label>
@@ -1434,7 +1433,7 @@ export default function Purchases() {
                       <TableBody>
                         {searchResults.map((r) => (
                           <TableRow key={r.id}>
-                            <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(r.purchases.created_at), "MMM d, yyyy")}</TableCell>
+                            <TableCell className="tabular-nums whitespace-nowrap">{fmtDate(r.purchases.created_at)}</TableCell>
                             <TableCell>{r.purchases.reference_number ?? "—"}</TableCell>
                             <TableCell className="font-medium">{r.product_name}</TableCell>
                             <TableCell>{r.purchases.suppliers?.name ?? "—"}</TableCell>
@@ -1475,7 +1474,7 @@ export default function Purchases() {
               <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">{t("purchases.empty")}</TableCell></TableRow>
             ) : purchases.map((p) => (
               <TableRow key={p.id}>
-                <TableCell className="tabular-nums">{format(new Date(p.created_at), "MMM d, yyyy HH:mm")}</TableCell>
+                <TableCell className="tabular-nums">{fmtDateTime(p.created_at)}</TableCell>
                 <TableCell>{p.reference_number ?? "—"}</TableCell>
                 <TableCell>
                   {p.seller_name
@@ -1512,7 +1511,7 @@ export default function Purchases() {
           open={!!details}
           onClose={() => setDetails(null)}
           title={details.reference_number || t("purchases.purchaseTitle")}
-          subtitle={format(new Date(details.created_at), "PPp")}
+          subtitle={fmtDateTime(details.created_at)}
           rows={[
             ...(details.seller_name
               ? [

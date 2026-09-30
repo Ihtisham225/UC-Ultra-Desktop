@@ -12,9 +12,9 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { TrendingUp, Plus, Pencil, Trash2, ArrowDownToLine, ArrowUpFromLine, History, Users, HandCoins } from "lucide-react";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAddNew } from "@/hooks/useAddNew";
+import { fmtDateTime } from "@/lib/date-format";
 
 export interface InvestorDto {
   id: string;
@@ -551,7 +551,7 @@ export default function Investors() {
                     <TableBody>
                       {pool.distributions.map((d) => (
                         <TableRow key={d.id}>
-                          <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(d.created_at), "MMM d, yyyy HH:mm")}</TableCell>
+                          <TableCell className="tabular-nums whitespace-nowrap">{fmtDateTime(d.created_at)}</TableCell>
                           <TableCell className="text-end tabular-nums">{formatMoney(d.gross_profit, cur)}</TableCell>
                           <TableCell className="text-end tabular-nums">{d.expenses_deducted ? `−${formatMoney(d.expenses_deducted, cur)}` : "—"}</TableCell>
                           <TableCell className={`text-end tabular-nums font-medium ${d.net_profit < 0 ? "text-destructive" : "text-primary"}`}>{formatMoney(d.net_profit, cur)}</TableCell>
@@ -768,7 +768,7 @@ export default function Investors() {
                   <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No transactions yet.</TableCell></TableRow>
                 ) : txRows.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
+                    <TableCell className="tabular-nums whitespace-nowrap">{fmtDateTime(r.created_at)}</TableCell>
                     <TableCell>{TX_LABELS[r.type] ?? r.type}</TableCell>
                     <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{r.notes ?? "—"}</TableCell>
                     <TableCell className={`text-end tabular-nums font-medium ${r.amount < 0 ? "text-destructive" : "text-primary"}`}>
@@ -882,7 +882,7 @@ export default function Investors() {
                   <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No transactions yet.</TableCell></TableRow>
                 ) : memberTxRows.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="tabular-nums whitespace-nowrap">{format(new Date(r.created_at), "MMM d, HH:mm")}</TableCell>
+                    <TableCell className="tabular-nums whitespace-nowrap">{fmtDateTime(r.created_at)}</TableCell>
                     <TableCell>{POOL_TX_LABELS[r.type] ?? r.type}</TableCell>
                     <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{r.notes ?? "—"}</TableCell>
                     <TableCell className={`text-end tabular-nums font-medium ${r.amount < 0 ? "text-destructive" : "text-primary"}`}>

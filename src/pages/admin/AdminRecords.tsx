@@ -24,10 +24,10 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { CreditCard, Search, Ban, CheckCircle2, ArrowUpCircle, ArrowDownCircle, Crown, AlertTriangle, Trash2 } from "lucide-react";
-import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminUi";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 interface OverviewStats {
   total_users: number;
@@ -68,7 +68,6 @@ interface AdminShop {
   /** Who works in this store, so staff can be traced to a shop. */
   members: { user_id: string; email: string; name: string | null; role: string }[];
 }
-
 
 /**
  * The two record tables — users and stores. One component with a `section`
@@ -300,8 +299,8 @@ export default function AdminRecords({ section }: { section: "users" | "shops" }
                         </div>
                       )}
                     </td>
-                    <td className="p-3 text-muted-foreground text-xs">{format(new Date(u.created_at), "PP")}</td>
-                    <td className="p-3 text-muted-foreground text-xs">{u.last_sign_in_at ? format(new Date(u.last_sign_in_at), "PPp") : "—"}</td>
+                    <td className="p-3 text-muted-foreground text-xs">{fmtDate(u.created_at)}</td>
+                    <td className="p-3 text-muted-foreground text-xs">{u.last_sign_in_at ? fmtDateTime(u.last_sign_in_at) : "—"}</td>
                     <td className="p-3">
                       {u.is_super_admin ? (
                         <span className="text-xs font-bold px-2 py-0.5 rounded bg-primary/15 text-primary">{t("admin.users.super")}</span>
@@ -403,7 +402,7 @@ export default function AdminRecords({ section }: { section: "users" | "shops" }
                       <td className="p-3 text-end">{s.member_count}</td>
                       <td className="p-3 text-end">{s.sales_count}</td>
                       <td className="p-3 text-end">{fmt(s.sales_total)}</td>
-                      <td className="p-3 text-muted-foreground text-xs">{format(new Date(s.created_at), "PP")}</td>
+                      <td className="p-3 text-muted-foreground text-xs">{fmtDate(s.created_at)}</td>
                       <td className="p-3 text-end">
                         <div className="inline-flex gap-1.5">
                           <Button
@@ -457,7 +456,6 @@ export default function AdminRecords({ section }: { section: "users" | "shops" }
             </table>
           </div>
       )}
-
 
       <AlertDialog open={!!blockShopTarget} onOpenChange={(o) => !o && setBlockShopTarget(null)}>
         <AlertDialogContent>
@@ -555,7 +553,7 @@ export default function AdminRecords({ section }: { section: "users" | "shops" }
                   <div className="text-xs text-muted-foreground">{proTarget?.owner_email ?? "—"}</div>
                   {proTarget?.pro_until && (
                     <div className="text-xs text-muted-foreground mt-1">
-                      {t("admin.proDialog.currentExpiry", { date: format(new Date(proTarget.pro_until), "PP") })}
+                      {t("admin.proDialog.currentExpiry", { date: fmtDate(proTarget.pro_until) })}
                     </div>
                   )}
                 </div>

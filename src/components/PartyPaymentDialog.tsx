@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AttachmentsField, uploadPendingAttachments } from "@/components/AttachmentsField";
 import { rpc } from "@/lib/apiClient";
 import type { PartyOption, PartyPaymentDto, PartyPaymentKindValue } from "@/lib/handicraftTypes";
+import { DateInput } from "@/components/DateInput";
 
 export type PaymentDraft = {
   id: string | null;
@@ -124,7 +125,7 @@ export function PartyPaymentDialog({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Date *</Label>
-                <Input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
+                <DateInput value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label>Amount *</Label>

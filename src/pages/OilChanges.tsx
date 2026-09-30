@@ -23,6 +23,8 @@ import {
 import { isOil, normalizePlate, tidyPlate } from "@/lib/oil";
 import VehiclesTab from "./VehiclesTab";
 import { useAddNew } from "@/hooks/useAddNew";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 /** A synced `oil_changes` row as it sits in the local store. */
 interface OilChange {
@@ -307,7 +309,7 @@ export default function OilChanges() {
                         {r.visitor_name || "—"}
                         {r.phone && <div className="text-[11px] text-muted-foreground">{r.phone}</div>}
                       </td>
-                      <td className="p-3 whitespace-nowrap">{format(new Date(r.serviced_at), "d MMM yyyy")}</td>
+                      <td className="p-3 whitespace-nowrap">{fmtDate(r.serviced_at)}</td>
                       <td className="p-3 text-end whitespace-nowrap">
                         <Button size="icon" variant="ghost" onClick={() => setDetails(r)} aria-label="View">
                           <Eye className="size-4" />
@@ -346,8 +348,7 @@ export default function OilChanges() {
             <div className="space-y-3">
               <div className="space-y-1.5 max-w-[12rem]">
                 <Label>Date</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={editing.date}
                   onChange={(e) => setEditing({ ...editing, date: e.target.value })}
                 />
@@ -382,7 +383,7 @@ export default function OilChanges() {
                   { label: "Oil changer", value: details.oil_changer || "—" },
                   { label: "Name", value: details.visitor_name || "—" },
                   { label: "Phone", value: details.phone || "—" },
-                  { label: "Date", value: format(new Date(details.serviced_at), "PP") },
+                  { label: "Date", value: fmtDate(details.serviced_at) },
                 ].map((f) => (
                   <div key={f.label}>
                     <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{f.label}</div>
@@ -409,7 +410,7 @@ export default function OilChanges() {
                         h.id === details.id ? "bg-muted" : ""
                       }`}
                     >
-                      <span>{format(new Date(h.serviced_at), "d MMM yyyy")}</span>
+                      <span>{fmtDate(h.serviced_at)}</span>
                       <span className="text-muted-foreground tabular-nums">
                         {km(h.current_km)} → {km(h.next_km)}
                       </span>

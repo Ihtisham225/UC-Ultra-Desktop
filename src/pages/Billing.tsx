@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Sparkles, Check, ArrowLeft, MessageCircle, Copy, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { format } from "date-fns";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { fmtDate } from "@/lib/date-format";
 
 const EASYPAISA_NUMBER = "03480152906";
 const EASYPAISA_NAME = "Tech Town Swat";
@@ -57,7 +57,7 @@ export default function Billing() {
             <div className="rounded-lg border-2 border-primary/30 bg-primary/5 px-4 py-3 text-end">
               <div className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1 justify-end"><Sparkles className="size-3.5" /> {t("billing.subscriptionActive")}</div>
               <div className="text-sm font-medium">{t("billing.daysLeftLabel", { days: daysLeft })}</div>
-              <div className="text-xs text-muted-foreground">{t("billing.until", { date: format(proUntil, "PP") })}</div>
+              <div className="text-xs text-muted-foreground">{t("billing.until", { date: fmtDate(proUntil) })}</div>
             </div>
           )}
         </div>

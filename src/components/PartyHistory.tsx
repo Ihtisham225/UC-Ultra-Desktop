@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { format } from "date-fns";
+
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatMoney } from "@/lib/format";
 import { rpc } from "@/lib/apiClient";
+import { fmtDate } from "@/lib/date-format";
 
 // Shapes of the web app's listCustomerSalesAction / listSupplierPurchasesAction
 // (customers/actions.ts, suppliers/actions.ts), reached over the desktop RPC.
@@ -103,7 +104,7 @@ export function CustomerSalesHistory({
                     onClick={onOpenSale ? () => onOpenSale(r.id) : undefined}
                     title={onOpenSale ? "Open receipt" : undefined}
                   >
-                    <TableCell className="whitespace-nowrap">{format(toDate(r.created_at), "d MMM yyyy")}</TableCell>
+                    <TableCell className="whitespace-nowrap">{fmtDate(toDate(r.created_at))}</TableCell>
                     <TableCell className="font-mono text-xs">{r.receipt_number ?? "—"}</TableCell>
                     <TableCell className="text-end tabular-nums">{r.item_count}</TableCell>
                     <TableCell className="text-end tabular-nums">{formatMoney(r.total, currency)}</TableCell>
@@ -181,7 +182,7 @@ export function SupplierPurchaseHistory({ supplierId, currency }: { supplierId: 
               <TableBody>
                 {data.rows.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="whitespace-nowrap">{format(toDate(r.date), "d MMM yyyy")}</TableCell>
+                    <TableCell className="whitespace-nowrap">{fmtDate(toDate(r.date))}</TableCell>
                     <TableCell className="font-mono text-xs">{r.reference ?? "—"}</TableCell>
                     <TableCell className="text-end tabular-nums">{r.item_count}</TableCell>
                     <TableCell className="text-end tabular-nums">{formatMoney(r.total, currency)}</TableCell>

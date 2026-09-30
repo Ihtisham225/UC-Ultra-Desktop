@@ -3,7 +3,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Printer, MessageCircle, Sparkles } from "lucide-react";
 import { formatMoney, formatAmount, orderNumberLabel } from "@/lib/format";
-import { format } from "date-fns";
 import { soldAs, formatUnitQty } from "@/lib/sale-units";
 import { rpc } from "@/lib/apiClient";
 import { buildReceiptMessage, buildReceiptWaUrl } from "@/lib/whatsapp-receipt";
@@ -15,6 +14,7 @@ import { printThermalHtml } from "@/lib/printThermal";
 import { receiptLedger } from "@/lib/receipt-ledger";
 import { matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
 import { useIsMac } from "@/hooks/useIsMac";
+import { fmtDateTime } from "@/lib/date-format";
 
 const escapeHtml = (value: string) =>
   value
@@ -53,7 +53,7 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
   const labOrders: any[] = sale.lab_orders ?? [];
   const metaRows = [
     { label: "Receipt", value: orderNumberLabel(sale.receipt_number) },
-    { label: "Date", value: format(new Date(sale.created_at), "Pp") },
+    { label: "Date", value: fmtDateTime(sale.created_at) },
     ...(showCustomer && customer ? [{ label: "Customer", value: customer.name }] : []),
     ...(showCustomer && customer?.phone ? [{ label: "Phone", value: customer.phone }] : []),
     ...(sale.patient_name ? [{ label: "Patient", value: String(sale.patient_name) }] : []),
@@ -412,7 +412,7 @@ export const ReceiptPaper = ({
 
       <div className="text-[11px] space-y-0.5">
         <div className="flex items-start justify-between gap-2"><span className="shrink-0">Receipt</span><span className="min-w-0 max-w-[58%] text-right break-words">{orderNumberLabel(sale.receipt_number)}</span></div>
-        <div className="flex items-start justify-between gap-2"><span className="shrink-0">Date</span><span className="min-w-0 max-w-[58%] text-right break-words">{format(new Date(sale.created_at), "Pp")}</span></div>
+        <div className="flex items-start justify-between gap-2"><span className="shrink-0">Date</span><span className="min-w-0 max-w-[58%] text-right break-words">{fmtDateTime(sale.created_at)}</span></div>
         {sale.shop?.show_customer_on_receipt && customer && (
           <div className="flex items-start justify-between gap-2"><span className="shrink-0">Customer</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.name}</span></div>
         )}
@@ -622,7 +622,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
     const message = buildReceiptMessage({
       shopName: sale.shop?.name ?? "",
       receiptNumber: orderNumberLabel(sale.receipt_number),
-      date: format(new Date(sale.created_at), "dd/MM/yyyy h:mm a"),
+      date: fmtDateTime(sale.created_at),
       customerName: customer.name,
       lines: (sale.items ?? []).map((it: any) => ({
         name: it.product_name,

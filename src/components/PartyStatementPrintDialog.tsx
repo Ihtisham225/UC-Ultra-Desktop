@@ -5,6 +5,7 @@ import { useShop } from "@/contexts/ShopContext";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { printCss } from "@/lib/urdu-print";
 import type { LedgerResult } from "@/lib/handicraftTypes";
+import { fmtDate } from "@/lib/date-format";
 
 const ID = "statement-print";
 
@@ -37,7 +38,7 @@ export function PartyStatementPrintDialog({
   const currency = currentShop?.currency ?? "PKR";
 
   const period =
-    from && to ? `${from} to ${to}` : from ? `from ${from}` : to ? `up to ${to}` : "all dates";
+    from && to ? `${fmtDate(from)} to ${fmtDate(to)}` : from ? `from ${fmtDate(from)}` : to ? `up to ${fmtDate(to)}` : "all dates";
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -90,7 +91,7 @@ export function PartyStatementPrintDialog({
               {ledger.rows.map((r, i) => (
                 <tr key={`${r.kind}-${r.id}-${r.itemId ?? i}`}>
                   <td className="border border-black p-1 text-center">{i + 1}</td>
-                  <td className="border border-black p-1 whitespace-nowrap">{r.date}</td>
+                  <td className="border border-black p-1 whitespace-nowrap">{fmtDate(r.date)}</td>
                   <td className="border border-black p-1">{r.supplier_name}</td>
                   {r.kind === "purchase" ? (
                     <>

@@ -30,6 +30,8 @@ import { ManualSaleDialog, type ManualSaleApi } from "@/components/ManualSaleDia
 import { EditSaleDialog, type EditableSale, type EditableProduct } from "@/components/EditSaleDialog";
 import { soldAs, formatSoldQuantity } from "@/lib/sale-units";
 import { useAddNew } from "@/hooks/useAddNew";
+import { DateInput } from "@/components/DateInput";
+import { fmtDateTime } from "@/lib/date-format";
 
 /**
  * "Engine Oil 20W-50 ×2 Bottle (4 L)" — how the counter rang it up, not the
@@ -357,8 +359,7 @@ export default function Sales() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <Label className="text-xs">From</Label>
-            <Input
-              type="date"
+            <DateInput
               className="h-9 w-40"
               value={range.from}
               onChange={(e) => { setPage(1); setRange((r) => ({ ...r, from: e.target.value })); }}
@@ -366,8 +367,7 @@ export default function Sales() {
           </div>
           <div className="space-y-1">
             <Label className="text-xs">To</Label>
-            <Input
-              type="date"
+            <DateInput
               className="h-9 w-40"
               value={range.to}
               onChange={(e) => { setPage(1); setRange((r) => ({ ...r, to: e.target.value })); }}
@@ -453,7 +453,7 @@ export default function Sales() {
                         {s.customer_name && (
                           <span className="text-foreground/80 font-medium">{s.customer_name} · </span>
                         )}
-                        {format(new Date(s.created_at), "PPp")} · {t("sales.itemsCount", { count: s.sale_items.length })} ·{" "}
+                        {fmtDateTime(s.created_at)} · {t("sales.itemsCount", { count: s.sale_items.length })} ·{" "}
                         {s.payments?.length
                           ? s.payments.map((p) => `${p.account_name} ${formatMoney(p.amount, cur)}`).join(" · ")
                           : s.payment_method}

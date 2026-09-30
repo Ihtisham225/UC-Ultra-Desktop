@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Trash2, Boxes } from "lucide-react";
 import type { BuilderVariant } from "@/components/VariantsBuilder";
+import { DateInput } from "@/components/DateInput";
 
 interface Props {
   value: BuilderVariant[];
@@ -69,8 +70,7 @@ export function BatchesBuilder({ value, onChange, basePrice }: Props) {
               </div>
               <div className="space-y-1">
                 <Label className="sm:hidden text-xs">Expiry</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={b.expiry_date ?? ""}
                   onChange={(e) => update(i, { expiry_date: e.target.value })}
                   className="h-9 text-sm"

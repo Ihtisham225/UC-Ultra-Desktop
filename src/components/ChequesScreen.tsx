@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { format } from "date-fns";
 import { BadgeCheck, Ban, FileCheck2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { formatMoney } from "@/lib/format";
 import { daysUntil, dueLabel } from "@/lib/cheques";
 import type { ChequeDto } from "@/lib/cheques";
+import { fmtDate } from "@/lib/date-format";
 
 type Status = "pending" | "cleared" | "bounced" | "all";
 // One loose shape: the terminal compiles without strict mode, where a
@@ -150,7 +150,7 @@ export function ChequesScreen({
                     </td>
                     <td className="p-3 text-muted-foreground">{c.bank_name ?? "—"}</td>
                     <td className="p-3 whitespace-nowrap">
-                      <div>{format(new Date(`${c.cheque_date}T00:00:00`), "dd MMM yyyy")}</div>
+                      <div>{fmtDate(new Date(`${c.cheque_date}T00:00:00`))}</div>
                       {c.status === "pending" && (
                         <div className={`text-xs ${days < 0 ? "text-destructive" : soon ? "text-warning" : "text-muted-foreground"}`}>{dueLabel(days)}</div>
                       )}

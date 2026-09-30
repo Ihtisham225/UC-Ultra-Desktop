@@ -1,3 +1,4 @@
+import { fmtDateTime } from "@/lib/date-format";
 /**
  * The receivable / payable summary — one line per party, the way the shop's
  * previous software printed it.
@@ -46,7 +47,7 @@ export function buildLedgerSummaryHtml(args: {
   subtitle?: string;
 }): string {
   const { shop, ledgers, currency, subtitle } = args;
-  const printedOn = new Date().toLocaleString();
+  const printedOn = fmtDateTime(new Date());
 
   // Alphabetical, like the book it replaces — the shop looks a party up by
   // name, never by when the account was opened.

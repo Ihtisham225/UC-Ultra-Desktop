@@ -26,6 +26,8 @@ import { format } from "date-fns";
 import { AccountPicker } from "@/components/AccountPicker";
 import { useDaybookHandoff } from "@/hooks/useDaybookHandoff";
 import { useAddNew } from "@/hooks/useAddNew";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
 
 
 interface Category { id: string; name: string; color: string; }
@@ -384,7 +386,7 @@ export default function Expenses() {
               </div>
               <div className="space-y-1.5 col-span-1">
                 <Label>{t("common.date")}</Label>
-                <Input type="date" value={form.expense_date}
+                <DateInput value={form.expense_date}
                   onChange={(e) => setForm({ ...form, expense_date: e.target.value })} />
               </div>
               <div className="space-y-1.5 col-span-1">
@@ -423,11 +425,11 @@ export default function Expenses() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <div className="space-y-1.5">
             <Label>{t("expenses.from")}</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <DateInput value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>{t("expenses.to")}</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <DateInput value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>{t("expenses.category")}</Label>
@@ -489,7 +491,7 @@ export default function Expenses() {
                 const cat = categories.find((c) => c.id === e.category_id);
                 return (
                   <TableRow key={e.id}>
-                    <TableCell className="tabular-nums">{format(new Date(e.expense_date), "MMM d, yyyy")}</TableCell>
+                    <TableCell className="tabular-nums">{fmtDate(e.expense_date)}</TableCell>
                     <TableCell>
                       {cat ? (
                         <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full" style={{ background: `${cat.color}22`, color: cat.color }}>
@@ -529,11 +531,11 @@ export default function Expenses() {
             open={!!details}
             onClose={() => setDetails(null)}
             title={formatMoney(Number(details.amount), cur)}
-            subtitle={format(new Date(details.expense_date), "PPP")}
+            subtitle={fmtDate(details.expense_date)}
             rows={[
               { label: t("expenses.category"), value: cat?.name ?? t("expenses.uncategorized") },
               { label: t("expenses.paidTo"), value: details.paid_to ?? "—" },
-              { label: t("common.date"), value: format(new Date(details.expense_date), "PPP") },
+              { label: t("common.date"), value: fmtDate(details.expense_date) },
               { label: t("common.description"), value: details.description ?? "—", full: true },
             ]}
             footer={
