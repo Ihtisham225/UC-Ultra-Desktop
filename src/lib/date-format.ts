@@ -197,7 +197,7 @@ export function isoToInput(iso: string | null | undefined, fmt: DateFormatId = c
  * A two-digit year is read as 20xx.
  */
 export function inputToIso(text: string, fmt: DateFormatId = current.date): string | null {
-  const bits = text.trim().split(/[\/\-. ]+/).filter(Boolean);
+  const bits = text.trim().split(/[/\-. ]+/).filter(Boolean);
   if (bits.length !== 3 || bits.some((b) => !/^\d+$/.test(b))) return null;
   const { order } = inputPattern(fmt);
   const by: Record<string, string> = {};

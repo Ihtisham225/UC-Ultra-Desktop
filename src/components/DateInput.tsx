@@ -58,7 +58,7 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      let raw = e.target.value.replace(/[^\d\/\-. ]/g, "");
+      let raw = e.target.value.replace(/[^\d/\-. ]/g, "");
       const deleting = (e.nativeEvent as InputEvent).inputType?.startsWith("delete");
       // Re-separate plain digit runs as they're typed. Leave the text alone
       // when deleting (or the separator would come straight back) and when
