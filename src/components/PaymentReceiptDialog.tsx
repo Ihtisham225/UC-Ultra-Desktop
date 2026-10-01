@@ -6,7 +6,7 @@ import { MessageCircle, Printer, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatMoney } from "@/lib/format";
-import { buildWaReminderUrl } from "@/lib/debt-reminder";
+import { openWhatsApp } from "@/lib/whatsapp-open";
 import { printHtmlPage } from "@/components/ReturnReceiptDialog";
 import {
   balanceAfterLine,
@@ -46,9 +46,9 @@ export function PaymentReceiptDialog({
   const sendWhatsApp = () => {
     if (!receipt || !shop) return;
     if (!receipt.phone) return toast.error("No phone number on this account");
-    const url = buildWaReminderUrl(receipt.phone, buildPaymentReceiptMessage(receipt, shop, formatMoney, date));
-    if (!url) return toast.error("That phone number doesn't look like a WhatsApp number");
-    window.open(url, "_blank", "noopener,noreferrer");
+    if (!openWhatsApp(receipt.phone, buildPaymentReceiptMessage(receipt, shop, formatMoney, date))) {
+      return toast.error("That phone number doesn't look like a WhatsApp number");
+    }
   };
 
   useEffect(() => {

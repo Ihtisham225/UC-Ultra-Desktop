@@ -28,7 +28,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { buildLedgerStatementHtml } from "@/lib/ledger-statement";
 import { ImportDebtsDialog } from "@/components/ImportDebtsDialog";
-import { buildDebtReminderMessage, buildWaReminderUrl } from "@/lib/debt-reminder";
+import { buildDebtReminderMessage } from "@/lib/debt-reminder";
+import { openWhatsApp } from "@/lib/whatsapp-open";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { Pagination } from "@/components/Pagination";
@@ -253,10 +254,11 @@ export default function Debts() {
     const ids = new Set([...(selectedGroup ? [selectedGroup] : []), ...otherSides].flatMap((g) => g.debts.map((d) => d.id)));
     return allPayments
       .filter((p) => ids.has(p.debt_id))
+      // Newest first, like every other history.
       .sort(
         (a, b) =>
-          String(a.payment_date ?? "").localeCompare(String(b.payment_date ?? "")) ||
-          String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")),
+          String(b.payment_date ?? "").localeCompare(String(a.payment_date ?? "")) ||
+          String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
       );
   }, [allPayments, selectedGroup, otherSides]);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
@@ -282,9 +284,7 @@ export default function Debts() {
       dueDate: g.due_date,
       formatMoney,
     });
-    const url = buildWaReminderUrl(g.phone, message);
-    if (!url) return toast.error("This phone number looks invalid for WhatsApp.");
-    window.open(url, "_blank", "noopener,noreferrer");
+    if (!openWhatsApp(g.phone, message)) return toast.error("This phone number looks invalid for WhatsApp.");
   };
 
   /**

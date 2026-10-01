@@ -308,6 +308,26 @@ function handleDeepLink(url?: string) {
 // Open a URL in the user's default browser (used to start Google sign-in).
 ipcMain.handle('open-external', (_e, url: string) => shell.openExternal(url))
 
+// A pre-filled WhatsApp chat (receipts, slips, khata reminders). wa.me always
+// lands on a web page before handing off to the app, so WhatsApp Web flashed
+// up on every send. When something handles whatsapp:// (WhatsApp Desktop on
+// Windows or macOS) open it directly; only fall back to wa.me when nothing does.
+ipcMain.handle('open-whatsapp', async (_e, to: string, text: string) => {
+  const phone = String(to ?? '').replace(/\D/g, '')
+  if (phone.length < 8) return 'invalid'
+  const body = encodeURIComponent(String(text ?? ''))
+  if (app.getApplicationNameForProtocol('whatsapp://')) {
+    try {
+      await shell.openExternal(`whatsapp://send?phone=${phone}&text=${body}`)
+      return 'app'
+    } catch {
+      /* the handler is registered but wouldn't start — use the web */
+    }
+  }
+  await shell.openExternal(`https://wa.me/${phone}?text=${body}`)
+  return 'web'
+})
+
 // The renderer pulls any deep link that arrived before it was listening
 // (e.g. a cold start launched by the protocol).
 ipcMain.handle('consume-pending-oauth', () => {
