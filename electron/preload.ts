@@ -39,6 +39,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Google OAuth bridge
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),
+  // WhatsApp Desktop when installed, WhatsApp Web otherwise (see main.ts)
+  openWhatsApp: (to: string, text: string): Promise<'app' | 'web' | 'invalid'> =>
+    ipcRenderer.invoke('open-whatsapp', to, text),
   onOAuthCallback: (cb: (data: { token?: string; state?: string; error?: string }) => void) =>
     ipcRenderer.on('oauth-callback', (_e, data) => cb(data)),
   consumePendingOAuth: (): Promise<{ token?: string; state?: string; error?: string } | null> =>

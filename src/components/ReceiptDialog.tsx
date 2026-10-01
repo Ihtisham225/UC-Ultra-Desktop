@@ -5,7 +5,8 @@ import { Printer, MessageCircle, Sparkles } from "lucide-react";
 import { formatMoney, formatAmount, orderNumberLabel } from "@/lib/format";
 import { soldAs, formatUnitQty } from "@/lib/sale-units";
 import { rpc } from "@/lib/apiClient";
-import { buildReceiptMessage, buildReceiptWaUrl } from "@/lib/whatsapp-receipt";
+import { buildReceiptMessage } from "@/lib/whatsapp-receipt";
+import { openWhatsApp } from "@/lib/whatsapp-open";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { useShop } from "@/contexts/ShopContext";
@@ -644,10 +645,7 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
       formatMoney,
     });
 
-    const url = buildReceiptWaUrl(customer.phone, message);
-    if (!url) return toast.error("That phone number doesn't look like a WhatsApp number");
-
-    window.open(url, "_blank", "noopener,noreferrer");
+    if (!openWhatsApp(customer.phone, message)) return toast.error("That phone number doesn't look like a WhatsApp number");
     setSent(true);
   };
 

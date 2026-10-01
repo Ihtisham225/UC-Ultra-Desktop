@@ -54,7 +54,10 @@ export function LedgerEntriesTable({
                   <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">Nothing recorded yet.</TableCell>
                 </TableRow>
               ) : (
-                log.rows.map((r) => {
+                // Newest first, like every other history. The balance column is
+                // still worked out oldest-first, so each row shows the balance
+                // straight after that entry.
+                [...log.rows].reverse().map((r) => {
                   const charge = r.kind !== "payment";
                   return (
                     <TableRow key={r.id}>

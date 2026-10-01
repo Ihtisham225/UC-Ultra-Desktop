@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { WhatsAppTargetSetting } from "@/components/WhatsAppChooser";
 import {
   DATE_FORMATS, TIME_FORMATS, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, fmtDate, fmtDateTime, getDatePrefs, isDateFormat,
   type DateFormatId, type TimeFormatId,
@@ -703,6 +704,7 @@ export default function Settings() {
         <TabsContent value="receipt">
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
           <Card className="shadow-card p-6 space-y-5">
+            <WhatsAppTargetSetting />
             <div className="space-y-1.5"><Label>{t("settings.receipt.header")}</Label><Input value={header} onChange={(e) => setHeader(e.target.value)} disabled={!canEditShop} placeholder={t("settings.receipt.headerPlaceholder")} /></div>
             <div className="space-y-1.5"><Label>{t("settings.receipt.footer")}</Label><Textarea rows={2} value={footer} onChange={(e) => setFooter(e.target.value)} disabled={!canEditShop} placeholder={t("settings.receipt.footerPlaceholder")} /></div>
             <div className="flex items-center justify-between gap-4 py-2">

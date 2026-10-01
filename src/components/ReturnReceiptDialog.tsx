@@ -5,7 +5,7 @@ import { MessageCircle, Printer, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatMoney } from "@/lib/format";
-import { buildWaReminderUrl } from "@/lib/debt-reminder";
+import { openWhatsApp } from "@/lib/whatsapp-open";
 import { buildReturnMessage, buildReturnPrintHtml, balanceAfterLabel, refundedVia, returnSlipBalance, returnSlipLedger, type ReturnSlip } from "@/lib/return-receipt";
 import { matchPosShortcut } from "@/lib/pos-shortcuts";
 import { fmtDateTime } from "@/lib/date-format";
@@ -43,9 +43,9 @@ export function ReturnReceiptDialog({ slip, onClose }: { slip: ReturnSlip | null
   const sendWhatsApp = () => {
     if (!slip) return;
     if (!slip.customer?.phone) return toast.error("This bill has no customer phone number");
-    const url = buildWaReminderUrl(slip.customer.phone, buildReturnMessage(slip, formatMoney, date));
-    if (!url) return toast.error("That phone number doesn't look like a WhatsApp number");
-    window.open(url, "_blank", "noopener,noreferrer");
+    if (!openWhatsApp(slip.customer.phone, buildReturnMessage(slip, formatMoney, date))) {
+      return toast.error("That phone number doesn't look like a WhatsApp number");
+    }
   };
 
   useEffect(() => {

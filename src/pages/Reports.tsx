@@ -803,7 +803,7 @@ function TaxReport({ shopId, range, formatMoney, cur }: ReportProps) {
       cur.taxable += Number(r.subtotal); cur.tax += Number(r.tax); cur.gross += Number(r.total); cur.count += 1;
       map.set(key, cur);
     });
-    return Array.from(map.values()).sort((a, b) => a.period.localeCompare(b.period));
+    return Array.from(map.values()).sort((a, b) => b.period.localeCompare(a.period)); // newest month first
   }, [rows]);
 
   const totals = useMemo(() => byMonth.reduce((a, m) => ({ taxable: a.taxable + m.taxable, tax: a.tax + m.tax, gross: a.gross + m.gross, count: a.count + m.count }), { taxable: 0, tax: 0, gross: 0, count: 0 }), [byMonth]);
