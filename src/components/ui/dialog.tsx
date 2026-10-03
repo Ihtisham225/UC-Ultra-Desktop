@@ -28,6 +28,40 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+
+/**
+ * Dialogs one and two sizes wider on big screens (xl 1280px+, 2xl 1536px+).
+ * Every dialog picks a width that suits a laptop; on a shop's 24" monitor the
+ * same box looked lost and squeezed its tables (the Cash history cut its
+ * Balance column off). Steps up from whatever width the caller chose, so a
+ * small confirm stays smaller than a wide report.
+ *
+ * ⚠️ The classes are written out in full on purpose — Tailwind only generates
+ * class names it can find literally in the source.
+ * ⚠️ Shared verbatim with the desktop app's `components/ui/dialog.tsx`.
+ */
+const GROW: Record<string, string> = {
+  sm: "xl:max-w-md 2xl:max-w-lg",
+  md: "xl:max-w-lg 2xl:max-w-xl",
+  lg: "xl:max-w-xl 2xl:max-w-2xl",
+  xl: "xl:max-w-2xl 2xl:max-w-3xl",
+  "2xl": "xl:max-w-3xl 2xl:max-w-4xl",
+  "3xl": "xl:max-w-4xl 2xl:max-w-5xl",
+  "4xl": "xl:max-w-5xl 2xl:max-w-6xl",
+  "5xl": "xl:max-w-6xl 2xl:max-w-7xl",
+  "6xl": "xl:max-w-7xl 2xl:max-w-[90rem]",
+};
+
+export function growOnLargeScreens(className: string | undefined, fallback: keyof typeof GROW): string {
+  // The width the caller asked for: the last plain or sm: max-w-<size> (an
+  // arbitrary or "none"/"full" width is left exactly as it is).
+  const picked = [...(className ?? "").matchAll(/(?:^|\s)(?:sm:)?max-w-([a-z0-9]+)(?=\s|$)/g)].map((m) => m[1]);
+  if (/(?:^|\s)(?:sm:)?max-w-(?:none|full|\[)/.test(className ?? "")) return "";
+  // A caller that already sizes for big screens itself keeps its own choice.
+  if (/(?:^|\s)(?:xl|2xl):max-w-/.test(className ?? "")) return "";
+  return GROW[picked.length ? picked[picked.length - 1] : fallback] ?? "";
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
@@ -58,6 +92,7 @@ const DialogContent = React.forwardRef<
         "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%] sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%]",
         "sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
         className,
+        growOnLargeScreens(className, "2xl"),
       )}
       style={{ paddingTop: "max(1rem, calc(env(safe-area-inset-top) + 0.5rem))" }}
       {...props}
