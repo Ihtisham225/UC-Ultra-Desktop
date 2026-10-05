@@ -35,12 +35,15 @@ const NONE = "__none__";
  * and older records, simply have no account attached.
  */
 export function AccountPicker({
-  value, onChange, label = "Paid from", allowNone = true,
+  value, onChange, label = "Paid from", allowNone = true, autoDefault = true,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
   label?: string;
   allowNone?: boolean;
+  /** Pick the cash drawer when nothing is chosen. Off when editing a record
+   *  that deliberately has no account — defaulting would invent a money move. */
+  autoDefault?: boolean;
 }) {
   const [options, setOptions] = useState<AccountOption[]>([]);
 
@@ -50,7 +53,7 @@ export function AccountPicker({
       .then((list) => {
         setOptions(list);
         // Default to the drawer so the common case needs no thought.
-        if (!value && list.length > 0) {
+        if (autoDefault && !value && list.length > 0) {
           onChange((list.find((a) => a.type === "cash") ?? list[0]).id);
         }
       })
