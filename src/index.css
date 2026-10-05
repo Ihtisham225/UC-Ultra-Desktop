@@ -146,6 +146,101 @@
   .text-balance { text-wrap: balance; }
 }
 
+/* --- App chrome: floating glass sidebar + header ---
+ * Modelled on the daily-cup shell. The page carries soft brand-tinted light
+ * (.app-backdrop) so the frosted panels have something to blur; the panels
+ * themselves are deep emerald ink with light text. Tokens are re-pointed
+ * inside .app-chrome so the existing shadcn buttons, outline triggers and
+ * sidebar classes all read correctly on the dark glass without per-element
+ * overrides. Popovers portal out to <body>, so menus keep the normal theme.
+ */
+.app-backdrop {
+  background-color: hsl(var(--background));
+  background-image:
+    radial-gradient(60rem 40rem at 0% 0%, hsl(158 84% 39% / 0.10), transparent 60%),
+    radial-gradient(50rem 36rem at 100% 0%, hsl(200 80% 55% / 0.08), transparent 60%),
+    radial-gradient(48rem 40rem at 60% 100%, hsl(38 95% 55% / 0.07), transparent 60%);
+  background-attachment: fixed;
+}
+.dark .app-backdrop {
+  background-image:
+    radial-gradient(60rem 40rem at 0% 0%, hsl(158 75% 45% / 0.10), transparent 60%),
+    radial-gradient(50rem 36rem at 100% 0%, hsl(200 80% 55% / 0.07), transparent 60%),
+    radial-gradient(48rem 40rem at 60% 100%, hsl(38 95% 55% / 0.05), transparent 60%);
+}
+
+.app-chrome {
+  background-color: hsl(168 42% 12% / 0.84);
+  color: hsl(150 25% 96%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid hsl(0 0% 100% / 0.10);
+  box-shadow: 0 18px 40px -16px hsl(168 50% 8% / 0.45), inset 0 1px 0 hsl(0 0% 100% / 0.06);
+
+  --foreground: 150 25% 96%;
+  --muted: 0 0% 100% / 0.08;
+  --muted-foreground: 160 14% 74%;
+  --accent: 0 0% 100% / 0.10;
+  --accent-foreground: 150 25% 98%;
+  --background: 0 0% 100% / 0.06;
+  --input: 0 0% 100% / 0.16;
+  --border: 0 0% 100% / 0.12;
+  /* Bright mint so brand-coloured icons and badges still pop on the ink. */
+  --primary: 156 70% 58%;
+  --primary-foreground: 168 45% 10%;
+
+  --sidebar-foreground: 150 20% 92%;
+  --sidebar-accent: 0 0% 100% / 0.08;
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-border: 0 0% 100% / 0.10;
+  /* Active nav pill: near-white on the ink, the way daily-cup does cream. */
+  --sidebar-primary: 150 30% 97%;
+  --sidebar-primary-foreground: 168 45% 14%;
+}
+.dark .app-chrome {
+  background-color: hsl(200 30% 14% / 0.72);
+  box-shadow: 0 18px 40px -16px hsl(0 0% 0% / 0.6), inset 0 1px 0 hsl(0 0% 100% / 0.05);
+  --sidebar-primary: 156 70% 55%;
+  --sidebar-primary-foreground: 222 47% 8%;
+}
+
+/* The global search sits on the glass but reads as a plain page-coloured
+   field — restore the theme's neutral tokens for its subtree. */
+.chrome-search {
+  color: hsl(222 47% 11%);
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --muted: 220 20% 94%;
+  --muted-foreground: 220 12% 46%;
+  --input: 220 20% 88%;
+  --border: 220 20% 90%;
+  --accent: 220 25% 96%;
+  --accent-foreground: 222 47% 11%;
+  --primary: 158 84% 39%;
+  --primary-foreground: 0 0% 100%;
+}
+.dark .chrome-search {
+  color: hsl(220 20% 95%);
+  --background: 222 40% 12%;
+  --foreground: 220 20% 95%;
+  --muted: 222 30% 16%;
+  --muted-foreground: 220 15% 65%;
+  --input: 222 30% 22%;
+  --border: 222 30% 20%;
+  --accent: 222 35% 18%;
+  --accent-foreground: 0 0% 100%;
+  --primary: 158 75% 50%;
+  --primary-foreground: 222 47% 8%;
+}
+
+/* Desktop titlebar: the glass runs edge to edge (it is the window's drag
+   area, and the macOS window buttons sit at a fixed spot in it), so only a
+   bottom hairline instead of a floating panel's border. */
+.app-chrome-bar {
+  border-width: 0 0 1px 0;
+  border-radius: 0;
+}
+
 /* --- Mobile keyboard handling ---
  * When the on-screen keyboard is open, visualViewport shrinks. We expose its
  * delta as --kb-inset and add bottom padding so dialog/page content can scroll

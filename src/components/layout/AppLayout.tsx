@@ -32,10 +32,17 @@ import { Logo } from "@/components/Logo";
 import { AppShortcuts } from "@/components/shortcuts/AppShortcuts";
 import { useAppNav } from "@/hooks/useAppNav";
 import { useIsMac } from "@/hooks/useIsMac";
-import type { NavPage } from "@/lib/app-nav";
+import { NAV_SECTION_ORDER, NAV_SECTION_LABEL, type NavPage } from "@/lib/app-nav";
 import { appShortcutLabel, openShortcutPopup } from "@/lib/shortcuts";
 
 type NavItem = Pick<NavPage, "to" | "label" | "icon">;
+
+/** Small caps heading over each group of sidebar links. */
+const SectionHeading = ({ children }: { children: ReactNode }) => (
+  <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/50">
+    {children}
+  </p>
+);
 
 /**
  * Whether Ctrl/Cmd+B has hidden the sidebar. Remembered on this machine; read
@@ -90,10 +97,10 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
           mobile
             ? cn("p-2 rounded-md shrink-0", active ? "bg-primary text-primary-foreground" : "text-muted-foreground")
             : cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors",
                 active
                   ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               )
         )}
       >
@@ -104,10 +111,12 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* ── Full-width titlebar / header ── */}
+    <div className="app-backdrop min-h-screen flex flex-col">
+      {/* ── Full-width glass titlebar / header ──
+          Edge to edge rather than floating: it is the window's drag area and
+          the macOS window buttons sit at a fixed spot in it. */}
       <header
-        className="drag-region border-b bg-card/90 backdrop-blur-sm sticky top-0 z-30 shrink-0"
+        className="drag-region app-chrome app-chrome-bar sticky top-0 z-30 shrink-0"
       >
         {/* The flex row is NOT no-drag — only individual interactive elements are */}
         <div className="flex items-center gap-3 h-14">
@@ -115,11 +124,11 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
           <div className="hidden lg:block w-[5.5rem] shrink-0" />
 
           {/* Brand — static, draggable */}
-          <div className="no-drag-region hidden lg:flex items-center gap-2.5 shrink-0 pe-2 border-r border-border mr-1">
+          <div className="no-drag-region hidden lg:flex items-center gap-2.5 shrink-0 pe-3 border-r border-sidebar-border mr-1">
             <Logo size="sm" />
             <div className="leading-tight">
               <div className="font-bold text-sm">{t("app.name")}</div>
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{t("app.tagline")}</div>
+              <div className="text-[9px] uppercase tracking-wider text-sidebar-foreground/55">{t("app.tagline")}</div>
             </div>
           </div>
 
@@ -174,7 +183,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
           </div>
 
           {/* Global search — centred flex-1, draggable gaps on either side */}
-          <div className="no-drag-region hidden lg:flex flex-1 justify-center px-4">
+          <div className="no-drag-region chrome-search hidden lg:flex flex-1 justify-center px-4">
             <GlobalSearch variant="desktop-bar" />
           </div>
 
@@ -198,36 +207,33 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
         </div>
       </header>
 
-      {/* Platform notices sit above the subscription warning: one is from us,
-          the other is about their own account. */}
-      <AnnouncementBanner />
-
-      {isPro && daysLeft > 0 && daysLeft <= 10 && (
-        <div className="px-4 lg:px-8 pt-3 shrink-0">
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 px-4 py-2.5 text-sm flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-4 shrink-0" />
-              <span>Your subscription expires in <b>{daysLeft} day{daysLeft === 1 ? "" : "s"}</b>. Please contact <b>Tech Town Swat</b> to renew.</span>
-            </div>
-            <Link to="/support" className="text-xs font-semibold underline underline-offset-2 hover:opacity-80">Contact support</Link>
-          </div>
-        </div>
-      )}
-
       {/* ── Body: sidebar + main ── */}
-      <div className="flex flex-1 min-h-0">
-      {/* Sidebar */}
-      <aside className={cn("hidden flex-col w-56 bg-sidebar text-sidebar-foreground border-r border-sidebar-border shrink-0", !sidebarHidden && "lg:flex")}>
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {nav.map((item) => renderItem(item))}
+      <div className="flex flex-1 min-h-0 gap-4 p-3 lg:p-4">
+      {/* Sidebar — a floating glass panel, like the daily-cup shell. Grouped by
+          what the page is FOR; sections come from app-nav, shared with Go to. */}
+      <aside
+        className={cn(
+          "app-chrome hidden flex-col w-60 rounded-2xl overflow-hidden text-sidebar-foreground shrink-0",
+          "self-start sticky top-[4.5rem] h-[calc(100vh-5.5rem)]",
+          !sidebarHidden && "lg:flex",
+        )}
+      >
+        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-3">
+          {NAV_SECTION_ORDER.map((section) => {
+            const items = nav.filter((p) => p.section === section);
+            if (items.length === 0) return null;
+            return (
+              <div key={section} className="space-y-0.5">
+                <SectionHeading>{NAV_SECTION_LABEL[section]}</SectionHeading>
+                {items.map((item) => renderItem(item))}
+              </div>
+            );
+          })}
           {isSuperAdmin && (
-            <NavLink to="/admin" className={({ isActive }) => cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-              isActive ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            )}>
-              <ShieldAlert className="size-4" /> {t("nav.adminDashboard")}
-            </NavLink>
+            <div className="space-y-0.5">
+              <SectionHeading>Platform</SectionHeading>
+              {renderItem({ to: "/admin", label: t("nav.adminDashboard"), icon: ShieldAlert })}
+            </div>
           )}
         </nav>
 
@@ -242,23 +248,49 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
             </button>
           </div>
           {isPro && role === "owner" && (
-            <Link to="/billing" className="block rounded-lg p-3 bg-success/10 border border-success/20 hover:bg-success/15 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-success"><Sparkles className="size-3.5" /> {t("layout.subscriptionActive")}</div>
-              <div className="text-[11px] text-sidebar-foreground/70 mt-0.5">{t("common.daysLeft", { count: daysLeft })}</div>
+            <Link to="/billing" className="flex items-center gap-2 rounded-xl px-3 py-1.5 bg-primary/10 border border-primary/20 hover:bg-primary/15 transition-colors">
+              <Sparkles className="size-3.5 shrink-0 text-primary" />
+              <span className="min-w-0 leading-tight">
+                <span className="block text-xs font-semibold text-primary truncate">{t("layout.subscriptionActive")}</span>
+                <span className="block text-[11px] text-sidebar-foreground/60 truncate">{t("common.daysLeft", { count: daysLeft })}</span>
+              </span>
             </Link>
           )}
-          <div className="px-3 py-2 text-xs">
-            <div className="text-sidebar-foreground/60">{t("layout.signedInAs")}</div>
-            <div className="font-medium truncate">{user?.email}</div>
+          <div className="flex items-center gap-2 rounded-xl bg-sidebar-accent px-3 py-2">
+            <div className="min-w-0 flex-1 text-xs">
+              <div className="text-sidebar-foreground/55">{t("layout.signedInAs")}</div>
+              <div className="font-medium truncate">{user?.email}</div>
+            </div>
+            <Button
+              variant="ghost" size="icon" onClick={signOut}
+              className="size-8 shrink-0 text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+              title={t("common.signOut")} aria-label={t("common.signOut")}
+            >
+              <LogOut className="size-4" />
+            </Button>
           </div>
-          <Button variant="ghost" size="sm" onClick={signOut} className="w-full justify-start text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent">
-            <LogOut className="size-4 me-2" /> {t("common.signOut")}
-          </Button>
         </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 min-w-0 overflow-y-auto p-4 lg:p-8 pb-24 lg:pb-8">{children}</main>
+      <div className="flex-1 min-w-0 flex flex-col gap-4">
+        {/* Platform notices sit above the subscription warning: one is from us,
+            the other is about their own account. */}
+        <AnnouncementBanner />
+
+        {isPro && daysLeft > 0 && daysLeft <= 10 && (
+          <div className="shrink-0">
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 px-4 py-2.5 text-sm flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4 shrink-0" />
+                <span>Your subscription expires in <b>{daysLeft} day{daysLeft === 1 ? "" : "s"}</b>. Please contact <b>Tech Town Swat</b> to renew.</span>
+              </div>
+              <Link to="/support" className="text-xs font-semibold underline underline-offset-2 hover:opacity-80">Contact support</Link>
+            </div>
+          </div>
+        )}
+        <main className="flex-1 min-w-0 px-1 lg:px-4 pt-1 pb-24 lg:pb-6">{children}</main>
+      </div>
       </div>
 
       {/* Mobile bottom navigation */}
