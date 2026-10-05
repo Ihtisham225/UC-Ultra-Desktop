@@ -29,6 +29,7 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { InstallPwaButton } from "@/components/InstallPwaButton";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { Logo } from "@/components/Logo";
+import { AppearanceSync } from "@/components/appearance/AppearanceSync";
 import { AppShortcuts } from "@/components/shortcuts/AppShortcuts";
 import { useAppNav } from "@/hooks/useAppNav";
 import { useIsMac } from "@/hooks/useIsMac";
@@ -294,6 +295,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
       </div>
 
       {/* Mobile bottom navigation */}
+      <AppearanceSync userId={user?.id} />
       <MobileBottomNav />
 
       <AppShortcuts

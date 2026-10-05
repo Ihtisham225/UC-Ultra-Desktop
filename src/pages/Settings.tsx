@@ -21,7 +21,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, TrendingUp, Layers, Keyboard } from "lucide-react";
+import { Upload, Download, Trash2, User as UserIcon, Store, Receipt, Bell, Shield, TrendingUp, Layers, Keyboard, Palette } from "lucide-react";
+import { AppearanceSettings } from "@/components/appearance/AppearanceSettings";
 import { JobProcessesSection } from "@/components/JobProcessesSection";
 import { isHandicraft } from "@/lib/handicraft";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -380,6 +381,7 @@ export default function Settings() {
           <TabsTrigger value="notifications"><Bell className="size-3.5 mr-1.5" />{t("settings.tabs.notifications")}</TabsTrigger>
           {/* Everyone, cashiers most of all. The till's keys are left out for a
               handicraft shop, which has no till; the app-wide keys apply to all. */}
+          <TabsTrigger value="appearance"><Palette className="size-3.5 mr-1.5" />Appearance</TabsTrigger>
           <TabsTrigger value="shortcuts"><Keyboard className="size-3.5 mr-1.5" />Shortcuts</TabsTrigger>
           {canEdit && <TabsTrigger value="investors"><TrendingUp className="size-3.5 mr-1.5" />Investors</TabsTrigger>}
           {isHandicraft(currentShop) && <TabsTrigger value="processes"><Layers className="size-3.5 mr-1.5" />Processing work</TabsTrigger>}
@@ -779,6 +781,10 @@ export default function Settings() {
             </div>
           )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="appearance">
+          <AppearanceSettings />
         </TabsContent>
 
         <TabsContent value="shortcuts" className="space-y-8">
