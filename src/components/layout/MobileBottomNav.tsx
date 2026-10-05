@@ -6,20 +6,18 @@ import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePermissions } from "@/hooks/usePermissions";
 import { isHandicraft } from "@/lib/handicraft";
+import { useAppNav } from "@/hooks/useAppNav";
+import { NAV_SECTION_ORDER, NAV_SECTION_LABEL } from "@/lib/app-nav";
 import { useShop } from "@/contexts/ShopContext";
 import { useProAccess } from "@/hooks/useProAccess";
 import { useIsSuperAdmin } from "@/hooks/useIsSuperAdmin";
 
 import { GlobalSearch } from "@/components/GlobalSearch";
 
-type NavItem = { to: string; label: string; icon: any; show: boolean };
-
 export const MobileBottomNav = () => {
   const loc = useLocation();
   const { signOut, user } = useAuth();
-  const perms = usePermissions();
   const { isPro, daysLeft } = useProAccess();
   const { isSuperAdmin } = useIsSuperAdmin();
   const { t } = useTranslation();
@@ -31,27 +29,10 @@ export const MobileBottomNav = () => {
 
   const isActive = (to: string) => loc.pathname === to || (to !== "/" && loc.pathname.startsWith(to));
 
-  const allNav: NavItem[] = [
-    { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard, show: true },
-    { to: "/daybook", label: "Roznamcha", icon: BookOpenCheck, show: craft && perms.canManagePurchases },
-    { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, show: !craft },
-    { to: "/products", label: t("nav.products"), icon: Package, show: !craft },
-    { to: "/categories", label: "Categories", icon: FolderTree, show: !craft && perms.canManageProducts },
-    { to: "/inventory", label: "Inventory", icon: Boxes, show: !craft && perms.canManageProducts },
-    { to: "/sales", label: t("nav.sales"), icon: Receipt, show: !craft },
-    { to: "/returns", label: t("nav.returns"), icon: Undo2, show: !craft },
-    { to: "/customers", label: t("nav.customers"), icon: Users, show: !craft },
-    { to: "/analytics", label: t("nav.analytics"), icon: BarChart3, show: !craft && perms.canManageExpenses },
-    { to: "/reports", label: "Reports", icon: FileBarChart, show: perms.canManageExpenses },
-    { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, show: !craft && perms.canManagePurchases },
-    { to: "/material-purchases", label: t("nav.purchases"), icon: PackageOpen, show: craft && perms.canManagePurchases },
-    { to: "/making", label: "Making", icon: Scissors, show: craft && perms.canManagePurchases },
-    { to: "/job-work", label: "Job Work", icon: Factory, show: craft && perms.canManagePurchases },
-    { to: "/suppliers", label: craft ? "Parties" : t("nav.suppliers"), icon: Truck, show: perms.canManageSuppliers },
-    { to: "/expenses", label: t("nav.expenses"), icon: Wallet, show: perms.canManageExpenses },
-    { to: "/debts", label: t("nav.debts"), icon: HandCoins, show: !craft && perms.canManageExpenses },
-    { to: "/staff", label: t("nav.staff"), icon: ShieldCheck, show: perms.canManageStaff },
-  ].filter((n) => n.show);
+  // The same page list as the sidebar and Go to, so this menu can't fall
+  // behind them. Settings and Support have their own buttons at the foot.
+  const { pages } = useAppNav();
+  const allNav = pages.filter((p) => p.to !== "/settings" && p.to !== "/support");
 
   return (
     <>
@@ -106,27 +87,36 @@ export const MobileBottomNav = () => {
               </SheetHeader>
 
               <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-1">
-                {allNav.map((item) => {
-                  const active = isActive(item.to);
+                {NAV_SECTION_ORDER.map((section) => {
+                  const items = allNav.filter((p) => p.section === section);
+                  if (items.length === 0) return null;
                   return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setMenuOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-3.5 rounded-xl text-sm font-medium transition-colors",
-                        active ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground hover:bg-muted active:bg-muted"
-                      )}
-                    >
-                      <item.icon className="size-[18px]" />
-                      <span className="flex-1">{item.label}</span>
-                    </Link>
+                    <div key={section} className="space-y-1">
+                      <div className="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{NAV_SECTION_LABEL[section]}</div>
+                      {items.map((item) => {
+                        const active = isActive(item.to);
+                        return (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            onClick={() => setMenuOpen(false)}
+                            className={cn(
+                              "flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors",
+                              active ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground hover:bg-muted active:bg-muted"
+                            )}
+                          >
+                            <item.icon className="size-[18px]" />
+                            <span className="flex-1">{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
                   );
                 })}
 
                 {isSuperAdmin && (
                   <>
-                    <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{t("nav.adminDashboard")}</div>
+                    <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Platform</div>
                     <Link to="/admin" onClick={() => setMenuOpen(false)}
                       className={cn("flex items-center gap-3 px-3 py-3.5 rounded-xl text-sm font-medium transition-colors",
                         isActive("/admin") && !isActive("/admin/payments") ? "bg-primary text-primary-foreground" : "hover:bg-muted active:bg-muted")}>

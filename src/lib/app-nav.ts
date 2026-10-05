@@ -19,6 +19,19 @@ import {
 
 export type NavSection = "Overview" | "Selling" | "Stock" | "Lab" | "Workshop" | "Money" | "Store";
 
+/** The sidebar's group order and headings (pages within a group keep list order). */
+export const NAV_SECTION_ORDER: NavSection[] = ["Overview", "Workshop", "Selling", "Lab", "Stock", "Money", "Store"];
+export const NAV_SECTION_LABEL: Record<NavSection, string> = {
+  Overview: "Overview",
+  Workshop: "Workshop",
+  Selling: "Sales",
+  Lab: "Lab",
+  Stock: "Inventory",
+  Money: "Money & ledger",
+  Store: "Store",
+};
+
+
 export interface NavPage {
   to: string;
   label: string;

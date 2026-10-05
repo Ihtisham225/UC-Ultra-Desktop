@@ -80,8 +80,9 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-surface flex flex-col">
-      <header className="drag-region sticky top-0 z-20 border-b bg-card/80 backdrop-blur">
+    <div className="app-backdrop min-h-screen flex flex-col">
+      {/* Same glass titlebar as the store shell. */}
+      <header className="drag-region app-chrome app-chrome-bar sticky top-0 z-20">
         <div className="px-4 h-14 flex items-center gap-3">
           {/* Traffic-light spacer — with px-4 this matches AppLayout's 5.5rem inset */}
           {isMacDesktop() && <div className="w-[4.5rem] shrink-0" aria-hidden="true" />}
@@ -141,13 +142,11 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
         </div>
       </header>
 
-      <div className="flex-1 flex">
-        <aside className="hidden lg:block w-56 shrink-0 border-e bg-card/40 p-3">
-          <div className="sticky top-[4.5rem]">
-            <NavLinks />
-          </div>
+      <div className="flex-1 flex gap-4 p-3 lg:p-4">
+        <aside className="app-chrome hidden lg:block w-56 shrink-0 self-start sticky top-[4.5rem] rounded-2xl p-3">
+          <NavLinks />
         </aside>
-        <main className="flex-1 min-w-0 p-4 lg:p-6">{children}</main>
+        <main className="flex-1 min-w-0 px-1 lg:px-2 pb-6">{children}</main>
       </div>
     </div>
   );
