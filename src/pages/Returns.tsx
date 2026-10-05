@@ -321,42 +321,50 @@ export default function Returns() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("common.date")}</TableHead>
-                  <TableHead>{t("returns.returnNumber")}</TableHead>
+                  {/* Merged columns: ten across clipped the refund and the
+                      actions off the right edge on an ordinary laptop. */}
+                  <TableHead className="whitespace-nowrap">{t("returns.returnNumber")}</TableHead>
                   <TableHead>{t("returns.receiptCol")}</TableHead>
                   <TableHead>Products</TableHead>
-                  <TableHead>{t("common.items")}</TableHead>
                   <TableHead>{t("returns.method")}</TableHead>
-                  <TableHead>{t("returns.reason")}</TableHead>
-                  <TableHead className="text-end">Deduction</TableHead>
                   <TableHead className="text-end">{t("returns.refund")}</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead className="w-px"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {custLoading && custRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
                 ) : custRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-12">{t("returns.empty")}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-12">{t("returns.empty")}</TableCell></TableRow>
                 ) : custRows.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="tabular-nums whitespace-nowrap">{fmtDateTime(r.created_at)}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <div className="font-mono text-xs">{r.return_number}</div>
+                      <div className="text-xs text-muted-foreground tabular-nums">{fmtDateTime(r.created_at)}</div>
+                    </TableCell>
                     <TableCell className="text-xs">
-                      <div className="font-mono">{r.sales?.receipt_number ?? (r.sale_id ? "—" : "No bill")}</div>
+                      <div className="font-mono whitespace-nowrap">{r.sales?.receipt_number ?? (r.sale_id ? "—" : "No bill")}</div>
                       {r.customer_name && <div className="text-muted-foreground">{r.customer_name}</div>}
                     </TableCell>
-                    <TableCell className="max-w-[16rem] truncate text-sm">
-                      {r.sale_return_items.map((i) => Number(i.quantity) > 1 ? `${i.product_name} ×${Number(i.quantity)}` : i.product_name).join(", ") || "—"}
+                    <TableCell className="text-sm min-w-[10rem]">
+                      <div className="line-clamp-2">
+                        {r.sale_return_items.map((i) => Number(i.quantity) > 1 ? `${i.product_name} ×${Number(i.quantity)}` : i.product_name).join(", ") || "—"}
+                      </div>
+                      <div className="text-xs text-muted-foreground tabular-nums">
+                        {r.sale_return_items.reduce((a, i) => a + Number(i.quantity), 0)} {t("common.items").toLowerCase()}
+                      </div>
                     </TableCell>
-                    <TableCell className="tabular-nums">{r.sale_return_items.reduce((a, i) => a + Number(i.quantity), 0)}</TableCell>
-                    <TableCell className="capitalize">{r.credited_to_ledger ? "Ledger" : r.refund_method}</TableCell>
-                    <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{r.reason ?? "—"}</TableCell>
-                    <TableCell className="text-end tabular-nums text-destructive">
-                      {Number(r.deduction ?? 0) > 0 ? `−${formatMoney(Number(r.deduction), cur)}` : "—"}
+                    <TableCell className="text-sm">
+                      <div className="capitalize whitespace-nowrap">{r.credited_to_ledger ? "Ledger" : r.refund_method}</div>
+                      {r.reason && <div className="text-xs text-muted-foreground line-clamp-2 max-w-[12rem]">{r.reason}</div>}
                     </TableCell>
-                    <TableCell className="text-end tabular-nums font-medium">{formatMoney(Number(r.total_refund), cur)}</TableCell>
-                    <TableCell>
+                    <TableCell className="text-end tabular-nums whitespace-nowrap">
+                      <div className="font-medium">{formatMoney(Number(r.total_refund), cur)}</div>
+                      {Number(r.deduction ?? 0) > 0 && (
+                        <div className="text-xs text-destructive">−{formatMoney(Number(r.deduction), cur)} deducted</div>
+                      )}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
                       <Button variant="ghost" size="icon" onClick={() => setCustDetails(r)}><Eye className="size-4" /></Button>
                       <Button variant="ghost" size="icon" title="Receipt" onClick={() => void openReprint(r.id)}><Printer className="size-4" /></Button>
                       {canDelete && (
@@ -389,31 +397,32 @@ export default function Returns() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("common.date")}</TableHead>
-                  <TableHead>Return #</TableHead>
+                  <TableHead className="whitespace-nowrap">Return #</TableHead>
                   <TableHead>Supplier</TableHead>
                   <TableHead>Purchase ref</TableHead>
                   <TableHead>{t("common.items")}</TableHead>
                   <TableHead>{t("returns.reason")}</TableHead>
                   <TableHead className="text-end">Refund</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead className="w-px"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {supLoading && supRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">{t("common.loading")}</TableCell></TableRow>
                 ) : supRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-12">No supplier returns yet. Open a purchase and click the return icon.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-12">No supplier returns yet. Open a purchase and click the return icon.</TableCell></TableRow>
                 ) : supRows.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="tabular-nums whitespace-nowrap">{fmtDateTime(r.created_at)}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <div className="font-mono text-xs">{r.return_number}</div>
+                      <div className="text-xs text-muted-foreground tabular-nums">{fmtDateTime(r.created_at)}</div>
+                    </TableCell>
                     <TableCell>{r.suppliers?.name ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">{r.purchases?.reference_number ?? "—"}</TableCell>
                     <TableCell className="tabular-nums">{r.supplier_return_items.reduce((a, i) => a + Number(i.quantity), 0)}</TableCell>
                     <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{r.reason ?? "—"}</TableCell>
-                    <TableCell className="text-end tabular-nums font-medium">{formatMoney(Number(r.total_refund), cur)}</TableCell>
-                    <TableCell>
+                    <TableCell className="text-end tabular-nums font-medium whitespace-nowrap">{formatMoney(Number(r.total_refund), cur)}</TableCell>
+                    <TableCell className="whitespace-nowrap">
                       <Button variant="ghost" size="icon" onClick={() => setSupDetails(r)}><Eye className="size-4" /></Button>
                       {canDelete && (
                         <Button variant="ghost" size="icon" title="Delete return" onClick={() => deleteSupReturn(r.id)}>

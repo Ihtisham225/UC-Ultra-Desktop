@@ -40,6 +40,7 @@ import { LedgerEntriesTable } from "@/components/LedgerEntriesLog";
 import { PageTip } from "@/components/PageTip";
 import { AccountPicker } from "@/components/AccountPicker";
 import { PaymentReceiptDialog } from "@/components/PaymentReceiptDialog";
+import { EditLedgerEntryDialog, type EditableLedgerEntry, type LedgerEntryEdit } from "@/components/EditLedgerEntryDialog";
 import type { PaymentReceiptDto } from "@/lib/payment-receipt";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LedgerPersonPicker, type LedgerPerson } from "@/components/LedgerPersonPicker";
@@ -94,6 +95,10 @@ interface DebtPayment {
   cheque_id?: string | null;
   /** The receipt it was given on — shared by every bill one payment covered. */
   receipt_id?: string | null;
+  /** Set when a return or a purchase wrote this entry — it can't be edited here. */
+  sale_return_id?: string | null;
+  supplier_return_id?: string | null;
+  purchase_id?: string | null;
 }
 
 /** A synced payment_receipts row (numbers may arrive as strings) → the slip's shape. */
@@ -267,6 +272,7 @@ export default function Debts() {
   /** The receipt on screen — straight after a payment, or a reprint. */
   const [receipt, setReceipt] = useState<PaymentReceiptDto | null>(null);
   const [confirmPaymentDeleteId, setConfirmPaymentDeleteId] = useState<string | null>(null);
+  const [editEntry, setEditEntry] = useState<EditableLedgerEntry | null>(null);
   const [detailsKey, setDetailsKey] = useState<string | null>(null);
   const detailsGroup = useMemo(() => groups.find((g) => g.key === detailsKey) ?? null, [groups, detailsKey]);
   const [importOpen, setImportOpen] = useState(false);
@@ -766,6 +772,45 @@ export default function Debts() {
     toast.success("Payment deleted");
     setConfirmPaymentDeleteId(null);
   };
+
+  /**
+   * Correct a payment typed with the wrong figures. The server replaces the
+   * whole payment and rebuilds its money line and receipt, so this needs a
+   * connection — the same rule as editing a bill.
+   */
+  const saveEntryEdit = async (values: LedgerEntryEdit): Promise<string | null> => {
+    if (!editEntry) return null;
+    if (!navigator.onLine) return "Editing an entry needs a connection.";
+    // The server must hold the payment first — it may have been taken offline.
+    await syncNow();
+    const res = await rpc<{
+      ok: boolean;
+      error?: string;
+      removed_payment_ids?: string[];
+      rows?: { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] };
+    }>("updateLedgerEntryAction", { payment_id: editEntry.id, ...values });
+    if (!res.ok) return res.error ?? "Failed to update entry";
+    // Apply what the server wrote at once rather than waiting on the pull:
+    // the old settlements go, the new ones (and any advance row) arrive.
+    for (const id of res.removed_payment_ids ?? []) await deleteLocal("debt_payments", id, false);
+    if (res.rows) {
+      await bulkUpsertLocal("debts", res.rows.debts);
+      await bulkUpsertLocal("debt_payments", res.rows.debt_payments);
+    }
+    notifyChange("debt_payments");
+    notifyChange("debts");
+    void syncNow().catch(() => {});
+    toast.success("Entry updated — balance and account adjusted");
+    setEditEntry(null);
+    return null;
+  };
+
+  /** Why an entry can't be edited here, or null when it can. */
+  const editBlock = (p: DebtPayment): string | null =>
+    p.cheque_id ? "Part of a cheque — change it on the Cheques page"
+      : p.sale_return_id || p.supplier_return_id ? "Came from a return — edit or delete the return"
+      : p.purchase_id ? "Came from a purchase — edit the purchase"
+      : null;
 
   /**
    * Print an A4 statement — one account, or every account. Goes through a
@@ -1376,6 +1421,27 @@ export default function Debts() {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                className="size-8"
+                                disabled={!!editBlock(payment)}
+                                title={editBlock(payment) ?? "Edit entry"}
+                                onClick={() => setEditEntry({
+                                  id: payment.id,
+                                  kind: payment.kind,
+                                  amount: payment.amount,
+                                  discount: payment.discount,
+                                  payment_date: String(payment.payment_date).slice(0, 10),
+                                  account_id: payment.account_id ?? null,
+                                  notes: payment.notes,
+                                  spread: payment.debt_ids.length,
+                                })}
+                              >
+                                <Pencil className="size-4" />
+                              </Button>
+                            )}
+                            {canManage && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 className="size-8 text-destructive"
                                 onClick={() => setConfirmPaymentDeleteId(payment.id)}
                                 disabled={!!payment.cheque_id}
@@ -1499,6 +1565,8 @@ export default function Debts() {
         variant="destructive"
         onConfirm={() => { if (confirmPaymentDeleteId) void removePayment(confirmPaymentDeleteId); }}
       />
+
+      <EditLedgerEntryDialog entry={editEntry} onClose={() => setEditEntry(null)} onSave={saveEntryEdit} />
 
       <PaymentReceiptDialog
         receipt={receipt}
