@@ -3,6 +3,11 @@ import App from "./App.tsx";
 import "./index.css";
 import "./i18n";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { applyAppearance, readStoredAppearance } from "./lib/appearance";
+
+// Each person's colour theme and sidebar/header style, applied from the local
+// copy before React renders so the window never flashes the default green.
+applyAppearance(readStoredAppearance());
 
 // Best-effort cleanup of any service workers and caches that may have been
 // registered by previous versions of this app. We treat this site as a normal

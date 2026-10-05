@@ -25,9 +25,9 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 158 84% 39%;
+    --primary: var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l, 39%);
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 158 75% 55%;
+    --primary-glow: var(--brand-h, 158) var(--brand-s, 84%) 55%;
 
     --secondary: 220 25% 95%;
     --secondary-foreground: 222 47% 11%;
@@ -49,29 +49,29 @@
 
     --border: 220 20% 90%;
     --input: 220 20% 92%;
-    --ring: 158 84% 39%;
+    --ring: var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l, 39%);
 
     --radius: 0.875rem;
 
-    --gradient-primary: linear-gradient(135deg, hsl(158 84% 39%), hsl(170 80% 45%));
+    --gradient-primary: linear-gradient(135deg, hsl(var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l, 39%)), hsl(calc(var(--brand-h, 158) + 12) var(--brand-s, 84%) 45%));
     --gradient-accent: linear-gradient(135deg, hsl(38 95% 55%), hsl(28 95% 60%));
     --gradient-surface: linear-gradient(180deg, hsl(220 30% 99%), hsl(220 25% 96%));
-    --gradient-hero: linear-gradient(135deg, hsl(158 84% 39%) 0%, hsl(180 75% 42%) 50%, hsl(200 85% 50%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l, 39%)) 0%, hsl(calc(var(--brand-h, 158) + 22) 75% 42%) 50%, hsl(calc(var(--brand-h, 158) + 42) 85% 50%) 100%);
 
     --shadow-sm: 0 1px 2px 0 hsl(220 40% 20% / 0.04);
     --shadow-md: 0 4px 12px -2px hsl(220 40% 20% / 0.08);
     --shadow-lg: 0 12px 32px -8px hsl(220 40% 20% / 0.12);
-    --shadow-glow: 0 0 40px hsl(158 75% 55% / 0.35);
+    --shadow-glow: 0 0 40px hsl(var(--brand-h, 158) 75% 55% / 0.35);
     --shadow-card: 0 2px 8px -2px hsl(220 40% 20% / 0.06), 0 1px 3px hsl(220 40% 20% / 0.04);
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 222 30% 25%;
-    --sidebar-primary: 158 84% 39%;
+    --sidebar-primary: var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l, 39%);
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 220 25% 96%;
     --sidebar-accent-foreground: 222 47% 11%;
     --sidebar-border: 220 20% 92%;
-    --sidebar-ring: 158 84% 39%;
+    --sidebar-ring: var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l, 39%);
   }
 
   .dark {
@@ -81,7 +81,7 @@
     --card-foreground: 220 20% 95%;
     --popover: 222 40% 12%;
     --popover-foreground: 220 20% 95%;
-    --primary: 158 75% 50%;
+    --primary: var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l-dark, 50%);
     --primary-foreground: 222 47% 8%;
     --secondary: 222 30% 18%;
     --secondary-foreground: 220 20% 95%;
@@ -93,26 +93,26 @@
     --destructive-foreground: 0 0% 100%;
     --border: 222 30% 20%;
     --input: 222 25% 32%;
-    --ring: 158 75% 50%;
+    --ring: var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l-dark, 50%);
 
     --sidebar-background: 222 40% 10%;
     --sidebar-foreground: 220 20% 88%;
-    --sidebar-primary: 158 75% 50%;
+    --sidebar-primary: var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l-dark, 50%);
     --sidebar-primary-foreground: 222 47% 8%;
     --sidebar-accent: 222 35% 16%;
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 222 35% 16%;
-    --sidebar-ring: 158 75% 50%;
+    --sidebar-ring: var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l-dark, 50%);
 
-    --gradient-primary: linear-gradient(135deg, hsl(158 75% 40%), hsl(170 70% 45%));
+    --gradient-primary: linear-gradient(135deg, hsl(var(--brand-h, 158) 75% 40%), hsl(calc(var(--brand-h, 158) + 12) 70% 45%));
     --gradient-accent: linear-gradient(135deg, hsl(38 90% 50%), hsl(28 90% 55%));
     --gradient-surface: linear-gradient(180deg, hsl(222 47% 8%), hsl(222 45% 11%));
-    --gradient-hero: linear-gradient(135deg, hsl(158 75% 35%) 0%, hsl(180 70% 38%) 50%, hsl(200 75% 42%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(var(--brand-h, 158) 75% 35%) 0%, hsl(calc(var(--brand-h, 158) + 22) 70% 38%) 50%, hsl(calc(var(--brand-h, 158) + 42) 75% 42%) 100%);
 
     --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
     --shadow-md: 0 4px 12px -2px hsl(0 0% 0% / 0.4);
     --shadow-lg: 0 12px 32px -8px hsl(0 0% 0% / 0.5);
-    --shadow-glow: 0 0 40px hsl(158 75% 50% / 0.4);
+    --shadow-glow: 0 0 40px hsl(var(--brand-h, 158) 75% 50% / 0.4);
     --shadow-card: 0 2px 8px -2px hsl(0 0% 0% / 0.3), 0 1px 3px hsl(0 0% 0% / 0.2);
   }
 }
@@ -146,67 +146,120 @@
   .text-balance { text-wrap: balance; }
 }
 
-/* --- App chrome: floating glass sidebar + header ---
- * Modelled on the daily-cup shell. The page carries soft brand-tinted light
- * (.app-backdrop) so the frosted panels have something to blur; the panels
- * themselves are deep emerald ink with light text. Tokens are re-pointed
- * inside .app-chrome so the existing shadcn buttons, outline triggers and
- * sidebar classes all read correctly on the dark glass without per-element
- * overrides. Popovers portal out to <body>, so menus keep the normal theme.
+/* --- App chrome: floating sidebar + header ---
+ * Modelled on the daily-cup shell, and shaped by each person's Appearance
+ * (src/lib/appearance.ts), which sets on <html>:
+ *   --brand-h/s/l    the colour theme (buttons, links, the active pill)
+ *   --chrome-h/s     the tint of the dark sidebar/header
+ *   data-chrome-tone dark (ink panels) | light (white panels)
+ *   data-glass       on (see-through, blurred) | off (solid)
+ * Tokens are re-pointed inside .app-chrome so shadcn buttons, outline
+ * triggers and the sidebar classes read correctly on the panel without
+ * per-element overrides. Popovers portal out to <body>, so menus keep the
+ * normal theme. The page carries soft brand-tinted light (.app-backdrop) so
+ * the glass has something to blur.
  */
 .app-backdrop {
   background-color: hsl(var(--background));
   background-image:
-    radial-gradient(60rem 40rem at 0% 0%, hsl(158 84% 39% / 0.10), transparent 60%),
-    radial-gradient(50rem 36rem at 100% 0%, hsl(200 80% 55% / 0.08), transparent 60%),
+    radial-gradient(60rem 40rem at 0% 0%, hsl(var(--brand-h, 158) var(--brand-s, 84%) 39% / 0.10), transparent 60%),
+    radial-gradient(50rem 36rem at 100% 0%, hsl(calc(var(--brand-h, 158) + 42) 80% 55% / 0.08), transparent 60%),
     radial-gradient(48rem 40rem at 60% 100%, hsl(38 95% 55% / 0.07), transparent 60%);
   background-attachment: fixed;
 }
 .dark .app-backdrop {
   background-image:
-    radial-gradient(60rem 40rem at 0% 0%, hsl(158 75% 45% / 0.10), transparent 60%),
-    radial-gradient(50rem 36rem at 100% 0%, hsl(200 80% 55% / 0.07), transparent 60%),
+    radial-gradient(60rem 40rem at 0% 0%, hsl(var(--brand-h, 158) 75% 45% / 0.10), transparent 60%),
+    radial-gradient(50rem 36rem at 100% 0%, hsl(calc(var(--brand-h, 158) + 42) 80% 55% / 0.07), transparent 60%),
     radial-gradient(48rem 40rem at 60% 100%, hsl(38 95% 55% / 0.05), transparent 60%);
 }
 
 .app-chrome {
-  background-color: hsl(168 42% 12% / 0.84);
+  --chrome-alpha: 0.84;
+  background-color: hsl(var(--chrome-h, 168) var(--chrome-s, 42%) 12% / var(--chrome-alpha));
   color: hsl(150 25% 96%);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
   backdrop-filter: blur(24px) saturate(160%);
   border: 1px solid hsl(0 0% 100% / 0.10);
-  box-shadow: 0 18px 40px -16px hsl(168 50% 8% / 0.45), inset 0 1px 0 hsl(0 0% 100% / 0.06);
+  box-shadow: 0 18px 40px -16px hsl(var(--chrome-h, 168) 50% 8% / 0.45), inset 0 1px 0 hsl(0 0% 100% / 0.06);
+}
+.dark .app-chrome {
+  --chrome-alpha: 0.72;
+  background-color: hsl(var(--chrome-h, 200) calc(var(--chrome-s, 42%) * 0.7) 14% / var(--chrome-alpha));
+  box-shadow: 0 18px 40px -16px hsl(0 0% 0% / 0.6), inset 0 1px 0 hsl(0 0% 100% / 0.05);
+}
 
+/* Dark ink panels: light text, and the theme's tokens re-pointed for it. */
+html:not([data-chrome-tone="light"]) .app-chrome {
   --foreground: 150 25% 96%;
   --muted: 0 0% 100% / 0.08;
-  --muted-foreground: 160 14% 74%;
+  --muted-foreground: var(--chrome-h, 160) 14% 74%;
   --accent: 0 0% 100% / 0.10;
   --accent-foreground: 150 25% 98%;
   --background: 0 0% 100% / 0.06;
   --input: 0 0% 100% / 0.16;
   --border: 0 0% 100% / 0.12;
-  /* Bright mint so brand-coloured icons and badges still pop on the ink. */
-  --primary: 156 70% 58%;
-  --primary-foreground: 168 45% 10%;
-
+  /* A bright tint of the brand, so brand icons and badges still pop. */
+  --primary: var(--brand-h, 156) 70% 62%;
+  --primary-foreground: var(--chrome-h, 168) 45% 10%;
   --sidebar-foreground: 150 20% 92%;
   --sidebar-accent: 0 0% 100% / 0.08;
   --sidebar-accent-foreground: 0 0% 100%;
   --sidebar-border: 0 0% 100% / 0.10;
   /* Active nav pill: near-white on the ink, the way daily-cup does cream. */
   --sidebar-primary: 150 30% 97%;
-  --sidebar-primary-foreground: 168 45% 14%;
+  --sidebar-primary-foreground: var(--chrome-h, 168) 45% 14%;
 }
-.dark .app-chrome {
-  background-color: hsl(200 30% 14% / 0.72);
-  box-shadow: 0 18px 40px -16px hsl(0 0% 0% / 0.6), inset 0 1px 0 hsl(0 0% 100% / 0.05);
-  --sidebar-primary: 156 70% 55%;
+.dark:not([data-chrome-tone="light"]) .app-chrome {
+  --sidebar-primary: var(--brand-h, 156) 70% 55%;
   --sidebar-primary-foreground: 222 47% 8%;
 }
 
-/* The global search sits on the glass but reads as a plain page-coloured
-   field — restore the theme's neutral tokens for its subtree. */
-.chrome-search {
+/* Light panels: the page's own tokens, on white (or the dark card in dark mode). */
+html[data-chrome-tone="light"] .app-chrome {
+  --chrome-alpha: 0.72;
+  background-color: hsl(var(--card) / var(--chrome-alpha));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+  box-shadow: 0 18px 40px -20px hsl(var(--brand-h, 158) 30% 20% / 0.18), inset 0 1px 0 hsl(0 0% 100% / 0.5);
+}
+.dark[data-chrome-tone="light"] .app-chrome {
+  box-shadow: 0 18px 40px -16px hsl(0 0% 0% / 0.55);
+}
+
+/* Solid: no see-through, no blur. */
+html[data-glass="off"] .app-chrome {
+  --chrome-alpha: 1;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Desktop titlebar: the panel runs edge to edge (it is the window's drag
+   area, and the macOS window buttons sit at a fixed spot in it), so only a
+   bottom hairline instead of a floating panel's border. */
+.app-chrome-bar {
+  border-width: 0 0 1px 0;
+  border-radius: 0;
+}
+
+/* Scrollbars inside the panels: the Windows default (grey track, arrow
+   buttons) sat in the sidebar like a strip of another app. Thin, no track,
+   no arrows, and only visible while the pointer is over the panel. Webkit
+   pseudo-elements only — setting the standard scrollbar-width/-color would
+   switch these off in Chromium. The thumb follows the panel's own text
+   colour, so it shows on dark and light panels alike. */
+.app-chrome ::-webkit-scrollbar { width: 6px; height: 6px; }
+.app-chrome ::-webkit-scrollbar-track { background: transparent; }
+.app-chrome ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+.app-chrome ::-webkit-scrollbar-corner { background: transparent; }
+.app-chrome ::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 9999px; }
+.app-chrome:hover ::-webkit-scrollbar-thumb { background-color: hsl(var(--foreground) / 0.18); }
+.app-chrome ::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--foreground) / 0.32); }
+
+/* The global search sits on the dark panel but reads as a plain
+   page-coloured field — restore the theme's neutral tokens for its subtree.
+   On light panels it already does. */
+html:not([data-chrome-tone="light"]) .chrome-search {
   color: hsl(222 47% 11%);
   --background: 0 0% 100%;
   --foreground: 222 47% 11%;
@@ -216,10 +269,10 @@
   --border: 220 20% 90%;
   --accent: 220 25% 96%;
   --accent-foreground: 222 47% 11%;
-  --primary: 158 84% 39%;
+  --primary: var(--brand-h, 158) var(--brand-s, 84%) var(--brand-l, 39%);
   --primary-foreground: 0 0% 100%;
 }
-.dark .chrome-search {
+.dark:not([data-chrome-tone="light"]) .chrome-search {
   color: hsl(220 20% 95%);
   --background: 222 40% 12%;
   --foreground: 220 20% 95%;
@@ -229,16 +282,8 @@
   --border: 222 30% 20%;
   --accent: 222 35% 18%;
   --accent-foreground: 0 0% 100%;
-  --primary: 158 75% 50%;
+  --primary: var(--brand-h, 158) var(--brand-s, 75%) var(--brand-l-dark, 50%);
   --primary-foreground: 222 47% 8%;
-}
-
-/* Desktop titlebar: the glass runs edge to edge (it is the window's drag
-   area, and the macOS window buttons sit at a fixed spot in it), so only a
-   bottom hairline instead of a floating panel's border. */
-.app-chrome-bar {
-  border-width: 0 0 1px 0;
-  border-radius: 0;
 }
 
 /* --- Mobile keyboard handling ---

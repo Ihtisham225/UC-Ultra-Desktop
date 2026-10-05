@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AppearanceSync } from "@/components/appearance/AppearanceSync";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageToggle } from "@/components/LanguageToggle";
@@ -142,6 +143,7 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
         </div>
       </header>
 
+      <AppearanceSync userId={user?.id} />
       <div className="flex-1 flex gap-4 p-3 lg:p-4">
         <aside className="app-chrome hidden lg:block w-56 shrink-0 self-start sticky top-[4.5rem] rounded-2xl p-3">
           <NavLinks />

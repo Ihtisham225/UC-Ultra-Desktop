@@ -59,11 +59,21 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       let raw = e.target.value.replace(/[^\d/\-. ]/g, "");
+      // ⚠️ More than a whole date's worth of digits means someone typed INTO a
+      // full date without selecting first. Re-flowing those digits shifted
+      // every part along — typing "04" in front of "05/10/2026" read as
+      // 04/05/1020, and fixing the year saved 4 May instead of 4 October
+      // (SHAMSHER CORPORATION, 2026-10-05). Refuse the keystroke instead.
+      if (raw.replace(/\D/g, "").length > 8) return;
       const deleting = (e.nativeEvent as InputEvent).inputType?.startsWith("delete");
-      // Re-separate plain digit runs as they're typed. Leave the text alone
-      // when deleting (or the separator would come straight back) and when
-      // someone typed a one-digit part with their own separator ("3/9/…").
-      if (!deleting && !/(^|\D)\d(\D)/.test(raw)) {
+      // Re-separate digits only while typing at the END, or when the box
+      // holds nothing but digits (it was cleared, or a date was pasted over
+      // it). Editing inside a separated date keeps the text as typed, so a
+      // changed day can never slide into the month. Also left alone when
+      // deleting (or the separator would come straight back) and when someone
+      // typed a one-digit part with their own separator ("3/9/…").
+      const reflow = raw.startsWith(text) || /^\d*$/.test(raw);
+      if (!deleting && reflow && !/(^|\D)\d(\D)/.test(raw)) {
         raw = autoSeparate(raw.replace(/\D/g, "").slice(0, 8));
       }
       setText(raw);
