@@ -1,3 +1,4 @@
+import type { MediaType } from "@/lib/announcements";
 /**
  * Shapes the admin screens get back over /api/desktop/rpc.
  *
@@ -158,6 +159,11 @@ export interface AnnouncementDto {
   target_shop_ids: string[];
   read_count: number;
   live: boolean;
+  style: "banner" | "popup";
+  media_type: MediaType | null;
+  media_url: string | null;
+  cta_label: string | null;
+  cta_url: string | null;
 }
 
 export interface AnnouncementInput {
@@ -171,16 +177,14 @@ export interface AnnouncementInput {
   starts_at: string | null;
   ends_at: string | null;
   target_shop_ids: string[];
+  style?: "banner" | "popup";
+  media_type?: MediaType | null;
+  media_url?: string | null;
+  cta_label?: string | null;
+  cta_url?: string | null;
 }
 
-export interface ShopAnnouncementDto {
-  id: string;
-  title: string;
-  body: string;
-  severity: AuditSeverity;
-  dismissible: boolean;
-  created_at: string;
-}
+export type { ShopAnnouncementDto } from "@/lib/announcements";
 
 /**
  * ⚠️ The desktop compiles with `strict: false`, where TypeScript will not

@@ -30,6 +30,9 @@ import { InstallPwaButton } from "@/components/InstallPwaButton";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { Logo } from "@/components/Logo";
 import { AppearanceSync } from "@/components/appearance/AppearanceSync";
+import { PrivacyProvider } from "@/components/security/PrivacyProvider";
+import { PrivateGate } from "@/components/security/PrivateGate";
+import { WhatsNew } from "@/components/announcements/WhatsNew";
 import { AppShortcuts } from "@/components/shortcuts/AppShortcuts";
 import { useAppNav } from "@/hooks/useAppNav";
 import { useIsMac } from "@/hooks/useIsMac";
@@ -112,6 +115,8 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   };
 
   return (
+    // Private pages and figures (Settings → Security) — unlocked per page.
+    <PrivacyProvider userId={user?.id} pathname={loc.pathname}>
     <div className="app-backdrop min-h-screen flex flex-col">
       {/* ── Full-width glass titlebar / header ──
           Edge to edge rather than floating: it is the window's drag area and
@@ -197,6 +202,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
             >
               <Keyboard className="size-4.5" />
             </Button>
+            <WhatsNew navigate={(href) => navigate(href)} />
             <NotificationBell shopId={currentShop?.id} navigate={(href) => navigate(href)} />
             <Button variant="ghost" size="icon" onClick={() => setCalcOpen(true)} aria-label="Calculator" title={`Calculator (${appShortcutLabel("calculator", isMac)})`}>
               <Calculator className="size-4.5" />
@@ -290,7 +296,9 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
             </div>
           </div>
         )}
-        <main className="flex-1 min-w-0 px-1 lg:px-4 pt-1 pb-24 lg:pb-6">{children}</main>
+        <main className="flex-1 min-w-0 px-1 lg:px-4 pt-1 pb-24 lg:pb-6">
+          <PrivateGate pathname={loc.pathname}>{children}</PrivateGate>
+        </main>
       </div>
       </div>
 
@@ -315,5 +323,6 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
         setState={setCalcState}
       />
     </div>
+    </PrivacyProvider>
   );
 };

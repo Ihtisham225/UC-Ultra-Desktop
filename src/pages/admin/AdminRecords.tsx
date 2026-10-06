@@ -23,7 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { CreditCard, Search, Ban, CheckCircle2, ArrowUpCircle, ArrowDownCircle, Crown, AlertTriangle, Trash2 } from "lucide-react";
+import { CreditCard, Search, Ban, CheckCircle2, ArrowUpCircle, ArrowDownCircle, Crown, AlertTriangle, Trash2, ShieldOff, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminUi";
@@ -50,6 +50,8 @@ interface AdminUser {
   shop_roles: string | null;
   /** Which stores this person belongs to, and as what. */
   shops: { shop_id: string; name: string; role: string }[];
+  /** Has an authenticator app set up (Settings → Security). */
+  mfa_enabled?: boolean;
 }
 
 interface AdminShop {
@@ -84,6 +86,7 @@ export default function AdminRecords({ section }: { section: "users" | "shops" }
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("overview");
   const [blockTarget, setBlockTarget] = useState<AdminUser | null>(null);
+  const [mfaTarget, setMfaTarget] = useState<AdminUser | null>(null);
   const [blockShopTarget, setBlockShopTarget] = useState<AdminShop | null>(null);
   const [proTarget, setProTarget] = useState<AdminShop | null>(null);
   const [proMode, setProMode] = useState<"grant" | "deactivate">("grant");
@@ -132,6 +135,23 @@ export default function AdminRecords({ section }: { section: "users" | "shops" }
     }
     toast.success(blockShopTarget.is_blocked ? "Store unblocked" : "Store blocked");
     setBlockShopTarget(null);
+    load();
+  };
+
+  // Lost phone and recovery codes: clear their authenticator (see adminResetMfaAction).
+  const confirmResetMfa = async () => {
+    if (!mfaTarget) return;
+    setBusy(true);
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("adminResetMfaAction", mfaTarget.user_id);
+      if (!res.ok) { toast.error(res.error ?? "Failed"); return; }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed"); return;
+    } finally {
+      setBusy(false);
+    }
+    toast.success(`Authenticator reset for ${mfaTarget.email} — they can set it up again in Settings → Security`);
+    setMfaTarget(null);
     load();
   };
 
@@ -279,6 +299,11 @@ export default function AdminRecords({ section }: { section: "users" | "shops" }
                     <td className="p-3 font-medium">
                       {u.email}
                       {u.is_blocked && <span className="ms-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-destructive/15 text-destructive">{t("admin.users.blocked")}</span>}
+                      {u.mfa_enabled && (
+                        <span className="ms-2 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-success/15 text-success" title="Authenticator app is on">
+                          <ShieldCheck className="size-3" /> MFA
+                        </span>
+                      )}
                     </td>
                     <td className="p-3 text-muted-foreground">{u.display_name ?? "—"}</td>
                     <td className="p-3">
@@ -327,6 +352,12 @@ export default function AdminRecords({ section }: { section: "users" | "shops" }
                     </td>
                     <td className="p-3 text-end">
                       <div className="inline-flex gap-1.5">
+                        {u.mfa_enabled && (
+                          <Button size="sm" variant="ghost" onClick={() => setMfaTarget(u)} className="h-7 px-2 text-xs"
+                            title="Lost phone? Clear their authenticator so they can set it up again">
+                            <ShieldOff className="size-3.5 mr-1" /> Reset MFA
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant={u.is_blocked ? "outline" : "ghost"}
@@ -488,6 +519,32 @@ export default function AdminRecords({ section }: { section: "users" | "shops" }
               )}
             >
               {blockShopTarget?.is_blocked ? "Unblock store" : "Block store"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!mfaTarget} onOpenChange={(o) => !o && setMfaTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-amber-500/15 text-amber-600">
+              <ShieldOff className="size-6" />
+            </div>
+            <AlertDialogTitle className="text-center">Reset their authenticator app?</AlertDialogTitle>
+            <AlertDialogDescription className="text-center">
+              Their authenticator, recovery codes and private pages are cleared, so everything they had made private
+              is visible again until they set it up afresh in Settings → Security. Only do this once you&apos;re sure
+              it&apos;s really them asking.
+              <span className="mt-3 block rounded-md border bg-muted/40 p-3 text-start text-xs">
+                <span className="block font-medium text-foreground">{mfaTarget?.email}</span>
+                {mfaTarget?.display_name && <span className="block text-muted-foreground">{mfaTarget.display_name}</span>}
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction disabled={busy} onClick={(e) => { e.preventDefault(); void confirmResetMfa(); }}>
+              {busy ? "Resetting…" : "Reset MFA"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
