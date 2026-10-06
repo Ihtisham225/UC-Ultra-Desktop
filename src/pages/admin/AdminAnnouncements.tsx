@@ -20,7 +20,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Megaphone, Pencil, Trash2, Eye } from "lucide-react";
+import { Plus, Megaphone, Pencil, Trash2, Eye, Sparkles } from "lucide-react";
+import { AnnouncementMedia, youtubeId } from "@/components/announcements/AnnouncementMedia";
 
 const STORE_TYPES = [
   "phone", "computer", "pharmacy", "supermarket", "industry", "wholesale",
@@ -38,6 +39,11 @@ const EMPTY: AnnouncementInput = {
   starts_at: null,
   ends_at: null,
   target_shop_ids: [],
+  style: "banner",
+  media_type: null,
+  media_url: null,
+  cta_label: null,
+  cta_url: null,
 };
 
 /** An <input type="datetime-local"> wants "yyyy-MM-ddTHH:mm" in LOCAL time. */
@@ -83,6 +89,11 @@ export default function AdminAnnouncements() {
       starts_at: a.starts_at,
       ends_at: a.ends_at,
       target_shop_ids: a.target_shop_ids,
+      style: a.style,
+      media_type: a.media_type,
+      media_url: a.media_url,
+      cta_label: a.cta_label,
+      cta_url: a.cta_url,
     },
   });
 
@@ -144,6 +155,8 @@ export default function AdminAnnouncements() {
                     {a.live ? <Pill tone="success">Live</Pill> : <Pill>Off</Pill>}
                     <Pill tone="muted">{reachOf(a)}</Pill>
                     {!a.dismissible && <Pill tone="warning">Can&apos;t dismiss</Pill>}
+                    {a.style === "popup" && <Pill tone="muted">Pop-up</Pill>}
+                    {a.media_type && <Pill tone="muted">{a.media_type === "image" ? "Picture" : "Video"}</Pill>}
                   </div>
                   <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{a.body}</p>
                   <div className="text-xs text-muted-foreground mt-1 flex items-center gap-3">
@@ -192,6 +205,8 @@ export default function AdminAnnouncements() {
                 <Textarea rows={4} value={d.body} onChange={(e) => patch({ body: e.target.value })}
                   placeholder="What the shopkeeper needs to know, in plain words." />
               </div>
+
+              <MediaFields draft={d} patch={patch} />
 
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
@@ -325,5 +340,68 @@ export default function AdminAnnouncements() {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+
+/**
+ * How the notice shows, its picture or video (a pasted link — uploading a
+ * file is done from the web admin, since the upload is signed for a browser
+ * session), and an optional button. Same fields as the web form, so editing a
+ * notice here never drops what was set there.
+ */
+function MediaFields({ draft: d, patch }: { draft: AnnouncementInput; patch: (p: Partial<AnnouncementInput>) => void }) {
+  const linkType = (url: string) => (youtubeId(url) ? "youtube" : /\.(mp4|webm|mov)(\?|$)/i.test(url) ? "video" : "image");
+  return (
+    <div className="space-y-3 rounded-lg border p-3">
+      <div>
+        <Label>How it shows</Label>
+        <div className="mt-1 grid gap-2 sm:grid-cols-2">
+          {([
+            ["banner", Megaphone, "Banner", "A strip across the top of the app"],
+            ["popup", Sparkles, "Pop-up", "A card that opens once, picture or video large — for new features"],
+          ] as const).map(([value, Icon, label, hint]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => patch({ style: value })}
+              className={`flex items-start gap-2 rounded-lg border p-2.5 text-start text-sm ${(d.style ?? "banner") === value ? "border-primary ring-2 ring-primary/30" : "hover:bg-muted/50"}`}
+            >
+              <Icon className="size-4 mt-0.5 text-primary" />
+              <span>
+                <span className="block font-medium">{label}</span>
+                <span className="block text-xs text-muted-foreground">{hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Picture or video link (optional)</Label>
+        <Input
+          placeholder="An image, an .mp4, or a YouTube video — upload files from the web admin"
+          value={d.media_url ?? ""}
+          onChange={(e) => {
+            const url = e.target.value.trim();
+            patch({ media_url: url || null, media_type: url ? linkType(url) : null });
+          }}
+        />
+        {d.media_url && (
+          <div className="max-w-sm">
+            <AnnouncementMedia type={d.media_type ?? null} url={d.media_url} />
+          </div>
+        )}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
+        <div>
+          <Label>Button text (optional)</Label>
+          <Input placeholder="Try it" value={d.cta_label ?? ""} onChange={(e) => patch({ cta_label: e.target.value || null })} maxLength={40} />
+        </div>
+        <div>
+          <Label>Button opens</Label>
+          <Input placeholder="/payroll — or https://…" value={d.cta_url ?? ""} onChange={(e) => patch({ cta_url: e.target.value || null })} />
+        </div>
+      </div>
+    </div>
   );
 }

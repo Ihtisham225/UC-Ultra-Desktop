@@ -12,6 +12,9 @@ import { PageTip } from "@/components/PageTip";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { computeTodayMoney } from "@/lib/today-money";
 import { TodayMoneyCard } from "@/components/TodayMoneyCard";
+import { usePrivacy } from "@/components/security/PrivacyProvider";
+import { MASK, RevealButton } from "@/components/security/PrivateGate";
+import { PRIVATE_DETAILS } from "@/lib/privacy";
 import { computePnl } from "@/lib/pnl";
 import { useProductsWithVariants } from "@/hooks/useProductsWithVariants";
 import { useState } from "react";
@@ -28,6 +31,15 @@ export default function Dashboard() {
   const perms = usePermissions();
   const { t } = useTranslation();
   const formatMoney = useFormatMoney();
+  // Private figures (Settings → Security). The terminal works its figures out
+  // from its own store, so here hiding them is on screen: ••••••• until a code
+  // unlocks that item for this visit to the dashboard.
+  const privacy = usePrivacy();
+  const hidden = (key: string) => privacy.isLocked(key);
+  const masked = (key: string) =>
+    hidden(key)
+      ? { masked: true, onReveal: () => void privacy.unlock(key, PRIVATE_DETAILS.find((d) => d.key === key)?.label) }
+      : {};
 
   useEffect(() => { document.title = `${t("nav.dashboard")} — UCU`; }, [t]);
 
@@ -243,8 +255,8 @@ export default function Dashboard() {
 
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={DollarSign} label={t("dashboard.todayRevenue")} value={formatMoney(safeStats.todaySales, cur)} tone="primary" />
-        <StatCard icon={Receipt} label={t("dashboard.todaySales")} value={String(safeStats.todayCount)} tone="accent" />
+        <StatCard icon={DollarSign} label={t("dashboard.todayRevenue")} value={formatMoney(safeStats.todaySales, cur)} tone="primary" {...masked("dashboard.sales")} />
+        <StatCard icon={Receipt} label={t("dashboard.todaySales")} value={String(safeStats.todayCount)} tone="accent" {...masked("dashboard.sales")} />
         <StatCard icon={Package} label={t("dashboard.activeProducts")} value={String(safeStats.productCount)} tone="default" />
         <StatCard icon={AlertTriangle} label={t("dashboard.lowStock")} value={String(safeStats.lowStock.length)} tone="warning" />
         {perms.canSeeProfit && (
@@ -252,7 +264,8 @@ export default function Dashboard() {
             icon={TrendingUp}
             label={t("dashboard.todayGrossProfit", { defaultValue: "Today's gross profit" })}
             value={formatMoney(safeStats.todayGrossProfit, cur)}
-            tone={safeStats.todayGrossProfit < 0 ? "warning" : "primary"}
+            tone={safeStats.todayGrossProfit < 0 && !hidden("dashboard.profit") ? "warning" : "primary"}
+            {...masked("dashboard.profit")}
           />
         )}
         {perms.canManagePurchases && (
@@ -261,6 +274,7 @@ export default function Dashboard() {
             label={t("dashboard.todayPurchases", { defaultValue: "Today's purchases" })}
             value={formatMoney(safeStats.todayPurchases, cur)}
             tone="default"
+            {...masked("dashboard.spending")}
           />
         )}
         {perms.canManageExpenses && (
@@ -269,6 +283,7 @@ export default function Dashboard() {
             label={t("dashboard.todayExpenses", { defaultValue: "Today's expenses" })}
             value={formatMoney(safeStats.todayExpenses, cur)}
             tone="default"
+            {...masked("dashboard.spending")}
           />
         )}
         {/* What went on the khata today rather than into the drawer. The
@@ -277,13 +292,23 @@ export default function Dashboard() {
           icon={NotebookPen}
           label={t("dashboard.todayCredit", { defaultValue: "Credit given today" })}
           value={formatMoney(safeStats.todayCredit, cur)}
-          tone={safeStats.todayCredit > 0 ? "warning" : "default"}
-          hint={`${formatMoney(safeStats.totalOwedToMe, cur)} owed in total`}
+          tone={safeStats.todayCredit > 0 && !hidden("dashboard.sales") ? "warning" : "default"}
+          hint={`${hidden("dashboard.money") ? MASK : formatMoney(safeStats.totalOwedToMe, cur)} owed in total`}
+          {...masked("dashboard.sales")}
         />
       </div>
 
       {/* Where today's money came from and went, by how it was paid. The
           purchase and expense rows follow the same permissions as their tiles. */}
+      {hidden("dashboard.money") ? (
+        <Card className="p-5 shadow-card flex items-center justify-between gap-3">
+          <div>
+            <div className="font-semibold">Today&apos;s money</div>
+            <div className="text-sm text-muted-foreground">{MASK} — private. Enter your code to see it.</div>
+          </div>
+          <RevealButton onClick={() => void privacy.unlock("dashboard.money", "Today's money")} />
+        </Card>
+      ) : (
       <TodayMoneyCard
         money={safeStats.money}
         format={(n) => formatMoney(n, cur)}
@@ -293,6 +318,7 @@ export default function Dashboard() {
               : true
         }
       />
+      )}
 
       <div className="flex flex-wrap gap-2">
         {perms.canManageExpenses && (
@@ -344,7 +370,7 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, tone, hint }: { icon: any; label: string; value: string; tone: "primary" | "accent" | "warning" | "default"; hint?: string }) {
+function StatCard({ icon: Icon, label, value, tone, masked, onReveal }: { icon: any; label: string; value: string; tone: "primary" | "accent" | "warning" | "default"; hint?: string; masked?: boolean; onReveal?: () => void }) {
   const tones = {
     primary: "bg-primary/10 text-primary",
     accent: "bg-accent/10 text-accent-foreground",
@@ -357,7 +383,10 @@ function StatCard({ icon: Icon, label, value, tone, hint }: { icon: any; label: 
         <Icon className="size-5" />
       </div>
       <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium truncate">{label}</div>
-      <div className="text-lg sm:text-2xl font-bold mt-1 break-words leading-tight">{value}</div>
+      <div className="flex items-center gap-2 mt-1">
+        <div className="text-lg sm:text-2xl font-bold break-words leading-tight">{masked ? MASK : value}</div>
+        {masked && onReveal && <RevealButton onClick={onReveal} />}
+      </div>
     </Card>
   );
 }

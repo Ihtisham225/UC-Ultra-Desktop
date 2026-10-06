@@ -23,7 +23,8 @@ export function AnnouncementBanner() {
     // Offline the terminal simply shows nothing — a notice is not worth a
     // failed request every time the shell mounts.
     if (!navigator.onLine) return;
-    rpc<ShopAnnouncementDto[]>("listMyAnnouncementsAction").then(setItems).catch(() => {});
+    // Pop-up notices have their own card (WhatsNew); only banners run across the top.
+    rpc<ShopAnnouncementDto[]>("listMyAnnouncementsAction").then((xs) => setItems(xs.filter((x) => x.style !== "popup"))).catch(() => {});
   }, []);
 
   const current = items[0];
