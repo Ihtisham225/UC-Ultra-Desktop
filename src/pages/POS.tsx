@@ -7,7 +7,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw, FlaskConical, Car } from "lucide-react";
+import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw, FlaskConical, Car, UserRound } from "lucide-react";
 import { useOfflineProducts } from "@/hooks/useOfflineProducts";
 import { upsertLocal, notifyChange, getAll } from "@/lib/localDb";
 import { allocateTenders, round2 } from "@/lib/tender";
@@ -40,6 +40,7 @@ import { useIsMac } from "@/hooks/useIsMac";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useAddNew } from "@/hooks/useAddNew";
 import { fmtDate, fmtTime } from "@/lib/date-format";
+import { useCheckoutMode } from "@/components/appearance/useCheckoutMode";
 
 interface Variant {
   id: string;
@@ -199,6 +200,12 @@ export default function POS() {
   /** A note written at checkout, kept with the bill. */
   const [notes, setNotes] = useState("");
   const isMac = useIsMac();
+  /**
+   * Per person (Settings → Appearance): finish the sale on the screen, in three
+   * columns — products · customer & vehicle · bill & payment — or in the
+   * checkout pop-up. Same fields and keys either way.
+   */
+  const inline = useCheckoutMode() === "inline";
 
   /**
    * The keyboard path through the till (lib/checkout-keys):
@@ -866,7 +873,8 @@ export default function POS() {
       const dialog = target?.closest?.("[role='dialog']");
       if (dialog && dialog !== chargeRef.current) return;
       e.preventDefault();
-      if (chargeOpen) void completeSale();
+      // On-screen checkout has nothing to open: the shortcut places the order.
+      if (chargeOpen || inline) void completeSale();
       else openCharge();
     };
     window.addEventListener("keydown", onKey);
@@ -888,10 +896,13 @@ export default function POS() {
     }));
   }, [variantPicker]);
 
-  return (
-    <div className="max-w-7xl mx-auto grid md:grid-cols-[1fr_380px] lg:grid-cols-[1fr_420px] gap-4 md:gap-6 md:h-[calc(100vh-9rem)] md:min-h-[620px]">
-      <h1 className="sr-only">Point of Sale</h1>
-      <div className="flex flex-col min-h-0 order-2 md:order-1">
+
+  // ─── The pieces of the till, shared by both checkout layouts ─────────────
+  // Rendered inline below, or inside the pop-up — the same fields, the same
+  // Enter chain (lib/checkout-keys), only where they sit differs.
+
+  const searchBar = (
+    <>
         {labEnabled && (
           <div className="inline-flex rounded-lg border bg-muted/40 p-1 mb-3 self-start">
             <button type="button" onClick={() => setPosTab("products")}
@@ -958,7 +969,10 @@ export default function POS() {
             Last synced: {fmtTime(lastSynced)}
           </div>
         )}
+    </>
+  );
 
+  const productGrid = (
         <div className="md:flex-1 md:overflow-y-auto pr-1">
           {filtered.length === 0 ? (
             <Card className="p-12 text-center text-muted-foreground">{t("common.noResults")}</Card>
@@ -1012,19 +1026,69 @@ export default function POS() {
             </div>
           )}
         </div>
-      </div>
+  );
 
-      <Card className="flex flex-col shadow-elevated overflow-hidden order-1 md:order-2 md:max-h-full">
-        <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
-          <div className="font-semibold flex items-center gap-2"><Receipt className="size-4" /> {t("pos.cart")}</div>
-          {cart.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => void clearCart(false)} title={`Clear cart (${shortcutLabel("clearCart", isMac)})`}>
-              <Trash2 className="size-4 me-1" /> {t("common.delete")}
-            </Button>
+  /** On-screen checkout: rows, so a long catalogue reads like a price list. */
+  const productList = (
+        <div className="md:flex-1 md:overflow-y-auto pr-1">
+          {filtered.length === 0 ? (
+            <Card className="p-12 text-center text-muted-foreground">{t("common.noResults")}</Card>
+          ) : (
+            <Card className="overflow-hidden divide-y">
+              {filtered.map((p, i) => {
+                const hasVariants = (p.variants?.length ?? 0) > 0;
+                const totalStock = hasVariants
+                  ? p.variants!.reduce((s, v) => s + Number(v.stock), 0)
+                  : Number(p.stock);
+                const st = expiryStatus(p.expiry_date);
+                // Enter in the search box adds the first match — show which.
+                const next = !!search && i === 0;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => handleProductClick(p)}
+                    disabled={!p.is_service && totalStock <= 0 && !allowNegativeStock}
+                    className={`w-full text-start block px-3 py-2 hover:bg-primary/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed group ${next ? "bg-primary/10" : ""}`}
+                  >
+                    {/* Name gets the whole width; price and stock sit under it,
+                        so the column can stay narrow and the bill gets the room. */}
+                    <div className="flex items-start gap-1.5">
+                      <span className="font-medium text-sm leading-snug line-clamp-3 break-words flex-1 min-w-0 group-hover:text-primary">{p.name}</span>
+                      {hasVariants && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5">
+                          <Layers className="size-3" />{p.variants!.length}
+                        </span>
+                      )}
+                      {next && (
+                        <kbd className="shrink-0 rounded border px-1 text-[10px] text-muted-foreground">Enter</kbd>
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-[11px] text-muted-foreground">
+                      <span className="text-sm font-semibold tabular-nums text-foreground">{formatMoney(p.price, cur)}</span>
+                      {!isLabTest(p) && (
+                        <span className={`tabular-nums ${!p.is_service && totalStock <= 0 ? "text-amber-600 font-medium" : ""}`}>
+                          {p.is_service ? "Service" : `${formatQty(totalStock)}${p.unit ? ` ${p.unit}` : ""} in stock`}
+                        </span>
+                      )}
+                      {p.shelf_location && <span>📍 {p.shelf_location}</span>}
+                      {st && (
+                        <span className={`font-medium ${st === "expired" ? "text-destructive" : "text-amber-600"}`}>
+                          {st === "expired" ? "EXPIRED" : "Expires soon"} · {fmtDate(p.expiry_date)}
+                        </span>
+                      )}
+                      {imeiOnProduct && !hasVariants && (p.imei1 || p.imei2) && <span className="font-mono">IMEI {imeiTail(p.imei1 || p.imei2)}</span>}
+                      {costByProduct.get(p.id) != null && <span>Cost {formatMoney(costByProduct.get(p.id) as number, cur)}</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </Card>
           )}
         </div>
+  );
 
-        <div className="flex-1 overflow-y-auto p-2 min-h-[160px]">
+  const cartLines = (
+    <>
           {cart.length === 0 ? (
             <div className="h-full flex items-center justify-center text-sm text-muted-foreground p-8 text-center">
               {t("pos.cartEmpty")}
@@ -1151,6 +1215,360 @@ export default function POS() {
               ))}
             </ul>
           )}
+    </>
+  );
+
+  const customerSection = (
+    <>
+                {hasLabTests
+                  ? <PatientPicker value={patient} onChange={setPatient} step={STEP.customer} onPicked={() => advancePastPicker(STEP.customer)} />
+                  : <CustomerPicker value={customer} onChange={setCustomer} step={STEP.customer} onPicked={() => advancePastPicker(STEP.customer)} />}
+
+                {oilShop && (
+                  <div className="rounded-lg border p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Car className="size-4 text-primary shrink-0" />
+                      <span className="text-sm font-medium">Oil change</span>
+                      <span className="text-[11px] text-muted-foreground ms-auto">Optional</span>
+                    </div>
+
+                    <VehiclePicker
+                      value={pickedVehicle}
+                      onChange={chooseVehicle}
+                      step={STEP.vehicle}
+                      onPicked={() => advancePastPicker(STEP.vehicle)}
+                    />
+
+                    {/* The rest of the form only matters once there's a car. */}
+                    {pickedVehicle && (
+                      <>
+                        {knownVehicle && (
+                          <p className="text-[11px] text-primary">
+                            Last in {fmtDate(knownVehicle.serviced_at)}
+                            {knownVehicle.next_km != null && ` · was due at ${knownVehicle.next_km.toLocaleString()} km`}
+                          </p>
+                        )}
+                        <VehicleFields
+                          value={vehicle}
+                          onChange={setVehicle}
+                          compact
+                          showIdentity={false}
+                          step={STEP.vehicle}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
+    </>
+  );
+
+  const discountRow = (
+            <div className="flex items-center gap-2">
+              <Tag className="size-4 text-muted-foreground shrink-0" />
+              <div className="relative flex-1 min-w-0">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  placeholder="Discount"
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
+                  data-checkout-step={STEP.discount}
+                  onKeyDown={enterAdvances}
+                  className="pe-16 h-9"
+                />
+                {discountValue && rawDiscount > subtotal && (
+                  <span className="absolute -bottom-4 left-0 text-[10px] text-warning">capped at subtotal</span>
+                )}
+              </div>
+              <Select value={discountType} onValueChange={(v) => setDiscountType(v as any)}>
+                <SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="amount">{cur}</SelectItem>
+                  <SelectItem value="percent">%</SelectItem>
+                </SelectContent>
+              </Select>
+              {discountValue && (
+                <Button variant="ghost" size="icon" className="size-9 shrink-0" onClick={() => setDiscountValue("")} title="Clear discount">
+                  <X className="size-4" />
+                </Button>
+              )}
+            </div>
+  );
+
+  const totalsBlock = (
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">{t("common.subtotal")}</span><span className="tabular-nums">{formatMoney(subtotal, cur)}</span></div>
+              {discount > 0 && (
+                <div className="flex justify-between text-success">
+                  <span>Discount{discountType === "percent" && discountInput > 0 ? ` (${discountInput}%)` : ""}</span>
+                  <span className="tabular-nums">−{formatMoney(discount, cur)}</span>
+                </div>
+              )}
+              {taxRate > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{t("common.tax")} ({taxRate}%)</span><span className="tabular-nums">{formatMoney(tax, cur)}</span></div>}
+              <div className="flex justify-between text-lg font-bold pt-1 border-t"><span>{t("common.total")}</span><span className="tabular-nums text-primary">{formatMoney(total, cur)}</span></div>
+            </div>
+  );
+
+  const tendersBlock = (
+            <div className="space-y-2">
+              {tenders.map((tRow, idx) => (
+                <div key={tRow.key} className="flex items-center gap-2">
+                  <Select
+                    value={tRow.account_id}
+                    onValueChange={(v) => {
+                      if (idx === 0) accountPickedRef.current = true;
+                      setTender(tRow.key, { account_id: v });
+                    }}
+                  >
+                    {/* Only the first tender is in the Enter chain; splitting a
+                        bill across accounts stays a mouse job, as agreed. */}
+                    <SelectTrigger
+                      className="flex-1"
+                      data-checkout-step={idx === 0 ? STEP.account : undefined}
+                      // Enter keeps the account shown and moves on. Arrow keys
+                      // or Space open the list to change it.
+                      onKeyDown={idx === 0 ? enterAdvances : undefined}
+                    >
+                      <SelectValue placeholder="Account" />
+                    </SelectTrigger>
+                    <SelectContent
+                      onCloseAutoFocus={(e) => {
+                        if (idx !== 0 || !accountPickedRef.current) return;
+                        accountPickedRef.current = false;
+                        e.preventDefault();
+                        const trigger = chargeRef.current?.querySelector(`[data-checkout-step="${STEP.account}"]`);
+                        if (trigger) advance(trigger);
+                      }}
+                    >
+                      {accounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.type === "cash" ? "\u{1F4B5}" : a.type === "wallet" ? "\u{1F4F1}" : "\u{1F3E6}"} {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number" step="0.01" inputMode="decimal" placeholder="0.00"
+                    className="w-28 tabular-nums"
+                    value={tRow.amount}
+                    onChange={(e) => setTender(tRow.key, { amount: e.target.value })}
+                    data-checkout-step={idx === 0 ? STEP.amount : undefined}
+                    onKeyDown={idx === 0 ? enterAdvances : undefined}
+                    onFocus={(e) => e.currentTarget.select()}
+                    // ⚠️ Cash may be over the bill — that is how change gets
+                    // given, and the difference shows as Change due. Nothing
+                    // else may: a transfer larger than the bill is money the
+                    // shop never received, and it lands in the books as if it
+                    // had. Capped on blur, never mid-keystroke.
+                    onBlur={() => {
+                      const type = accounts.find((a) => a.id === tRow.account_id)?.type;
+                      if (type === "cash") return;
+                      const others = round2(
+                        tenders
+                          .filter((x) => x.key !== tRow.key)
+                          .reduce((a, x) => a + (parseFloat(x.amount) || 0), 0),
+                      );
+                      const room = round2(Math.max(0, total - others));
+                      if ((parseFloat(tRow.amount) || 0) > room) {
+                        setTender(tRow.key, { amount: String(room) });
+                        toast.info(
+                          `Capped at ${formatMoney(room, cur)} — only cash can be over the bill, for change.`,
+                        );
+                      }
+                    }}
+                  />
+                  {tenders.length > 1 && (
+                    <Button size="icon" variant="ghost" className="size-8 shrink-0" onClick={() => removeTender(tRow.key)}>
+                      <X className="size-3.5" />
+                    </Button>
+                  )}
+                  {tenders.length === 1 && idx === 0 && <span className="w-8 shrink-0" />}
+                </div>
+              ))}
+              {accounts.length > 1 && (
+                <Button variant="outline" size="sm" className="w-full" onClick={addTender}>
+                  <Plus className="size-3.5 me-1" /> Split across another account
+                </Button>
+              )}
+              {accounts.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No payment accounts yet \u2014 add one under Accounts.
+                </p>
+              )}
+            </div>
+  );
+
+  const notesInput = (
+            <Input
+              placeholder="Notes (optional)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              maxLength={500}
+              data-checkout-step={STEP.notes}
+              aria-label="Notes"
+              onKeyDown={(e) => {
+                // The end of the chain: Enter here places the order.
+                if (e.key !== "Enter" || e.nativeEvent.isComposing || e.ctrlKey || e.metaKey) return;
+                e.preventDefault();
+                void completeSale();
+              }}
+            />
+  );
+
+  const settleSummary = (
+    <>
+            <div className="text-sm flex justify-between px-3 py-2 rounded-lg bg-muted/50">
+              <span className="text-muted-foreground">Paying now</span>
+              <span className="tabular-nums font-medium">{formatMoney(effectivePaid, cur)}</span>
+            </div>
+
+            {owed > 0 && (
+              <div className="text-sm flex justify-between bg-warning/10 text-warning px-3 py-2 rounded-lg font-medium">
+                <span>To be paid later</span>
+                <span className="tabular-nums">{formatMoney(owed, cur)}</span>
+              </div>
+            )}
+
+            {change > 0 && (
+              <div className="text-sm flex justify-between bg-success/10 text-success px-3 py-2 rounded-lg font-medium">
+                <span>{t("pos.changeDue")}</span>
+                <span className="tabular-nums">{formatMoney(change, cur)}</span>
+              </div>
+            )}
+    </>
+  );
+
+  const chargeLabel = (
+    <>
+      {busy ? t("common.processing") : owed > 0
+                ? `Take ${formatMoney(effectivePaid, cur)} · ${formatMoney(owed, cur)} later`
+                : t("pos.charge", { amount: formatMoney(total, cur) })}
+      {!busy && (
+        <kbd className="ms-2 rounded border border-white/40 px-1 text-[10px] font-medium text-white/80">
+          {shortcutLabel("checkout", isMac)}
+        </kbd>
+      )}
+    </>
+  );
+
+  const cartHeader = (
+    <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
+      <div className="font-semibold flex items-center gap-2"><Receipt className="size-4" /> {t("pos.cart")}</div>
+      {cart.length > 0 && (
+        <Button variant="ghost" size="sm" onClick={() => void clearCart(false)} title={`Clear cart (${shortcutLabel("clearCart", isMac)})`}>
+          <Trash2 className="size-4 me-1" /> {t("common.delete")}
+        </Button>
+      )}
+    </div>
+  );
+
+  const extraDialogs = (
+    <>
+      <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onDetected={handleScanned} />
+      {variantPicker && (
+        <VariantPickerDialog
+          open={!!variantPicker}
+          onClose={() => setVariantPicker(null)}
+          productName={variantPicker.name}
+          basePrice={Number(variantPicker.price)}
+          variants={variantOptions}
+          onPick={(v) => {
+            const variant = variantPicker.variants?.find((x) => x.id === v.id) ?? null;
+            if (variant) {
+              pushToCart(variantPicker, variant);
+              focusSoon(qtySel(variant.id));
+            }
+          }}
+        />
+      )}
+      {completedSale && (
+        <ReceiptDialog
+          sale={completedSale}
+          // New sale: the cart is already clear, so go straight to the search.
+          onClose={() => { setCompletedSale(null); focusSoon(SEARCH); }}
+        />
+      )}
+      <LabTokenDialog orders={labTokens} onClose={() => setLabTokens(null)} />
+      {confirmDialog}
+    </>
+  );
+
+  if (inline) {
+    return (
+      <div className="mx-auto grid gap-4 md:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[250px_320px_minmax(0,1fr)] 2xl:grid-cols-[300px_380px_minmax(0,1fr)] md:h-[calc(100vh-9rem)] md:min-h-[620px]">
+        <h1 className="sr-only">Point of Sale</h1>
+
+        {/* 1 · Products */}
+        <div className="flex flex-col min-h-0">
+          {searchBar}
+          {productList}
+        </div>
+
+        {/* 2 + 3 share one scope for the Enter chain, and stack on a narrower
+            screen, where there's room for only one column beside the list. */}
+        <div
+          ref={chargeRef}
+          className="grid gap-4 min-h-0 content-start md:overflow-y-auto xl:contents"
+        >
+          {/* 2 · Who it's for, and the car on an oil shop */}
+          <Card className="flex flex-col min-h-0 overflow-hidden">
+            <div className="p-4 border-b bg-muted/30 font-semibold flex items-center gap-2">
+              <UserRound className="size-4" /> {hasLabTests ? "Patient" : "Customer"}{oilShop ? " & vehicle" : ""}
+            </div>
+            <div className="p-4 space-y-3 xl:overflow-y-auto xl:flex-1">
+              {customerSection}
+              {notesInput}
+            </div>
+          </Card>
+
+          {/* 3 · The bill and the money */}
+          {/* Below xl the two cards scroll together, so the button sticks to
+              the bottom instead of scrolling away (hence no overflow-hidden
+              there — it would trap the sticky). */}
+          <Card className="flex flex-col min-h-0 xl:overflow-hidden shadow-elevated">
+            {cartHeader}
+            <div className="xl:flex-1 overflow-y-auto p-2 min-h-[140px] max-h-[45vh] xl:max-h-none">
+              {cartLines}
+            </div>
+            <div className="border-t p-4 space-y-3 shrink-0 xl:max-h-[55%] xl:overflow-y-auto">
+              {discountRow}
+              {totalsBlock}
+              {tendersBlock}
+              {settleSummary}
+            </div>
+            <div className="p-4 pt-3 shrink-0 border-t bg-card rounded-b-lg sticky bottom-0 z-10 xl:static">
+              <Button
+                disabled={cart.length === 0 || busy}
+                onClick={completeSale}
+                size="lg"
+                className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground h-14 text-base font-semibold shadow-glow"
+              >
+                {chargeLabel}
+              </Button>
+            </div>
+          </Card>
+        </div>
+
+        {extraDialogs}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto grid md:grid-cols-[1fr_380px] lg:grid-cols-[1fr_420px] gap-4 md:gap-6 md:h-[calc(100vh-9rem)] md:min-h-[620px]">
+      <h1 className="sr-only">Point of Sale</h1>
+      <div className="flex flex-col min-h-0 order-2 md:order-1">
+        {searchBar}
+        {productGrid}
+      </div>
+
+      <Card className="flex flex-col shadow-elevated overflow-hidden order-1 md:order-2 md:max-h-full">
+        {cartHeader}
+
+        <div className="flex-1 overflow-y-auto p-2 min-h-[160px]">
+          {cartLines}
         </div>
 
         {/* Checkout: the tender rows grow as the bill is split, so this block
@@ -1246,217 +1664,15 @@ export default function POS() {
 
           <div className={`grid grid-cols-1 gap-x-6 gap-y-3 items-start ${oilShop ? "md:grid-cols-2" : ""}`}>
             <div className="space-y-3 min-w-0">
-                {/* Customer first: it is the first stop for the Enter key, and
-                    what's on screen should read in the order the keys move. */}
-                {hasLabTests
-                  ? <PatientPicker value={patient} onChange={setPatient} step={STEP.customer} onPicked={() => advancePastPicker(STEP.customer)} />
-                  : <CustomerPicker value={customer} onChange={setCustomer} step={STEP.customer} onPicked={() => advancePastPicker(STEP.customer)} />}
-
-                {oilShop && (
-                  <div className="rounded-lg border p-3 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Car className="size-4 text-primary shrink-0" />
-                      <span className="text-sm font-medium">Oil change</span>
-                      <span className="text-[11px] text-muted-foreground ms-auto">Optional</span>
-                    </div>
-
-                    <VehiclePicker
-                      value={pickedVehicle}
-                      onChange={chooseVehicle}
-                      step={STEP.vehicle}
-                      onPicked={() => advancePastPicker(STEP.vehicle)}
-                    />
-
-                    {/* The rest of the form only matters once there's a car. */}
-                    {pickedVehicle && (
-                      <>
-                        {knownVehicle && (
-                          <p className="text-[11px] text-primary">
-                            Last in {fmtDate(knownVehicle.serviced_at)}
-                            {knownVehicle.next_km != null && ` · was due at ${knownVehicle.next_km.toLocaleString()} km`}
-                          </p>
-                        )}
-                        <VehicleFields
-                          value={vehicle}
-                          onChange={setVehicle}
-                          compact
-                          showIdentity={false}
-                          step={STEP.vehicle}
-                        />
-                      </>
-                    )}
-                  </div>
-                )}
+              {customerSection}
             </div>
 
             <div className="space-y-3 min-w-0">
-            <div className="flex items-center gap-2">
-              <Tag className="size-4 text-muted-foreground shrink-0" />
-              <div className="relative flex-1 min-w-0">
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  inputMode="decimal"
-                  placeholder="Discount"
-                  value={discountValue}
-                  onChange={(e) => setDiscountValue(e.target.value)}
-                  data-checkout-step={STEP.discount}
-                  onKeyDown={enterAdvances}
-                  className="pe-16 h-9"
-                />
-                {discountValue && rawDiscount > subtotal && (
-                  <span className="absolute -bottom-4 left-0 text-[10px] text-warning">capped at subtotal</span>
-                )}
-              </div>
-              <Select value={discountType} onValueChange={(v) => setDiscountType(v as any)}>
-                <SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="amount">{cur}</SelectItem>
-                  <SelectItem value="percent">%</SelectItem>
-                </SelectContent>
-              </Select>
-              {discountValue && (
-                <Button variant="ghost" size="icon" className="size-9 shrink-0" onClick={() => setDiscountValue("")} title="Clear discount">
-                  <X className="size-4" />
-                </Button>
-              )}
-            </div>
-
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">{t("common.subtotal")}</span><span className="tabular-nums">{formatMoney(subtotal, cur)}</span></div>
-              {discount > 0 && (
-                <div className="flex justify-between text-success">
-                  <span>Discount{discountType === "percent" && discountInput > 0 ? ` (${discountInput}%)` : ""}</span>
-                  <span className="tabular-nums">−{formatMoney(discount, cur)}</span>
-                </div>
-              )}
-              {taxRate > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{t("common.tax")} ({taxRate}%)</span><span className="tabular-nums">{formatMoney(tax, cur)}</span></div>}
-              <div className="flex justify-between text-lg font-bold pt-1 border-t"><span>{t("common.total")}</span><span className="tabular-nums text-primary">{formatMoney(total, cur)}</span></div>
-            </div>
-
-            {/* Tender lines: the bill can be settled across several accounts,
-                and whatever is left over becomes the customer's balance. */}
-            <div className="space-y-2">
-              {tenders.map((tRow, idx) => (
-                <div key={tRow.key} className="flex items-center gap-2">
-                  <Select
-                    value={tRow.account_id}
-                    onValueChange={(v) => {
-                      if (idx === 0) accountPickedRef.current = true;
-                      setTender(tRow.key, { account_id: v });
-                    }}
-                  >
-                    {/* Only the first tender is in the Enter chain; splitting a
-                        bill across accounts stays a mouse job, as agreed. */}
-                    <SelectTrigger
-                      className="flex-1"
-                      data-checkout-step={idx === 0 ? STEP.account : undefined}
-                      // Enter keeps the account shown and moves on. Arrow keys
-                      // or Space open the list to change it.
-                      onKeyDown={idx === 0 ? enterAdvances : undefined}
-                    >
-                      <SelectValue placeholder="Account" />
-                    </SelectTrigger>
-                    <SelectContent
-                      onCloseAutoFocus={(e) => {
-                        if (idx !== 0 || !accountPickedRef.current) return;
-                        accountPickedRef.current = false;
-                        e.preventDefault();
-                        const trigger = chargeRef.current?.querySelector(`[data-checkout-step="${STEP.account}"]`);
-                        if (trigger) advance(trigger);
-                      }}
-                    >
-                      {accounts.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.type === "cash" ? "\u{1F4B5}" : a.type === "wallet" ? "\u{1F4F1}" : "\u{1F3E6}"} {a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    type="number" step="0.01" inputMode="decimal" placeholder="0.00"
-                    className="w-28 tabular-nums"
-                    value={tRow.amount}
-                    onChange={(e) => setTender(tRow.key, { amount: e.target.value })}
-                    data-checkout-step={idx === 0 ? STEP.amount : undefined}
-                    onKeyDown={idx === 0 ? enterAdvances : undefined}
-                    onFocus={(e) => e.currentTarget.select()}
-                    // ⚠️ Cash may be over the bill — that is how change gets
-                    // given, and the difference shows as Change due. Nothing
-                    // else may: a transfer larger than the bill is money the
-                    // shop never received, and it lands in the books as if it
-                    // had. Capped on blur, never mid-keystroke.
-                    onBlur={() => {
-                      const type = accounts.find((a) => a.id === tRow.account_id)?.type;
-                      if (type === "cash") return;
-                      const others = round2(
-                        tenders
-                          .filter((x) => x.key !== tRow.key)
-                          .reduce((a, x) => a + (parseFloat(x.amount) || 0), 0),
-                      );
-                      const room = round2(Math.max(0, total - others));
-                      if ((parseFloat(tRow.amount) || 0) > room) {
-                        setTender(tRow.key, { amount: String(room) });
-                        toast.info(
-                          `Capped at ${formatMoney(room, cur)} — only cash can be over the bill, for change.`,
-                        );
-                      }
-                    }}
-                  />
-                  {tenders.length > 1 && (
-                    <Button size="icon" variant="ghost" className="size-8 shrink-0" onClick={() => removeTender(tRow.key)}>
-                      <X className="size-3.5" />
-                    </Button>
-                  )}
-                  {tenders.length === 1 && idx === 0 && <span className="w-8 shrink-0" />}
-                </div>
-              ))}
-              {accounts.length > 1 && (
-                <Button variant="outline" size="sm" className="w-full" onClick={addTender}>
-                  <Plus className="size-3.5 me-1" /> Split across another account
-                </Button>
-              )}
-              {accounts.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No payment accounts yet \u2014 add one under Accounts.
-                </p>
-              )}
-            </div>
-
-            <Input
-              placeholder="Notes (optional)"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              maxLength={500}
-              data-checkout-step={STEP.notes}
-              aria-label="Notes"
-              onKeyDown={(e) => {
-                // The end of the chain: Enter here places the order.
-                if (e.key !== "Enter" || e.nativeEvent.isComposing || e.ctrlKey || e.metaKey) return;
-                e.preventDefault();
-                void completeSale();
-              }}
-            />
-
-            <div className="text-sm flex justify-between px-3 py-2 rounded-lg bg-muted/50">
-              <span className="text-muted-foreground">Paying now</span>
-              <span className="tabular-nums font-medium">{formatMoney(effectivePaid, cur)}</span>
-            </div>
-
-            {owed > 0 && (
-              <div className="text-sm flex justify-between bg-warning/10 text-warning px-3 py-2 rounded-lg font-medium">
-                <span>To be paid later</span>
-                <span className="tabular-nums">{formatMoney(owed, cur)}</span>
-              </div>
-            )}
-
-            {change > 0 && (
-              <div className="text-sm flex justify-between bg-success/10 text-success px-3 py-2 rounded-lg font-medium">
-                <span>{t("pos.changeDue")}</span>
-                <span className="tabular-nums">{formatMoney(change, cur)}</span>
-              </div>
-            )}
+              {discountRow}
+              {totalsBlock}
+              {tendersBlock}
+              {notesInput}
+              {settleSummary}
             </div>
           </div>
 
@@ -1469,45 +1685,13 @@ export default function POS() {
               onClick={completeSale}
               className="bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold"
             >
-              {busy ? t("common.processing") : owed > 0
-                ? `Take ${formatMoney(effectivePaid, cur)} · ${formatMoney(owed, cur)} later`
-                : t("pos.charge", { amount: formatMoney(total, cur) })}
-              {!busy && (
-                <kbd className="ms-2 rounded border border-white/40 px-1 text-[10px] font-medium text-white/80">
-                  {shortcutLabel("checkout", isMac)}
-                </kbd>
-              )}
+              {chargeLabel}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onDetected={handleScanned} />
-      {variantPicker && (
-        <VariantPickerDialog
-          open={!!variantPicker}
-          onClose={() => setVariantPicker(null)}
-          productName={variantPicker.name}
-          basePrice={Number(variantPicker.price)}
-          variants={variantOptions}
-          onPick={(v) => {
-            const variant = variantPicker.variants?.find((x) => x.id === v.id) ?? null;
-            if (variant) {
-              pushToCart(variantPicker, variant);
-              focusSoon(qtySel(variant.id));
-            }
-          }}
-        />
-      )}
-      {completedSale && (
-        <ReceiptDialog
-          sale={completedSale}
-          // New sale: the cart is already clear, so go straight to the search.
-          onClose={() => { setCompletedSale(null); focusSoon(SEARCH); }}
-        />
-      )}
-      <LabTokenDialog orders={labTokens} onClose={() => setLabTokens(null)} />
-      {confirmDialog}
+      {extraDialogs}
     </div>
   );
 }

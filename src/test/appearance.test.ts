@@ -31,10 +31,10 @@ afterEach(() => {
 
 describe("appearance pre-paint script", () => {
   const cases: Appearance[] = [
-    ...THEME_PRESETS.map((p) => ({ theme: p.id, accent: null, chrome: "dark" as const, glass: true })),
-    { theme: "custom", accent: "#ff8800", chrome: "light", glass: false },
-    { theme: "custom", accent: "#0a0a0a", chrome: "dark", glass: true },
-    { theme: "custom", accent: "#f5f5ff", chrome: "light", glass: true },
+    ...THEME_PRESETS.map((p) => ({ theme: p.id, accent: null, chrome: "dark" as const, glass: true, checkout: "popup" as const })),
+    { theme: "custom", accent: "#ff8800", chrome: "light", glass: false, checkout: "inline" },
+    { theme: "custom", accent: "#0a0a0a", chrome: "dark", glass: true, checkout: "popup" },
+    { theme: "custom", accent: "#f5f5ff", chrome: "light", glass: true, checkout: "popup" },
   ];
   for (const a of cases) {
     it(`matches appearanceStyle for ${a.theme}${a.accent ? ` ${a.accent}` : ""}`, () => {
@@ -48,10 +48,14 @@ describe("appearance pre-paint script", () => {
 
 describe("normalizeAppearance", () => {
   it("falls back to the default for nonsense", () => {
-    expect(normalizeAppearance(null)).toEqual({ theme: "emerald", accent: null, chrome: "dark", glass: true });
+    expect(normalizeAppearance(null)).toEqual({ theme: "emerald", accent: null, chrome: "dark", glass: true, checkout: "popup" });
     expect(normalizeAppearance({ theme: "nope", chrome: "purple", glass: "yes" })).toEqual({
-      theme: "emerald", accent: null, chrome: "dark", glass: true,
+      theme: "emerald", accent: null, chrome: "dark", glass: true, checkout: "popup",
     });
+  });
+  it("keeps the till checkout only when it is on-screen; anything else is the pop-up", () => {
+    expect(normalizeAppearance({ checkout: "inline" }).checkout).toBe("inline");
+    expect(normalizeAppearance({ checkout: "sideways" }).checkout).toBe("popup");
   });
   it("keeps a custom colour only when it is a real hex", () => {
     expect(normalizeAppearance({ theme: "custom", accent: "#ABCDEF" }).accent).toBe("#abcdef");

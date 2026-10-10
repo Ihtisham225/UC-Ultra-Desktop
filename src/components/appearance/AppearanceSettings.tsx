@@ -9,7 +9,7 @@
  */
 import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { Check, Monitor, Moon, Palette, Sun } from "lucide-react";
+import { Check, Monitor, Moon, Palette, ShoppingCart, Sun } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -23,6 +23,7 @@ import {
   resolveColours,
   storeAppearance,
   type Appearance,
+  type CheckoutMode,
   type ChromeTone,
 } from "@/lib/appearance";
 import { appearanceApi } from "@/components/appearance/appearance-api";
@@ -152,6 +153,37 @@ export function AppearanceSettings() {
 
       <Card className="p-5 space-y-4">
         <div>
+          <h3 className="font-semibold flex items-center gap-2"><ShoppingCart className="size-4 text-primary" /> Till checkout</h3>
+          <p className="text-sm text-muted-foreground">
+            How a sale is finished on the POS screen. Only changes your own till.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {([
+            ["inline", "On the screen", "Three columns: products · customer & vehicle · bill & payment. Complete the sale without opening anything."],
+            ["popup", "In a pop-up", "A wide product grid and the cart; Checkout opens a window for the customer and payment."],
+          ] as [CheckoutMode, string, string][]).map(([mode, label, hint]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => void change({ checkout: mode })}
+              className={cn(
+                "flex items-center gap-3 rounded-xl border p-3 text-start transition-colors hover:bg-muted/50",
+                current.checkout === mode && "border-primary ring-2 ring-primary/30",
+              )}
+            >
+              <MiniTill mode={mode} />
+              <span>
+                <span className="block text-sm font-medium">{label}</span>
+                <span className="block text-xs text-muted-foreground">{hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-5 space-y-4">
+        <div>
           <h3 className="font-semibold">Light or dark</h3>
           <p className="text-sm text-muted-foreground">The whole app. &ldquo;Match computer&rdquo; follows your computer&apos;s setting.</p>
         </div>
@@ -196,6 +228,35 @@ function MiniShell({ tone, appearance }: { tone: ChromeTone; appearance: Appeara
         <span className="h-2.5 rounded-md" style={{ background: panel }} />
         <span className="flex-1 rounded-md bg-background" />
       </span>
+    </span>
+  );
+}
+
+/** A thumbnail of the POS in each checkout layout. */
+function MiniTill({ mode }: { mode: CheckoutMode }) {
+  const block = "rounded-sm bg-muted-foreground/25";
+  return (
+    <span className="flex h-14 w-20 shrink-0 gap-0.5 rounded-lg border bg-muted p-1">
+      {mode === "inline" ? (
+        <>
+          <span className="flex flex-[1.4] flex-col gap-0.5">
+            {[0, 1, 2, 3, 4].map((i) => <span key={i} className={`h-1.5 ${block}`} />)}
+          </span>
+          <span className="flex-1 rounded-sm bg-background" />
+          <span className="flex flex-1 flex-col justify-end rounded-sm bg-background p-0.5">
+            <span className="h-1.5 rounded-sm bg-primary" />
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="grid flex-[2] grid-cols-3 gap-0.5">
+            {[0, 1, 2, 3, 4, 5].map((i) => <span key={i} className={block} />)}
+          </span>
+          <span className="relative flex flex-1 flex-col justify-end rounded-sm bg-background p-0.5">
+            <span className="h-1.5 rounded-sm bg-primary" />
+          </span>
+        </>
+      )}
     </span>
   );
 }

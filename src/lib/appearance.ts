@@ -14,6 +14,8 @@
  */
 
 export type ChromeTone = "dark" | "light";
+/** How the till finishes a sale: on the screen beside the cart, or in a pop-up. */
+export type CheckoutMode = "inline" | "popup";
 
 export interface Appearance {
   /** A preset id, or "custom" to use `accent`. */
@@ -24,6 +26,8 @@ export interface Appearance {
   chrome: ChromeTone;
   /** See-through, blurred sidebar and header (true) or solid (false). */
   glass: boolean;
+  /** POS checkout layout. Missing = "popup", which is how the till always worked. */
+  checkout: CheckoutMode;
 }
 
 export interface ThemePreset {
@@ -46,9 +50,11 @@ export const THEME_PRESETS: ThemePreset[] = [
   { id: "graphite", name: "Graphite", brand: [218, 16, 38], chrome: [220, 14] },
 ];
 
-export const DEFAULT_APPEARANCE: Appearance = { theme: "emerald", accent: null, chrome: "dark", glass: true };
+export const DEFAULT_APPEARANCE: Appearance = { theme: "emerald", accent: null, chrome: "dark", glass: true, checkout: "popup" };
 
 const STORAGE_KEY = "ucu.appearance";
+/** Fired on window whenever this window stores a new appearance. */
+export const APPEARANCE_EVENT = "ucu-appearance";
 const HEX = /^#[0-9a-f]{6}$/i;
 
 /** Anything stored or sent → a valid Appearance (unknown bits fall back to the default). */
@@ -61,6 +67,7 @@ export function normalizeAppearance(raw: unknown): Appearance {
     accent: custom ? String(a.accent).toLowerCase() : null,
     chrome: a.chrome === "light" ? "light" : "dark",
     glass: a.glass === false ? false : true,
+    checkout: a.checkout === "inline" ? "inline" : "popup",
   };
 }
 
@@ -148,13 +155,15 @@ export function readStoredAppearance(): Appearance {
 export function storeAppearance(a: Appearance): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(a));
+    // Same-window listeners (the till's layout) — "storage" only fires in OTHER tabs.
+    window.dispatchEvent(new Event(APPEARANCE_EVENT));
   } catch {
     // Storage blocked — the account copy still holds it.
   }
 }
 
 export function sameAppearance(a: Appearance, b: Appearance): boolean {
-  return a.theme === b.theme && (a.accent ?? null) === (b.accent ?? null) && a.chrome === b.chrome && a.glass === b.glass;
+  return a.theme === b.theme && (a.accent ?? null) === (b.accent ?? null) && a.chrome === b.chrome && a.glass === b.glass && a.checkout === b.checkout;
 }
 
 /**
