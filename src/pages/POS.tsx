@@ -260,6 +260,8 @@ export default function POS() {
   const [pickedVehicle, setPickedVehicle] = useState<VehicleLite | null>(null);
   /** Its last visit, so the counter sees when it was in and what it was due at. */
   const [knownVehicle, setKnownVehicle] = useState<{ serviced_at: string; next_km: number | null } | null>(null);
+  // The register itself, to link a newly typed plate to a car already on it.
+  const { data: localVehicles } = useLocalStore<{ id: string; vehicle_number: string; vehicle_key?: string | null }>("vehicles", currentShop?.id);
   // Past visits, synced like everything else, so the lookup works offline.
   const { data: oilChangeRows } = useLocalStore<{
     id: string; vehicle_id?: string | null; serviced_at: string;
@@ -684,10 +686,35 @@ export default function POS() {
 
     // The service record rides the same offline queue as the sale, so a
     // terminal with no connection still captures the vehicle at the counter.
-    const oilChangeRow = oilShop && pickedVehicle
+    // A picked car, or a new plate typed into the form. A new one is added to
+    // the local register first (same plate already there → that car), so the
+    // visit links to it offline; the server merges a plate another till
+    // registered meanwhile (/api/sync/push).
+    let vehicleId: string | null = pickedVehicle?.id ?? null;
+    if (oilShop && !vehicleId && vehicle.vehicle_number.trim()) {
+      const key = normalizePlate(vehicle.vehicle_number);
+      const known = localVehicles.find((v) => v.vehicle_key === key || normalizePlate(v.vehicle_number) === key);
+      if (known) vehicleId = known.id;
+      else if (key) {
+        vehicleId = uuid();
+        await upsertLocal("vehicles", {
+          id: vehicleId,
+          shop_id: currentShop.id,
+          vehicle_number: tidyPlate(vehicle.vehicle_number),
+          vehicle_key: key,
+          make: vehicle.make.trim() || null,
+          model_number: vehicle.model_number.trim() || null,
+          created_by: user.id,
+          created_at: now,
+          updated_at: now,
+        }, true);
+        notifyChange("vehicles");
+      }
+    }
+    const oilChangeRow = oilShop && vehicleId
       ? {
           ...vehicleDraftToInput(vehicle),
-          vehicle_id: pickedVehicle.id,
+          vehicle_id: vehicleId,
           vehicle_number: tidyPlate(vehicle.vehicle_number),
           // The server's indexed lookup key. NOT NULL with no default, so the
           // push would be rejected without it.
@@ -915,7 +942,7 @@ export default function POS() {
             </button>
           </div>
         )}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-1">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
@@ -943,6 +970,19 @@ export default function POS() {
                     const exact = products.find((p) => p.barcode === code);
                     if (exact) { addAndFocus(exact); return; }
                   }
+                  // Nothing typed: the products are in — on to the customer.
+                  // (It used to drop the first product in the list into the
+                  // cart, which nobody ever meant.)
+                  if (!code) {
+                    e.preventDefault();
+                    if (inline) {
+                      const first = chargeRef.current ? stepsIn(chargeRef.current)[0] : null;
+                      if (first) focusStep(first);
+                    } else {
+                      openCharge();
+                    }
+                    return;
+                  }
                   if (filtered[0]) addAndFocus(filtered[0]);
                 }
               }}
@@ -956,6 +996,9 @@ export default function POS() {
             <RefreshCw className="size-4" />
           </Button>
         </div>
+        <p className="mb-3 px-1 text-[11px] text-muted-foreground">
+          Enter on an empty search → {inline ? "customer" : "checkout"}
+        </p>
 
         {/* Online / offline status bar */}
         {!isOnline && (
@@ -1232,31 +1275,34 @@ export default function POS() {
                       <span className="text-[11px] text-muted-foreground ms-auto">Optional</span>
                     </div>
 
+                    {/* Look up a registered car — or skip it and type a new one's
+                        plate below; it is registered when the sale completes. */}
                     <VehiclePicker
                       value={pickedVehicle}
                       onChange={chooseVehicle}
                       step={STEP.vehicle}
                       onPicked={() => advancePastPicker(STEP.vehicle)}
+                      onRegisterInline={(plate) => {
+                        void chooseVehicle(null);
+                        if (plate) setVehicle({ ...blankVehicle, vehicle_number: plate });
+                      }}
                     />
-
-                    {/* The rest of the form only matters once there's a car. */}
-                    {pickedVehicle && (
-                      <>
-                        {knownVehicle && (
-                          <p className="text-[11px] text-primary">
-                            Last in {fmtDate(knownVehicle.serviced_at)}
-                            {knownVehicle.next_km != null && ` · was due at ${knownVehicle.next_km.toLocaleString()} km`}
-                          </p>
-                        )}
-                        <VehicleFields
-                          value={vehicle}
-                          onChange={setVehicle}
-                          compact
-                          showIdentity={false}
-                          step={STEP.vehicle}
-                        />
-                      </>
+                    {knownVehicle && (
+                      <p className="text-[11px] text-primary">
+                        Last in {fmtDate(knownVehicle.serviced_at)}
+                        {knownVehicle.next_km != null && ` · was due at ${knownVehicle.next_km.toLocaleString()} km`}
+                      </p>
                     )}
+                    {!pickedVehicle && vehicle.vehicle_number.trim() && (
+                      <p className="text-[11px] text-muted-foreground">New vehicle — it is registered when the sale completes.</p>
+                    )}
+                    <VehicleFields
+                      value={vehicle}
+                      onChange={setVehicle}
+                      compact
+                      identityLocked={!!pickedVehicle}
+                      step={STEP.vehicle}
+                    />
                   </div>
                 )}
     </>

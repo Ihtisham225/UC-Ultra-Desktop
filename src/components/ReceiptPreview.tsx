@@ -19,6 +19,7 @@ export interface ReceiptPreviewSettings {
   show_imei_on_receipt: boolean;
   show_previous_balance_on_receipt: boolean;
   show_notes_on_receipt: boolean;
+  show_logo_on_receipt?: boolean;
   /** The shop's own customer fields, with their on-receipt switches as set now. */
   party_fields?: PartyField[];
 }
