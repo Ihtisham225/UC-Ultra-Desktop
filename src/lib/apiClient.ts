@@ -1,3 +1,4 @@
+import type { PartyField } from "@/lib/party-fields";
 /**
  * apiClient.ts — talks to the new UC Ultra backend (Next.js on ucultra.com),
  * replacing the old @supabase/supabase-js client.
@@ -91,6 +92,8 @@ export interface DeviceShop {
   show_imei_on_receipt?: boolean;
   show_previous_balance_on_receipt?: boolean;
   show_notes_on_receipt?: boolean;
+  /** The shop's own customer / supplier fields (lib/party-fields). */
+  party_fields?: PartyField[];
   /** Settings → Shop → Date & time (lib/date-format); null = the default. */
   date_format?: string | null;
   time_format?: string | null;

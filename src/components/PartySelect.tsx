@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -16,7 +16,7 @@ export interface PartyOptionLite { id: string; name: string; phone?: string | nu
  * the counter usually knows a person apart when two share a name.
  */
 export function PartySelect({
-  value, onChange, options, placeholder = "Select…", emptyLabel = "None", className,
+  value, onChange, options, placeholder = "Select…", emptyLabel = "None", className, step, onPicked,
 }: {
   value: string;
   onChange: (id: string) => void;
@@ -25,8 +25,18 @@ export function PartySelect({
   /** Label for the "no party" choice; pass null to make the choice required. */
   emptyLabel?: string | null;
   className?: string;
+  /** Place in a screen's Enter chain (lib/checkout-keys); arriving opens the list. */
+  step?: number;
+  /** Called once a choice is made and the list has closed — the screen moves on. */
+  onPicked?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const pickedRef = useRef(false);
+  const choose = (id: string) => {
+    pickedRef.current = true;
+    onChange(id);
+    setOpen(false);
+  };
   const selected = options.find((o) => o.id === value);
 
   return (
@@ -42,6 +52,8 @@ export function PartySelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          data-checkout-step={step}
+          data-checkout-picker={step === undefined ? undefined : ""}
           className={`justify-between font-normal ${className ?? ""}`}
         >
           <span className={selected ? "truncate" : "truncate text-muted-foreground"}>
@@ -50,8 +62,22 @@ export function PartySelect({
           <ChevronsUpDown className="size-4 opacity-50 shrink-0 ms-2" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="p-0 w-[--radix-popover-trigger-width] min-w-64" align="start">
+      <PopoverContent
+        className="p-0 w-[--radix-popover-trigger-width] min-w-64"
+        align="start"
+        onCloseAutoFocus={(e) => {
+          if (!pickedRef.current) return;
+          pickedRef.current = false;
+          if (onPicked) {
+            e.preventDefault();
+            onPicked();
+          }
+        }}
+      >
+        {/* The highlight starts on the CURRENT choice, so Enter on a reopened
+            list keeps it rather than taking whoever is listed first. */}
         <Command
+          defaultValue={selected ? `${selected.name} ${selected.phone ?? ""} ${selected.id}` : emptyLabel ?? undefined}
           filter={(itemValue, search) =>
             itemValue.toLowerCase().includes(search.toLowerCase()) ? 1 : 0
           }
@@ -63,7 +89,7 @@ export function PartySelect({
               {emptyLabel !== null && (
                 <CommandItem
                   value={emptyLabel}
-                  onSelect={() => { onChange(""); setOpen(false); }}
+                  onSelect={() => choose("")}
                 >
                   <Check className={`size-4 me-2 ${value ? "opacity-0" : "opacity-100"}`} />
                   <span className="text-muted-foreground">{emptyLabel}</span>
@@ -74,7 +100,7 @@ export function PartySelect({
                   key={o.id}
                   // cmdk matches on this string, so the phone is searchable too.
                   value={`${o.name} ${o.phone ?? ""} ${o.id}`}
-                  onSelect={() => { onChange(o.id); setOpen(false); }}
+                  onSelect={() => choose(o.id)}
                 >
                   <Check className={`size-4 me-2 ${value === o.id ? "opacity-100" : "opacity-0"}`} />
                   <span className="truncate">{o.name}</span>

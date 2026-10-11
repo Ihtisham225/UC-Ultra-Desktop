@@ -34,6 +34,8 @@ import { AppUpdateCard } from "@/components/AppUpdateCard";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { AppVersionBadge } from "@/components/AppVersionBadge";
 import { SignInMethodsCard } from "@/components/SignInMethodsCard";
+import { PartyFieldsEditor, PartyFieldsReceiptSwitches } from "@/components/PartyFieldsSettings";
+import type { PartyField } from "@/lib/party-fields";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR", "JOD", "EGP", "INR", "PKR", "NGN", "KES", "ZAR", "BRL", "MXN"];
 
@@ -85,6 +87,8 @@ export default function Settings() {
   const [showImei, setShowImei] = useState(false);
   const [showPrevBalance, setShowPrevBalance] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  /** The shop's own customer / supplier fields — Shop tab edits them, Receipt tab picks the printed ones. */
+  const [partyFields, setPartyFields] = useState<PartyField[]>([]);
 
   const [notifyLow, setNotifyLow] = useState(true);
   const [notifyDaily, setNotifyDaily] = useState(false);
@@ -138,6 +142,7 @@ export default function Settings() {
       setShowImei(currentShop.show_imei_on_receipt ?? false);
       setShowPrevBalance(currentShop.show_previous_balance_on_receipt ?? false);
       setShowNotes(currentShop.show_notes_on_receipt ?? false);
+      setPartyFields(currentShop.party_fields ?? []);
       setNotifyLow(currentShop.notify_low_stock ?? true);
       setNotifyDaily(currentShop.notify_daily_summary ?? false);
       setInvestorsOn(currentShop.investors_enabled ?? false);
@@ -236,11 +241,32 @@ export default function Settings() {
     show_imei_on_receipt: showImei,
     show_previous_balance_on_receipt: showPrevBalance,
     show_notes_on_receipt: showNotes,
-  }), [header, footer, terms, printTerms, showTax, showCustomer, showImei, showPrevBalance, showNotes]);
+    party_fields: partyFields,
+  }), [header, footer, terms, printTerms, showTax, showCustomer, showImei, showPrevBalance, showNotes, partyFields]);
+
+  /** Server-side, like every shop setting; the terminal's copy follows on refresh. */
+  const savePartyFieldsRemote = async (fields: PartyField[]) =>
+    rpc<{ ok: boolean; error?: string; fields?: PartyField[] }>("savePartyFieldsAction", fields)
+      .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : "Couldn't save", fields: undefined as PartyField[] | undefined }));
+
+  const savePartyFields = async () => {
+    if (!currentShop) return;
+    if (partyFields.some((f) => !f.label.trim())) return toast.error("Every field needs a name");
+    setBusy(true);
+    const res = await savePartyFieldsRemote(partyFields);
+    setBusy(false);
+    if (!res.ok) return toast.error(res.error ?? "Couldn't save");
+    if (res.fields) setPartyFields(res.fields);
+    toast.success("Customer & supplier fields saved");
+    refresh();
+  };
 
   const saveReceipt = async () => {
     if (!currentShop) return;
     setBusy(true);
+    // The on-receipt switches live on the fields list, saved with the receipt.
+    const fieldsSaved = await savePartyFieldsRemote(partyFields.filter((f) => f.label.trim()));
+    if (!fieldsSaved.ok) { setBusy(false); return toast.error(fieldsSaved.error ?? "Couldn't save"); }
     try {
       const res = await rpc<{ ok: boolean; error?: string }>("updateReceiptAction", {
         header: header || null, footer: footer || null, show_tax_line: showTax,
@@ -703,6 +729,15 @@ export default function Settings() {
             )}
             {canEditShop && <Button disabled={busy} onClick={saveShop} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.shop.saveShop")}</Button>}
           </Card>
+          <div className="mt-6">
+            <PartyFieldsEditor
+              fields={partyFields}
+              onChange={setPartyFields}
+              onSave={savePartyFields}
+              busy={busy}
+              disabled={!canEditShop}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="receipt">
@@ -743,6 +778,7 @@ export default function Settings() {
               </div>
               <Switch checked={showNotes} onCheckedChange={setShowNotes} disabled={!canEditShop} />
             </div>
+            <PartyFieldsReceiptSwitches fields={partyFields} onChange={setPartyFields} disabled={!canEditShop} />
             {/* Terms print at the foot of every receipt. Free text, any
                 language — shops write these in Urdu, Pashto or English. */}
             <div className="space-y-1.5 border-t pt-4">

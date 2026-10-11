@@ -1,3 +1,5 @@
+import { PartyFieldInputs, partyFieldRows } from "@/components/PartyFieldInputs";
+import { fieldsFor, type PartyFieldValues } from "@/lib/party-fields";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -26,7 +28,7 @@ import { downloadCsv } from "@/lib/csv";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useAddNew } from "@/hooks/useAddNew";
 
-interface Customer { id: string; name: string; phone: string | null; email: string | null; notes: string | null; is_supplier?: boolean; }
+interface Customer { id: string; name: string; phone: string | null; email: string | null; notes: string | null; is_supplier?: boolean; custom_fields?: PartyFieldValues; }
 
 export default function Customers() {
   usePageMeta({ title: "Customers — UCU", description: "Manage customer profiles, contact details and purchase history.", path: "/customers" });
@@ -112,6 +114,7 @@ export default function Customers() {
       email: editing.email || null,
       notes: editing.notes || null,
       is_supplier: !!editing.is_supplier,
+      custom_fields: editing.custom_fields ?? {},
     };
     try {
       const res = editing.id
@@ -269,6 +272,12 @@ export default function Customers() {
               <div className="space-y-1.5"><Label>{t("common.phone")}</Label><Input value={editing.phone ?? ""} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></div>
               <div className="space-y-1.5"><Label>{t("common.email")}</Label><Input type="email" value={editing.email ?? ""} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /></div>
               <div className="space-y-1.5"><Label>{t("common.notes")}</Label><Input value={editing.notes ?? ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
+              {/* The shop's own fields (Settings → Shop → Customer & supplier fields). */}
+              <PartyFieldInputs
+                fields={fieldsFor(currentShop?.party_fields, { customer: true, supplier: !!editing.is_supplier })}
+                values={editing.custom_fields}
+                onChange={(custom_fields) => setEditing({ ...editing, custom_fields })}
+              />
               {/* One party record, two lists — ticking this puts the same
                   person in the supplier picker without a second record, so
                   their ledger nets both directions instead of splitting. */}
@@ -303,6 +312,10 @@ export default function Customers() {
           rows={[
             { label: t("common.phone"), value: details.phone ?? "—" },
             { label: t("common.email"), value: details.email ?? "—" },
+            ...partyFieldRows(
+              fieldsFor(currentShop?.party_fields, { customer: true, supplier: !!details.is_supplier }),
+              details.custom_fields,
+            ),
             { label: t("common.notes"), value: details.notes ?? "—", full: true },
           ]}
           footer={<Button variant="outline" onClick={() => { setEditing(details); setDetails(null); }}>{t("common.edit")}</Button>}

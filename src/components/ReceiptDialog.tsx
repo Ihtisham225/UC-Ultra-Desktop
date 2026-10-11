@@ -1,3 +1,4 @@
+import { receiptFieldRows } from "@/lib/party-fields";
 import { Fragment, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -5,6 +6,7 @@ import { Printer, MessageCircle, Sparkles } from "lucide-react";
 import { formatMoney, formatAmount, orderNumberLabel } from "@/lib/format";
 import { soldAs, formatUnitQty } from "@/lib/sale-units";
 import { rpc } from "@/lib/apiClient";
+import { getById } from "@/lib/localDb";
 import { buildReceiptMessage } from "@/lib/whatsapp-receipt";
 import { openWhatsApp } from "@/lib/whatsapp-open";
 import { toast } from "sonner";
@@ -46,7 +48,13 @@ const noteFor = (sale: ReceiptGateSale): string | null =>
     ? sale.notes.trim()
     : null;
 
-const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: any; customer: { name: string; phone: string | null } | null; currency: string; withTerms: boolean }) => {
+/** A customer as the receipt sees them; `custom_fields` are the shop's own fields' answers. */
+type ReceiptCustomer = { name: string; phone: string | null; custom_fields?: unknown };
+/** The shop's own customer fields set to print, that this customer filled in. */
+const customFieldRowsFor = (sale: any, customer: ReceiptCustomer | null) =>
+  customer ? receiptFieldRows(sale.shop?.party_fields, customer.custom_fields) : [];
+
+const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: any; customer: ReceiptCustomer | null; currency: string; withTerms: boolean }) => {
   const showCustomer = sale.shop?.show_customer_on_receipt === true;
   const showImei = sale.shop?.show_imei_on_receipt === true;
   // Patient details always print on a lab sale — they identify whose sample it
@@ -57,6 +65,7 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
     { label: "Date", value: fmtDateTime(sale.created_at) },
     ...(showCustomer && customer ? [{ label: "Customer", value: customer.name }] : []),
     ...(showCustomer && customer?.phone ? [{ label: "Phone", value: customer.phone }] : []),
+    ...customFieldRowsFor(sale, customer),
     ...(sale.patient_name ? [{ label: "Patient", value: String(sale.patient_name) }] : []),
     ...(sale.patient_age || sale.patient_gender
       ? [{ label: "Age / Sex", value: [sale.patient_age, sale.patient_gender].filter(Boolean).join(" / ") }]
@@ -385,7 +394,7 @@ export const ReceiptPaper = ({
   withTerms,
 }: {
   sale: any;
-  customer: { name: string; phone: string | null } | null;
+  customer: ReceiptCustomer | null;
   withTerms: boolean;
 }) => {
   const cur = sale.shop?.currency ?? "USD";
@@ -420,6 +429,9 @@ export const ReceiptPaper = ({
         {sale.shop?.show_customer_on_receipt && customer?.phone && (
           <div className="flex items-start justify-between gap-2"><span className="shrink-0">Phone</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.phone}</span></div>
         )}
+        {customFieldRowsFor(sale, customer).map((r) => (
+          <div key={r.label} className="flex items-start justify-between gap-2"><span className="shrink-0">{r.label}</span><span className="min-w-0 max-w-[58%] text-right break-words">{r.value}</span></div>
+        ))}
         {sale.patient_name && (
           <div className="flex items-start justify-between gap-2"><span className="shrink-0">Patient</span><span className="min-w-0 max-w-[58%] text-right break-words">{sale.patient_name}</span></div>
         )}
@@ -593,19 +605,24 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
   const { currentShop } = useShop();
   const isPro = !!currentShop?.is_pro && (!currentShop?.pro_until || new Date(currentShop.pro_until) > new Date());
   const [sent, setSent] = useState(false);
-  const [customer, setCustomer] = useState<{ name: string; phone: string | null } | null>(
-    sale.customer ?? null
-  );
+  const [customer, setCustomer] = useState<ReceiptCustomer | null>(sale.customer ?? null);
   const terms: string = sale.shop?.receipt_terms ?? "";
   // Shop-wide default, overridable per print from the toggle below the paper.
   const [withTerms, setWithTerms] = useState(sale.shop?.print_terms_by_default !== false);
 
+  // The till hands over a customer without their custom fields; fetch them
+  // when the shop prints any, so the slip and its reprint read the same.
+  const wantsCustomFields = ((sale.shop?.party_fields ?? []) as { on_receipt?: boolean }[]).some((f) => f.on_receipt);
+  const missingCustom = !!sale.customer && wantsCustomFields && sale.customer.custom_fields === undefined;
   useEffect(() => {
-    if (sale.customer || !sale.customer_id) return;
-    rpc<{ name: string; phone: string | null } | null>("getCustomerLiteAction", sale.customer_id)
-      .then((data) => data && setCustomer(data))
+    if (!sale.customer_id || (sale.customer && !missingCustom)) return;
+    // The terminal's own copy first, so an offline till prints them too.
+    const id = sale.customer_id as string;
+    void getById<ReceiptCustomer>("suppliers", id)
+      .then((row) => row ?? rpc<ReceiptCustomer | null>("getCustomerLiteAction", id))
+      .then((data) => data && setCustomer({ name: data.name, phone: data.phone ?? null, custom_fields: data.custom_fields }))
       .catch(() => { /* ignore — receipt still prints without the name */ });
-  }, [sale.customer, sale.customer_id]);
+  }, [sale.customer, sale.customer_id, missingCustom]);
 
   const print = () => {
     void printThermalHtml(buildReceiptPrintHtml({ sale, customer, currency: cur, withTerms }))

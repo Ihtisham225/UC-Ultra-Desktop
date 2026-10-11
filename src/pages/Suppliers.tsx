@@ -1,3 +1,5 @@
+import { PartyFieldInputs, partyFieldRows } from "@/components/PartyFieldInputs";
+import { fieldsFor, type PartyFieldValues } from "@/lib/party-fields";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -47,6 +49,7 @@ interface Supplier {
   is_processor?: boolean;
   city?: string | null;
   opening_balance?: number;
+  custom_fields?: PartyFieldValues;
 }
 
 export default function Suppliers() {
@@ -141,6 +144,7 @@ export default function Suppliers() {
       // it is rendered for non-craft shops too, so the flag has to travel with
       // the save or ticking it silently does nothing.
       is_customer: !!editing.is_customer,
+      custom_fields: editing.custom_fields ?? {},
       ...(craft
         ? {
             is_supplier: !!editing.is_supplier,
@@ -421,6 +425,12 @@ export default function Suppliers() {
                   </div>
                 </>
               )}
+              {/* The shop's own fields (Settings → Shop → Customer & supplier fields). */}
+              <PartyFieldInputs
+                fields={fieldsFor(currentShop?.party_fields, { supplier: true, customer: !!editing.is_customer })}
+                values={editing.custom_fields}
+                onChange={(custom_fields) => setEditing({ ...editing, custom_fields })}
+              />
               <div className="space-y-1.5"><Label>{t("common.notes")}</Label><Textarea rows={2} value={editing.notes ?? ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></div>
             </div>
           )}
@@ -451,6 +461,10 @@ export default function Suppliers() {
               : []),
             { label: t("common.phone"), value: details.phone ?? "—" },
             { label: t("common.email"), value: details.email ?? "—" },
+            ...partyFieldRows(
+              fieldsFor(currentShop?.party_fields, { supplier: true, customer: !!details.is_customer }),
+              details.custom_fields,
+            ),
             { label: t("common.notes"), value: details.notes ?? "—", full: true },
           ]}
           footer={
