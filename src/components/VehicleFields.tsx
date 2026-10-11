@@ -46,6 +46,8 @@ interface Props {
    * this visit, and retyping them is how one car ends up registered twice.
    */
   showIdentity?: boolean;
+  /** Plate / make / model come from the register (a car was picked): shown, not editable. */
+  identityLocked?: boolean;
   disabled?: boolean;
   /**
    * Place in the till's Enter-key chain (lib/checkout-keys). When set, every box
@@ -55,8 +57,9 @@ interface Props {
 }
 
 export function VehicleFields({
-  value, onChange, onPlateBlur, compact = false, showIdentity = true, disabled, step,
+  value, onChange, onPlateBlur, compact = false, showIdentity = true, identityLocked = false, disabled, step,
 }: Props) {
+  const idDisabled = disabled || identityLocked;
   const set = (patch: Partial<VehicleDraft>) => onChange({ ...value, ...patch });
   // Spread onto each box: tags it for the chain and lets Enter move on. Inert
   // when the form is used outside the till (no step given).
@@ -84,14 +87,14 @@ export function VehicleFields({
       {showIdentity && (
       <div className={`grid ${cols} gap-3`}>
         <div className="space-y-1.5">
-          <Label>Vehicle number *</Label>
+          <Label>Vehicle number{identityLocked ? "" : " *"}</Label>
           <Input
             value={value.vehicle_number}
             onChange={(e) => set({ vehicle_number: e.target.value })}
             onBlur={() => onPlateBlur?.(value.vehicle_number)}
             placeholder="LEA 07-1234"
             className="uppercase"
-            disabled={disabled}
+            disabled={idDisabled}
             {...chain}
           />
         </div>
@@ -101,7 +104,7 @@ export function VehicleFields({
             value={value.make}
             onChange={(e) => set({ make: e.target.value })}
             placeholder="Vitz, Swift, Corolla"
-            disabled={disabled}
+            disabled={idDisabled}
             {...chain}
           />
         </div>
@@ -116,7 +119,7 @@ export function VehicleFields({
               value={value.model_number}
               onChange={(e) => set({ model_number: e.target.value })}
               placeholder="GLi 1.3 / 2018"
-              disabled={disabled}
+              disabled={idDisabled}
               {...chain}
             />
           </div>

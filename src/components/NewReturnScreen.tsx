@@ -30,7 +30,7 @@ import {
   type ReturnBillOption,
   type ReturnProductOption,
 } from "@/components/NewReturnDialog";
-import { advanceFrom, focusSoon } from "@/lib/checkout-keys";
+import { advanceFrom, focusSoon, focusStep, stepsIn } from "@/lib/checkout-keys";
 import { formatMoney } from "@/lib/format";
 import { fmtDate } from "@/lib/date-format";
 
@@ -298,7 +298,8 @@ export function NewReturnScreen({
             <Undo2 className="size-4 text-primary shrink-0" /> <span className="truncate">New return</span>
           </div>
         </div>
-        <div className="relative mb-3">
+        <div className="mb-3">
+          <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             autoFocus
@@ -310,12 +311,20 @@ export function NewReturnScreen({
               if (!plainEnter(e)) return;
               e.preventDefault();
               const code = search.trim();
-              const exact = code ? products.find((o) => o.barcode && o.barcode === code) : undefined;
+              // Nothing typed: the products are in — on to the customer.
+              if (!code) {
+                const first = rightRef.current ? stepsIn(rightRef.current)[0] : null;
+                if (first) focusStep(first);
+                return;
+              }
+              const exact = products.find((o) => o.barcode && o.barcode === code);
               const pick = exact ?? filtered[0];
               if (pick) addProduct(pick);
             }}
             className="ps-9 h-11"
           />
+          </div>
+          <p className="mt-1 px-1 text-[11px] text-muted-foreground">Enter on an empty search → customer</p>
         </div>
         <div className="md:flex-1 md:overflow-y-auto pr-1">
           {filtered.length === 0 ? (

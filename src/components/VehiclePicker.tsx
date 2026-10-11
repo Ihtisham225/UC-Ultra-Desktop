@@ -51,6 +51,7 @@ export function VehiclePicker({
   onChange,
   step,
   onPicked,
+  onRegisterInline,
 }: {
   value: VehicleLite | null;
   onChange: (v: VehicleLite | null) => void;
@@ -58,6 +59,13 @@ export function VehiclePicker({
   step?: number;
   /** Called once a choice is made and the dropdown has closed — the till moves on. */
   onPicked?: () => void;
+  /**
+   * The till keeps the vehicle form open beside this picker, so a new car is
+   * registered by typing its plate there. With this set the picker only LOOKS
+   * UP: "Register …" hands the typed plate to the form instead of opening a
+   * dialog, and the + button goes.
+   */
+  onRegisterInline?: (plate: string) => void;
 }) {
   const { currentShop } = useShop();
   const { data: vehicles, save } = useLocalStore<LocalVehicle>("vehicles", currentShop?.id);
@@ -87,6 +95,12 @@ export function VehiclePicker({
   };
 
   const openRegister = () => {
+    if (onRegisterInline) {
+      onRegisterInline(search.trim().toUpperCase());
+      pickedRef.current = true;
+      setOpen(false);
+      return;
+    }
     // Whatever they typed is almost certainly the plate.
     setForm({ vehicle_number: search.trim(), make: "", model_number: "" });
     setOpen(false);
@@ -164,7 +178,7 @@ export function VehiclePicker({
               {value ? (
                 <span className="truncate font-mono">{value.vehicle_number}</span>
               ) : (
-                <span className="text-muted-foreground">Select vehicle</span>
+                <span className="text-muted-foreground">{onRegisterInline ? "Find a registered vehicle" : "Select vehicle"}</span>
               )}
             </Button>
           </PopoverTrigger>
@@ -213,7 +227,9 @@ export function VehiclePicker({
                 <CommandGroup forceMount className="border-t">
                   <CommandItem value={REGISTER} forceMount onSelect={openRegister}>
                     <Plus className="size-3.5 me-1.5" />
-                    {search.trim() ? <>Register &ldquo;{search.trim().toUpperCase()}&rdquo;</> : "Register a new vehicle"}
+                    {search.trim()
+                      ? <>{onRegisterInline ? "New vehicle" : "Register"} &ldquo;{search.trim().toUpperCase()}&rdquo;</>
+                      : onRegisterInline ? "New vehicle — type it in the form" : "Register a new vehicle"}
                   </CommandItem>
                 </CommandGroup>
               </CommandList>
@@ -225,7 +241,7 @@ export function VehiclePicker({
           <Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label="Clear vehicle" onClick={() => onChange(null)}>
             <X className="size-4" />
           </Button>
-        ) : (
+        ) : onRegisterInline ? null : (
           <Button
             variant="outline" size="icon" className="size-8 shrink-0"
             aria-label="Register a new vehicle"

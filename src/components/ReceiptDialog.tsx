@@ -48,6 +48,10 @@ const noteFor = (sale: ReceiptGateSale): string | null =>
     ? sale.notes.trim()
     : null;
 
+/** The shop's logo, when Settings → Receipt says to print it and there is one. */
+const logoFor = (sale: { shop?: { show_logo_on_receipt?: boolean; logo_url?: string | null } | null }): string | null =>
+  sale.shop?.show_logo_on_receipt && sale.shop.logo_url ? sale.shop.logo_url : null;
+
 /** A customer as the receipt sees them; `custom_fields` are the shop's own fields' answers. */
 type ReceiptCustomer = { name: string; phone: string | null; custom_fields?: unknown };
 /** The shop's own customer fields set to print, that this customer filled in. */
@@ -331,11 +335,13 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
         .terms ul, .terms ol { margin: 2px 0; padding-inline-start: 4mm; }
         .terms li { margin: 0; }
         .terms p { margin: 0 0 2px; }
+        .logo { display: block; margin: 0 auto 6px; max-width: 48mm; max-height: 22mm; object-fit: contain; }
       </style>
     </head>
     <body>
       <div class="receipt" dir="ltr">
         <div class="center">
+          ${logoFor(sale) ? `<img class="logo" src="${escapeHtml(logoFor(sale)!)}" alt="" />` : ""}
           <div class="title">${escapeHtml(sale.shop?.name ?? "")}</div>
           ${sale.shop?.address ? `<div class="small note">${withLineBreaks(sale.shop.address)}</div>` : ""}
           ${sale.shop?.phone ? `<div class="small">${escapeHtml(sale.shop.phone)}</div>` : ""}
@@ -412,6 +418,10 @@ export const ReceiptPaper = ({
       style={{ direction: "ltr", unicodeBidi: "isolate" }}
     >
       <div className="text-center">
+        {logoFor(sale) && (
+          // eslint-disable-next-line @next/next/no-img-element -- the shop's own upload, printed as-is
+          <img src={logoFor(sale)!} alt="" className="mx-auto mb-1.5 block max-h-[22mm] max-w-[48mm] object-contain" />
+        )}
         <div className="font-bold text-base uppercase tracking-[0.08em]">{sale.shop?.name}</div>
         {sale.shop?.address && <div className="text-[11px] whitespace-pre-line break-words">{sale.shop.address}</div>}
         {sale.shop?.phone && <div className="text-[11px]">{sale.shop.phone}</div>}

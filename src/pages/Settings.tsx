@@ -87,6 +87,7 @@ export default function Settings() {
   const [showImei, setShowImei] = useState(false);
   const [showPrevBalance, setShowPrevBalance] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [showLogo, setShowLogo] = useState(false);
   /** The shop's own customer / supplier fields — Shop tab edits them, Receipt tab picks the printed ones. */
   const [partyFields, setPartyFields] = useState<PartyField[]>([]);
 
@@ -142,6 +143,7 @@ export default function Settings() {
       setShowImei(currentShop.show_imei_on_receipt ?? false);
       setShowPrevBalance(currentShop.show_previous_balance_on_receipt ?? false);
       setShowNotes(currentShop.show_notes_on_receipt ?? false);
+      setShowLogo(currentShop.show_logo_on_receipt ?? false);
       setPartyFields(currentShop.party_fields ?? []);
       setNotifyLow(currentShop.notify_low_stock ?? true);
       setNotifyDaily(currentShop.notify_daily_summary ?? false);
@@ -241,8 +243,9 @@ export default function Settings() {
     show_imei_on_receipt: showImei,
     show_previous_balance_on_receipt: showPrevBalance,
     show_notes_on_receipt: showNotes,
+    show_logo_on_receipt: showLogo,
     party_fields: partyFields,
-  }), [header, footer, terms, printTerms, showTax, showCustomer, showImei, showPrevBalance, showNotes, partyFields]);
+  }), [header, footer, terms, printTerms, showTax, showCustomer, showImei, showPrevBalance, showNotes, showLogo, partyFields]);
 
   /** Server-side, like every shop setting; the terminal's copy follows on refresh. */
   const savePartyFieldsRemote = async (fields: PartyField[]) =>
@@ -271,7 +274,7 @@ export default function Settings() {
       const res = await rpc<{ ok: boolean; error?: string }>("updateReceiptAction", {
         header: header || null, footer: footer || null, show_tax_line: showTax,
         show_customer_on_receipt: showCustomer, show_imei_on_receipt: showImei,
-        show_previous_balance_on_receipt: showPrevBalance, show_notes_on_receipt: showNotes,
+        show_previous_balance_on_receipt: showPrevBalance, show_notes_on_receipt: showNotes, show_logo_on_receipt: showLogo,
         receipt_terms: terms || null, print_terms_by_default: printTerms,
       });
       if (!res.ok) return toast.error(res.error ?? "Failed");
@@ -744,6 +747,17 @@ export default function Settings() {
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
           <Card className="shadow-card p-6 space-y-5">
             <WhatsAppTargetSetting />
+            <div className="flex items-center justify-between gap-4 py-2">
+              <div>
+                <Label>Print shop logo</Label>
+                <p className="text-xs text-muted-foreground">
+                  {currentShop?.logo_url
+                    ? "Print your logo above the shop name."
+                    : "Upload a logo under Settings → Shop first."}
+                </p>
+              </div>
+              <Switch checked={showLogo} onCheckedChange={setShowLogo} disabled={!canEditShop || !currentShop?.logo_url} />
+            </div>
             <div className="space-y-1.5"><Label>{t("settings.receipt.header")}</Label><Input value={header} onChange={(e) => setHeader(e.target.value)} disabled={!canEditShop} placeholder={t("settings.receipt.headerPlaceholder")} /></div>
             <div className="space-y-1.5"><Label>{t("settings.receipt.footer")}</Label><Textarea rows={2} value={footer} onChange={(e) => setFooter(e.target.value)} disabled={!canEditShop} placeholder={t("settings.receipt.footerPlaceholder")} /></div>
             <div className="flex items-center justify-between gap-4 py-2">
