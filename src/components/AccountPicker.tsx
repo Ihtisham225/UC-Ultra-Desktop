@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -35,7 +35,7 @@ const NONE = "__none__";
  * and older records, simply have no account attached.
  */
 export function AccountPicker({
-  value, onChange, label = "Paid from", allowNone = true, autoDefault = true,
+  value, onChange, label = "Paid from", allowNone = true, autoDefault = true, step, onAdvance,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
@@ -44,8 +44,18 @@ export function AccountPicker({
   /** Pick the cash drawer when nothing is chosen. Off when editing a record
    *  that deliberately has no account — defaulting would invent a money move. */
   autoDefault?: boolean;
+  /** Place in a screen's Enter chain (lib/checkout-keys). */
+  step?: number;
+  /**
+   * Move on. Enter on the closed box keeps the account shown and calls this
+   * (arrows or Space open the list to change it); a choice made from the list
+   * calls it once the list has closed — ONE Enter either way.
+   */
+  onAdvance?: () => void;
 }) {
   const [options, setOptions] = useState<AccountOption[]>([]);
+  /** A choice was made from the open list — advance when it finishes closing. */
+  const pickedRef = useRef(false);
 
   useEffect(() => {
     if (!loader) return;
@@ -68,10 +78,29 @@ export function AccountPicker({
       <Label>{label}</Label>
       <Select
         value={value ?? NONE}
-        onValueChange={(v) => onChange(v === NONE ? null : v)}
+        onValueChange={(v) => { pickedRef.current = true; onChange(v === NONE ? null : v); }}
       >
-        <SelectTrigger><SelectValue placeholder="Account" /></SelectTrigger>
-        <SelectContent>
+        <SelectTrigger
+          data-checkout-step={step}
+          onKeyDown={onAdvance ? (e) => {
+            if (e.key !== "Enter" || e.ctrlKey || e.metaKey || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            onAdvance();
+          } : undefined}
+        >
+          <SelectValue placeholder="Account" />
+        </SelectTrigger>
+        <SelectContent
+          // Enter on the account already chosen changes nothing, so
+          // onValueChange never fires — count the key itself as the choice.
+          onKeyDown={(e) => { if (e.key === "Enter") pickedRef.current = true; }}
+          onCloseAutoFocus={(e) => {
+            if (!onAdvance || !pickedRef.current) return;
+            pickedRef.current = false;
+            e.preventDefault();
+            onAdvance();
+          }}
+        >
           {allowNone && <SelectItem value={NONE}>Don&apos;t track</SelectItem>}
           {options.map((a) => (
             <SelectItem key={a.id} value={a.id}>

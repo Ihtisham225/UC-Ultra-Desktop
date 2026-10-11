@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { ReceiptPaper } from "@/components/ReceiptDialog";
 import { isOil } from "@/lib/oil";
 import type { DeviceShop } from "@/lib/apiClient";
+import type { PartyField } from "@/lib/party-fields";
 
 /**
  * The settings a receipt reads, as the form currently holds them — unsaved.
@@ -18,6 +19,8 @@ export interface ReceiptPreviewSettings {
   show_imei_on_receipt: boolean;
   show_previous_balance_on_receipt: boolean;
   show_notes_on_receipt: boolean;
+  /** The shop's own customer fields, with their on-receipt switches as set now. */
+  party_fields?: PartyField[];
 }
 
 const SAMPLE_CUSTOMER = { name: "Ahmed Khan", phone: "0300 1234567" };
@@ -97,7 +100,12 @@ export function ReceiptPreview({ shop, settings }: { shop: DeviceShop; settings:
     <div className="rounded-lg border bg-white p-4 shadow-sm">
       <ReceiptPaper
         sale={sale}
-        customer={SAMPLE_CUSTOMER}
+        customer={{
+          ...SAMPLE_CUSTOMER,
+          // A sample answer for each of the shop's own fields, so switching
+          // one on shows where it prints.
+          custom_fields: Object.fromEntries((settings.party_fields ?? shop.party_fields ?? []).map((f) => [f.id, `Sample ${f.label}`])),
+        }}
         withTerms={settings.print_terms_by_default && !!settings.receipt_terms.trim()}
       />
     </div>
