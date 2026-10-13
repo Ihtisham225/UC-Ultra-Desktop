@@ -1,3 +1,4 @@
+import { purchaseCosts } from "@/lib/purchase-costs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatQty } from "@/lib/format";
 import { useSearchParams } from "react-router-dom";
@@ -69,6 +70,8 @@ interface Product {
   brand: string | null;
   brand_id: string | null;
   price: number;
+  /** Price-by-markup shops: the % the price was set with. */
+  markup_percent?: number | null;
   stock: number;
   low_stock_threshold: number;
   unit: string | null;
@@ -201,6 +204,10 @@ export default function Products() {
   );
   // Shelves come from the synced store, so the picker and the 📍 labels work offline.
   const { data: locations } = useLocalStore<LocationRow>("storage_locations", currentShop?.id);
+  // Price-by-markup: the product's last two purchase prices, worked out from
+  // the local store (lib/purchase-costs), so the form shows them offline too.
+  const { data: costLines } = useLocalStore<{ id: string; product_id: string | null; purchase_id: string; quantity: number | string; unit_cost: number | string; expense_amount?: number | string | null }>("purchase_items", currentShop?.id);
+  const { data: costPurchases } = useLocalStore<{ id: string; created_at: string }>("purchases", currentShop?.id);
   /** A shelf id, "__none__" for products on no shelf yet, or null for all. */
   const [shelfFilter, setShelfFilter] = useState<string | null>(null);
 
@@ -212,10 +219,23 @@ export default function Products() {
     rpc<BrandDto[]>("listBrandsAction").then(setBrands).catch(() => {});
   }, [currentShop]);
 
+  const editingId = editing?.id ?? null;
+  const editingCosts = useMemo(() => {
+    if (!editingId || !currentShop?.price_by_markup) return null;
+    const when = new Map(costPurchases.map((p) => [p.id, p.created_at]));
+    return purchaseCosts(
+      costLines
+        .filter((l) => l.product_id === editingId && when.has(l.purchase_id))
+        .map((l) => ({ quantity: l.quantity, unit_cost: l.unit_cost, expense_amount: l.expense_amount, at: when.get(l.purchase_id)! })),
+    );
+  }, [editingId, costLines, costPurchases, currentShop?.price_by_markup]);
+
   const startEdit = (p: Product) => {
     const variants = (p.product_variants ?? []).map((v) => ({ ...v }));
     setEditing({
       ...p,
+      // The synced row carries the Decimal as text.
+      markup_percent: p.markup_percent == null ? null : Number(p.markup_percent),
       hasVariants: variants.length > 0,
       variants,
     });
@@ -294,6 +314,10 @@ export default function Products() {
       brand: editing.brand ?? null,
       brand_id: editing.brand_id ?? null,
       price: Number(editing.price) || 0,
+      // Only markup shops write it, so nobody else's saved % is touched.
+      ...(currentShop.price_by_markup
+        ? { markup_percent: editing.markup_percent == null || Number.isNaN(Number(editing.markup_percent)) ? null : Number(editing.markup_percent) }
+        : {}),
       stock: editing.id
         ? (items.find((p) => p.id === editing.id)?.stock ?? 0)
         : 0,
@@ -810,6 +834,7 @@ export default function Products() {
               onChange={setEditing}
               onScanBarcode={() => { setScanTarget("field"); setScannerOpen(true); }}
               locations={locations}
+              purchaseCosts={editingCosts}
             />
           )}
           <DialogFooter>

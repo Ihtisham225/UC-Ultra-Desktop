@@ -94,6 +94,8 @@ export interface DeviceShop {
   show_notes_on_receipt?: boolean;
   /** Print the logo at the top of the receipt. */
   show_logo_on_receipt?: boolean;
+  /** Product form: selling price = latest purchase cost + markup %. */
+  price_by_markup?: boolean;
   /** The shop's own customer / supplier fields (lib/party-fields). */
   party_fields?: PartyField[];
   /** Settings → Shop → Date & time (lib/date-format); null = the default. */
