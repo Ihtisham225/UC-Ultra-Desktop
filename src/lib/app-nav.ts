@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  RotateCcw,
   BadgeDollarSign, BarChart3, BookOpenCheck, Boxes, Car, ClipboardCheck, Factory, FileBarChart, FlaskConical,
   FolderTree, HandCoins, HeartPulse, Landmark, LayoutDashboard, LifeBuoy, Package, PackageOpen, Receipt,
   FileCheck2, ScanBarcode, Scissors, ScrollText, Settings, ShieldCheck, Tag, TrendingUp, Truck, Undo2, UserPlus, Users,
@@ -84,6 +85,8 @@ export function navPages(ctx: NavContext): NavPage[] {
     // first because it is the screen they are on all day.
     { to: "/daybook", label: "Roznamcha", icon: BookOpenCheck, section: craft ? "Workshop" : "Money", show: craft ? perms.canManagePurchases : !!ctx.daybookEnabled && ownerOrManager(ctx), keywords: ["daybook", "rough book"] },
     { to: "/pos", label: t("nav.pos"), icon: ScanBarcode, section: "Selling", show: !craft, keywords: ["till", "point of sale", "bill", "checkout"] },
+    // Point of return: the new-return screen, laid out like the till.
+    { to: "/returns/new", label: "Point of Return", icon: RotateCcw, section: "Selling", show: !craft && ownerOrManager(ctx), keywords: ["point of return", "return", "refund", "new return"] },
     { to: "/products", label: t("nav.products"), icon: Package, section: "Stock", show: !craft, keywords: ["items"] },
     { to: "/categories", label: "Categories", icon: FolderTree, section: "Stock", show: !craft && perms.canManageProducts },
     { to: "/brands", label: "Brands", icon: Tag, section: "Stock", show: !craft && perms.canManageProducts },

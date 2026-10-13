@@ -88,10 +88,14 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
   // Ctrl/Cmd+B hides the sidebar.
   const sidebarHidden = useSyncExternalStore(subscribeSidebar, readSidebarHidden, () => false);
 
+  // Match the exact route or a real sub-path — plain startsWith would light
+  // up "/lab" when you're on "/lab-results" — and only the CLOSEST match, so
+  // "/returns/new" lights Point of Return, not Returns as well.
+  const matches = (to: string) => loc.pathname === to || (to !== "/" && loc.pathname.startsWith(to + "/"));
+  const activeTo = nav.filter((i) => matches(i.to)).sort((a, b) => b.to.length - a.to.length)[0]?.to ?? null;
+
   const renderItem = (item: NavItem, mobile = false) => {
-    // Match the exact route or a real sub-path — plain startsWith would light
-    // up "/lab" when you're on "/lab-results".
-    const active = loc.pathname === item.to || (item.to !== "/" && loc.pathname.startsWith(item.to + "/"));
+    const active = item.to === activeTo;
 
     return (
       <NavLink
