@@ -28,6 +28,8 @@ export interface Appearance {
   glass: boolean;
   /** POS checkout layout. Missing = "popup", which is how the till always worked. */
   checkout: CheckoutMode;
+  /** New-return checkout layout. Missing = "inline" — the return page has always laid it out on screen. */
+  returnCheckout: CheckoutMode;
 }
 
 export interface ThemePreset {
@@ -50,7 +52,7 @@ export const THEME_PRESETS: ThemePreset[] = [
   { id: "graphite", name: "Graphite", brand: [218, 16, 38], chrome: [220, 14] },
 ];
 
-export const DEFAULT_APPEARANCE: Appearance = { theme: "emerald", accent: null, chrome: "dark", glass: true, checkout: "popup" };
+export const DEFAULT_APPEARANCE: Appearance = { theme: "emerald", accent: null, chrome: "dark", glass: true, checkout: "popup", returnCheckout: "inline" };
 
 const STORAGE_KEY = "ucu.appearance";
 /** Fired on window whenever this window stores a new appearance. */
@@ -68,6 +70,7 @@ export function normalizeAppearance(raw: unknown): Appearance {
     chrome: a.chrome === "light" ? "light" : "dark",
     glass: a.glass === false ? false : true,
     checkout: a.checkout === "inline" ? "inline" : "popup",
+    returnCheckout: a.returnCheckout === "popup" ? "popup" : "inline",
   };
 }
 
@@ -163,7 +166,7 @@ export function storeAppearance(a: Appearance): void {
 }
 
 export function sameAppearance(a: Appearance, b: Appearance): boolean {
-  return a.theme === b.theme && (a.accent ?? null) === (b.accent ?? null) && a.chrome === b.chrome && a.glass === b.glass && a.checkout === b.checkout;
+  return a.theme === b.theme && (a.accent ?? null) === (b.accent ?? null) && a.chrome === b.chrome && a.glass === b.glass && a.checkout === b.checkout && a.returnCheckout === b.returnCheckout;
 }
 
 /**

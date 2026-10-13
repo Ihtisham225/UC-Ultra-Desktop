@@ -68,6 +68,7 @@ export default function Settings() {
   const [chequesOn, setChequesOn] = useState(false);
   const [chequeDays, setChequeDays] = useState("10");
   const [daybookOn, setDaybookOn] = useState(false);
+  const [priceByMarkup, setPriceByMarkup] = useState(false);
   const [dateFormat, setDateFormat] = useState<string>(DEFAULT_DATE_FORMAT);
   const [timeFormat, setTimeFormat] = useState<string>(DEFAULT_TIME_FORMAT);
   const [showCostInPos, setShowCostInPos] = useState(false);
@@ -122,6 +123,7 @@ export default function Settings() {
       setChequesOn(!!currentShop.cheques_enabled);
       setChequeDays(String(currentShop.cheque_reminder_days ?? 10));
       setDaybookOn(!!currentShop.daybook_enabled);
+      setPriceByMarkup(!!currentShop.price_by_markup);
       setDateFormat(isDateFormat(currentShop.date_format) ? currentShop.date_format : DEFAULT_DATE_FORMAT);
       setTimeFormat(currentShop.time_format === "24h" ? "24h" : DEFAULT_TIME_FORMAT);
       setShowCostInPos(!!currentShop.show_cost_in_pos);
@@ -211,6 +213,7 @@ export default function Settings() {
         cheques_enabled: chequesOn,
         cheque_reminder_days: Math.min(90, Math.max(0, parseInt(chequeDays, 10) || 0)),
         daybook_enabled: daybookOn,
+        price_by_markup: priceByMarkup,
         date_format: dateFormat,
         time_format: timeFormat,
       });
@@ -604,6 +607,19 @@ export default function Settings() {
                   </p>
                 </div>
                 <Switch checked={daybookOn} onCheckedChange={setDaybookOn} disabled={!canEditShop} />
+              </div>
+            )}
+            {storeType !== "handicraft" && (
+              <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                <div>
+                  <Label>Price by markup %</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    The product form shows the previous and latest purchase price (expenses included) and
+                    sets the selling price as the latest purchase price plus a markup %. Off: a plain
+                    selling price.
+                  </p>
+                </div>
+                <Switch checked={priceByMarkup} onCheckedChange={setPriceByMarkup} disabled={!canEditShop} />
               </div>
             )}
             <div className="flex items-center justify-between gap-4 rounded-lg border p-3">

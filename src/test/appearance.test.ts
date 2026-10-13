@@ -31,10 +31,10 @@ afterEach(() => {
 
 describe("appearance pre-paint script", () => {
   const cases: Appearance[] = [
-    ...THEME_PRESETS.map((p) => ({ theme: p.id, accent: null, chrome: "dark" as const, glass: true, checkout: "popup" as const })),
-    { theme: "custom", accent: "#ff8800", chrome: "light", glass: false, checkout: "inline" },
-    { theme: "custom", accent: "#0a0a0a", chrome: "dark", glass: true, checkout: "popup" },
-    { theme: "custom", accent: "#f5f5ff", chrome: "light", glass: true, checkout: "popup" },
+    ...THEME_PRESETS.map((p) => ({ theme: p.id, accent: null, chrome: "dark" as const, glass: true, checkout: "popup" as const, returnCheckout: "inline" as const })),
+    { theme: "custom", accent: "#ff8800", chrome: "light", glass: false, checkout: "inline", returnCheckout: "popup" },
+    { theme: "custom", accent: "#0a0a0a", chrome: "dark", glass: true, checkout: "popup", returnCheckout: "inline" },
+    { theme: "custom", accent: "#f5f5ff", chrome: "light", glass: true, checkout: "popup", returnCheckout: "inline" },
   ];
   for (const a of cases) {
     it(`matches appearanceStyle for ${a.theme}${a.accent ? ` ${a.accent}` : ""}`, () => {
@@ -48,9 +48,9 @@ describe("appearance pre-paint script", () => {
 
 describe("normalizeAppearance", () => {
   it("falls back to the default for nonsense", () => {
-    expect(normalizeAppearance(null)).toEqual({ theme: "emerald", accent: null, chrome: "dark", glass: true, checkout: "popup" });
+    expect(normalizeAppearance(null)).toEqual({ theme: "emerald", accent: null, chrome: "dark", glass: true, checkout: "popup", returnCheckout: "inline" });
     expect(normalizeAppearance({ theme: "nope", chrome: "purple", glass: "yes" })).toEqual({
-      theme: "emerald", accent: null, chrome: "dark", glass: true, checkout: "popup",
+      theme: "emerald", accent: null, chrome: "dark", glass: true, checkout: "popup", returnCheckout: "inline",
     });
   });
   it("keeps the till checkout only when it is on-screen; anything else is the pop-up", () => {

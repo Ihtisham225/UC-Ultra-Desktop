@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AccountPicker } from "@/components/AccountPicker";
 import {
   RefundToToggle,
@@ -62,7 +63,7 @@ const plainEnter = (e: React.KeyboardEvent) =>
 
 export function NewReturnScreen({
   currency, products, renderCustomer, submit, onSaved, searchBills,
-  renderSupplier, submitSupplier, onSupplierSaved, onBack,
+  renderSupplier, submitSupplier, onSupplierSaved, onBack, mode = "inline",
 }: {
   currency: string;
   products: ReturnProductOption[];
@@ -81,7 +82,15 @@ export function NewReturnScreen({
   onSupplierSaved?: (returnId: string) => void;
   /** Back to the returns list. */
   onBack: () => void;
+  /**
+   * Per person (Settings → Appearance → Return checkout): the customer and
+   * the money on the screen beside the lines, or in a pop-up behind a
+   * Checkout button — the same fields and keys either way.
+   */
+  mode?: "inline" | "popup";
 }) {
+  const popup = mode === "popup";
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const supplierEnabled = !!renderSupplier && !!submitSupplier;
   const [kind, setKind] = useState<ReturnKind>("customer");
   const toSupplier = kind === "supplier";
@@ -194,6 +203,7 @@ export function NewReturnScreen({
     setLines([]); setCustomerId(null); setSupplierId(null); setDeduction(""); setReason(""); setNotes("");
     setBill(null); setBillQuery(""); setToLedger(false); setSearch("");
     setRound((r) => r + 1);
+    setCheckoutOpen(false);
     focusSoon(SEARCH);
   };
 
@@ -270,8 +280,15 @@ export function NewReturnScreen({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.isComposing) return;
       const target = e.target as HTMLElement | null;
-      if (target?.closest?.("[cmdk-root], [role='listbox'], [role='dialog']")) return;
+      if (target?.closest?.("[cmdk-root], [role='listbox']")) return;
+      // Inside a dialog only when it is the checkout pop-up itself.
+      const dialog = target?.closest?.("[role='dialog']");
+      if (dialog && dialog !== rightRef.current) return;
       e.preventDefault();
+      if (popup && !checkoutOpen) {
+        if (lines.length > 0) setCheckoutOpen(true);
+        return;
+      }
       void save();
     };
     window.addEventListener("keydown", onKey);
@@ -284,11 +301,8 @@ export function NewReturnScreen({
       ? `Return to supplier · ${formatMoney(refund, currency)}`
       : `Refund ${formatMoney(refund, currency)}`;
 
-  return (
-    <div className="mx-auto grid gap-4 md:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[250px_320px_minmax(0,1fr)] 2xl:grid-cols-[300px_380px_minmax(0,1fr)] md:h-[calc(100vh-9rem)] md:min-h-[620px]">
-      <h1 className="sr-only">New return</h1>
-
-      {/* 1 · Products */}
+  // ─── The pieces, built once and placed by either layout ───────────────────
+  const productsColumn = (
       <div className="flex flex-col min-h-0">
         <div className="flex items-center gap-2 mb-3">
           <Button variant="ghost" size="icon" className="shrink-0" onClick={onBack} title="Back to returns">
@@ -313,6 +327,10 @@ export function NewReturnScreen({
               const code = search.trim();
               // Nothing typed: the products are in — on to the customer.
               if (!code) {
+                if (popup) {
+                  if (lines.length > 0) setCheckoutOpen(true);
+                  return;
+                }
                 const first = rightRef.current ? stepsIn(rightRef.current)[0] : null;
                 if (first) focusStep(first);
                 return;
@@ -324,7 +342,7 @@ export function NewReturnScreen({
             className="ps-9 h-11"
           />
           </div>
-          <p className="mt-1 px-1 text-[11px] text-muted-foreground">Enter on an empty search → customer</p>
+          <p className="mt-1 px-1 text-[11px] text-muted-foreground">Enter on an empty search → {popup ? "checkout" : "customer"}</p>
         </div>
         <div className="md:flex-1 md:overflow-y-auto pr-1">
           {filtered.length === 0 ? (
@@ -358,16 +376,11 @@ export function NewReturnScreen({
           )}
         </div>
       </div>
+  );
 
-      {/* 2 + 3 share one scope for the Enter chain, and stack below xl. */}
-      <div ref={rightRef} className="grid gap-4 min-h-0 content-start md:overflow-y-auto xl:contents">
-        {/* 2 · Who it's from, and why */}
-        <Card className="flex flex-col min-h-0 overflow-hidden">
-          <div className="p-4 border-b bg-muted/30 font-semibold flex items-center gap-2">
-            {toSupplier ? <Truck className="size-4" /> : <UserRound className="size-4" />}
-            {toSupplier ? "Supplier" : "Customer"} &amp; reason
-          </div>
-          <div className="p-4 space-y-4 xl:overflow-y-auto xl:flex-1">
+  /** Who it's from, the bill, and why — the right-hand chain's first steps. */
+  const whoSection = (
+    <>
             {supplierEnabled && (
               <div className="grid grid-cols-2 gap-2">
                 {(["customer", "supplier"] as const).map((k) => (
@@ -500,23 +513,11 @@ export function NewReturnScreen({
                 }}
               />
             </div>
-          </div>
-        </Card>
+    </>
+  );
 
-        {/* 3 · What comes back, and the money */}
-        <Card className="flex flex-col min-h-0 xl:overflow-hidden shadow-elevated">
-          <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
-            <div className="font-semibold flex items-center gap-2">
-              <Undo2 className="size-4" /> {toSupplier ? "Going back" : "Coming back"}
-            </div>
-            {lines.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={() => { setLines([]); focusSoon(SEARCH); }}>
-                <Trash2 className="size-4 me-1" /> Clear
-              </Button>
-            )}
-          </div>
-
-          <div className="xl:flex-1 overflow-y-auto p-2 min-h-[140px] max-h-[45vh] xl:max-h-none">
+  const linesList = (
+    <>
             {lines.length === 0 ? (
               <div className="h-full flex items-center justify-center text-sm text-muted-foreground p-8 text-center">
                 Search or scan the products being returned.
@@ -572,9 +573,12 @@ export function NewReturnScreen({
                 })}
               </ul>
             )}
-          </div>
+    </>
+  );
 
-          <div className="border-t p-4 space-y-3 shrink-0 xl:max-h-[60%] xl:overflow-y-auto">
+  /** Deduction, where the refund goes, and the totals. */
+  const moneySection = (
+    <>
             {!toSupplier && (
               <div className="flex items-center gap-2">
                 <Label className="shrink-0 w-24">Deduction</Label>
@@ -625,9 +629,10 @@ export function NewReturnScreen({
                 <span className="tabular-nums text-primary">{formatMoney(refund, currency)}</span>
               </div>
             </div>
-          </div>
+    </>
+  );
 
-          <div className="p-4 pt-3 shrink-0 border-t bg-card rounded-b-lg sticky bottom-0 z-10 xl:static">
+  const saveButton = (
             <Button
               disabled={busy || lines.length === 0}
               onClick={() => void save()}
@@ -639,10 +644,137 @@ export function NewReturnScreen({
                 <kbd className="ms-2 rounded border border-white/40 px-1 text-[10px] font-medium text-white/80">Ctrl+Enter</kbd>
               )}
             </Button>
+  );
+
+  if (popup) {
+    return (
+      <div className="mx-auto grid gap-4 md:grid-cols-[minmax(0,1fr)_400px] lg:grid-cols-[minmax(0,1fr)_440px] md:h-[calc(100vh-9rem)] md:min-h-[620px]">
+        <h1 className="sr-only">New return</h1>
+        {productsColumn}
+
+        <Card className="flex flex-col min-h-0 overflow-hidden shadow-elevated">
+          <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
+            <div className="font-semibold flex items-center gap-2">
+              <Undo2 className="size-4" /> {toSupplier ? "Going back" : "Coming back"}
+            </div>
+            {lines.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => { setLines([]); focusSoon(SEARCH); }}>
+                <Trash2 className="size-4 me-1" /> Clear
+              </Button>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 min-h-[160px]">
+            {linesList}
+          </div>
+          <div className="border-t p-4 space-y-1 text-sm shrink-0">
+            <div className="flex justify-between text-lg font-bold">
+              <span>{toSupplier ? "Value going back" : "Refund"}</span>
+              <span className="tabular-nums text-primary">{formatMoney(refund, currency)}</span>
+            </div>
+          </div>
+          <div className="p-4 pt-3 shrink-0 border-t bg-card">
+            <Button
+              disabled={lines.length === 0 || busy}
+              onClick={() => setCheckoutOpen(true)}
+              size="lg"
+              className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground h-14 text-base font-semibold shadow-glow"
+            >
+              Checkout
+              <kbd className="ms-2 rounded border border-white/40 px-1 text-[10px] font-medium text-white/80">Ctrl+Enter</kbd>
+            </Button>
+          </div>
+        </Card>
+
+        <Dialog open={checkoutOpen} onOpenChange={(o) => { if (!busy) setCheckoutOpen(o); }}>
+          <DialogContent
+            ref={rightRef}
+            // Its own numbered Enter chain (lib/checkout-keys), like the till's.
+            data-enter-chain="off"
+            className="sm:max-w-3xl max-h-[92vh] overflow-y-auto"
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              requestAnimationFrame(() => {
+                const first = rightRef.current ? stepsIn(rightRef.current)[0] : null;
+                if (first) focusStep(first);
+              });
+            }}
+            onCloseAutoFocus={(e) => { e.preventDefault(); focusSoon(SEARCH); }}
+          >
+            <DialogHeader>
+              <DialogTitle className="flex items-baseline justify-between gap-4 pe-6">
+                <span>{toSupplier ? "Return to supplier" : "Refund"}</span>
+                <span className="tabular-nums text-primary">{formatMoney(refund, currency)}</span>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-x-6 gap-y-4 md:grid-cols-2 items-start">
+              <div className="space-y-4 min-w-0">{whoSection}</div>
+              <div className="space-y-3 min-w-0">{moneySection}</div>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button variant="outline" onClick={() => setCheckoutOpen(false)} disabled={busy}>Cancel</Button>
+              <Button
+                disabled={busy || lines.length === 0}
+                onClick={() => void save()}
+                className="bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold"
+              >
+                {saveLabel}
+                {!busy && (
+                  <kbd className="ms-2 rounded border border-white/40 px-1 text-[10px] font-medium text-white/80">Ctrl+Enter</kbd>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto grid gap-4 md:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[250px_320px_minmax(0,1fr)] 2xl:grid-cols-[300px_380px_minmax(0,1fr)] md:h-[calc(100vh-9rem)] md:min-h-[620px]">
+      <h1 className="sr-only">New return</h1>
+
+      {/* 1 · Products */}
+      {productsColumn}
+
+      {/* 2 + 3 share one scope for the Enter chain, and stack below xl. */}
+      <div ref={rightRef} className="grid gap-4 min-h-0 content-start md:overflow-y-auto xl:contents">
+        {/* 2 · Who it's from, and why */}
+        <Card className="flex flex-col min-h-0 overflow-hidden">
+          <div className="p-4 border-b bg-muted/30 font-semibold flex items-center gap-2">
+            {toSupplier ? <Truck className="size-4" /> : <UserRound className="size-4" />}
+            {toSupplier ? "Supplier" : "Customer"} &amp; reason
+          </div>
+          <div className="p-4 space-y-4 xl:overflow-y-auto xl:flex-1">
+            {whoSection}
+          </div>
+        </Card>
+
+        {/* 3 · What comes back, and the money */}
+        <Card className="flex flex-col min-h-0 xl:overflow-hidden shadow-elevated">
+          <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
+            <div className="font-semibold flex items-center gap-2">
+              <Undo2 className="size-4" /> {toSupplier ? "Going back" : "Coming back"}
+            </div>
+            {lines.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => { setLines([]); focusSoon(SEARCH); }}>
+                <Trash2 className="size-4 me-1" /> Clear
+              </Button>
+            )}
+          </div>
+
+          <div className="xl:flex-1 overflow-y-auto p-2 min-h-[140px] max-h-[45vh] xl:max-h-none">
+            {linesList}
+          </div>
+
+          <div className="border-t p-4 space-y-3 shrink-0 xl:max-h-[60%] xl:overflow-y-auto">
+            {moneySection}
+          </div>
+
+          <div className="p-4 pt-3 shrink-0 border-t bg-card rounded-b-lg sticky bottom-0 z-10 xl:static">
+            {saveButton}
           </div>
         </Card>
       </div>
     </div>
   );
 }
-

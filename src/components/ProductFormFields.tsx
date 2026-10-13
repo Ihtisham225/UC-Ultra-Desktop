@@ -17,6 +17,8 @@ import { isOil, OIL_UNIT_SUGGESTIONS } from "@/lib/oil";
 import { LocationSelect } from "@/components/LocationSelect";
 import type { LocationRow } from "@/lib/storage-locations";
 import { DateInput } from "@/components/DateInput";
+import { formatMoney } from "@/lib/format";
+import { markupFromPrice, priceFromMarkup, type PurchaseCosts } from "@/lib/purchase-costs";
 
 /**
  * Shape the shared fields read/write. Deliberately loose so both the Products
@@ -27,6 +29,8 @@ export interface ProductFormValue {
   sku?: string | null;
   barcode?: string | null;
   price?: number;
+  /** Price-by-markup shops: the % on the latest purchase price. */
+  markup_percent?: number | null;
   low_stock_threshold?: number;
   unit?: string | null;
   category_id?: string | null;
@@ -62,6 +66,12 @@ interface Props<T extends ProductFormValue> {
    * product (and each variant); omitted, the field isn't shown.
    */
   locations?: LocationRow[];
+  /**
+   * The product's last two purchase prices (lib/purchase-costs). Shown, with a
+   * markup % that sets the selling price, when the shop prices by markup.
+   * Undefined for a product never bought, or while they load.
+   */
+  purchaseCosts?: PurchaseCosts | null;
 }
 
 /**
@@ -74,6 +84,7 @@ export function ProductFormFields<T extends ProductFormValue>({
   onScanBarcode,
   hideVariants = false,
   locations,
+  purchaseCosts,
 }: Props<T>) {
   const { t } = useTranslation();
   const { currentShop } = useShop();
@@ -97,6 +108,17 @@ export function ProductFormFields<T extends ProductFormValue>({
   const isLabTest = !!value.is_lab_test;
 
   const set = (patch: Partial<ProductFormValue>) => onChange({ ...value, ...patch } as T);
+
+  // Settings → Shop → "Price by markup %": selling price = latest purchase
+  // price (expenses included) + the markup. Services are never bought.
+  const byMarkup = !!currentShop?.price_by_markup && !isService;
+  const cur = currentShop?.currency ?? "PKR";
+  const costBase = purchaseCosts?.latest ?? purchaseCosts?.previous ?? null;
+  const markupPrice =
+    byMarkup && costBase != null && value.markup_percent != null
+      ? priceFromMarkup(costBase, Number(value.markup_percent))
+      : null;
+  const priceOutOfStep = markupPrice != null && Math.abs(markupPrice - (Number(value.price) || 0)) >= 0.01;
 
   return (
     <div className="space-y-4">
@@ -156,16 +178,83 @@ export function ProductFormFields<T extends ProductFormValue>({
         </p>
       </div>
 
-      {/* Services have no stock, so low-stock alert and unit don't apply. */}
-      <div className={`grid grid-cols-1 gap-3 ${isService ? "sm:grid-cols-1" : "sm:grid-cols-3"}`}>
-        <div className="space-y-1.5">
-          <Label>{t("products.sellingPrice")} *</Label>
-          <Input
-            type="number" step="0.01" min="0"
-            value={value.price ?? ""}
-            onChange={(e) => set({ price: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
-          />
+      {byMarkup && (
+        <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <div className="text-xs text-muted-foreground">Previously purchased at</div>
+              <div className="font-semibold tabular-nums">
+                {purchaseCosts?.previous != null ? formatMoney(purchaseCosts.previous, cur) : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Latest purchased at</div>
+              <div className="font-semibold tabular-nums">
+                {purchaseCosts?.latest != null ? formatMoney(purchaseCosts.latest, cur) : "—"}
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Markup %</Label>
+              <Input
+                type="number" step="0.01"
+                value={value.markup_percent ?? ""}
+                placeholder="e.g. 20"
+                onChange={(e) => {
+                  const m = e.target.value === "" ? null : parseFloat(e.target.value);
+                  set({
+                    markup_percent: m,
+                    // The price follows the % whenever there is a cost to add it to.
+                    ...(m != null && Number.isFinite(m) && costBase != null ? { price: priceFromMarkup(costBase, m) } : {}),
+                  });
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("products.sellingPrice")} *</Label>
+              <Input
+                type="number" step="0.01" min="0"
+                value={value.price ?? ""}
+                onChange={(e) => {
+                  const p = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                  // A price typed by hand works the % back out, so the two agree.
+                  set({ price: p, ...(p != null && costBase != null ? { markup_percent: markupFromPrice(costBase, p) } : {}) });
+                }}
+              />
+            </div>
+          </div>
+          {costBase == null ? (
+            <p className="text-xs text-muted-foreground">
+              Not bought yet — type the selling price. Once it has been purchased, the markup works from the latest purchase price (expenses included).
+            </p>
+          ) : priceOutOfStep ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-amber-600">
+                {Number(value.markup_percent)}% on the latest price is {formatMoney(markupPrice!, cur)}.
+              </span>
+              <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => set({ price: markupPrice! })}>
+                Use {formatMoney(markupPrice!, cur)}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Selling price = latest purchase price (expenses included) + markup %.</p>
+          )}
         </div>
+      )}
+
+      {/* Services have no stock, so low-stock alert and unit don't apply. */}
+      <div className={`grid grid-cols-1 gap-3 ${isService ? "sm:grid-cols-1" : byMarkup ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+        {!byMarkup && (
+          <div className="space-y-1.5">
+            <Label>{t("products.sellingPrice")} *</Label>
+            <Input
+              type="number" step="0.01" min="0"
+              value={value.price ?? ""}
+              onChange={(e) => set({ price: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
+            />
+          </div>
+        )}
         {!isService && (
           <>
             <div className="space-y-1.5">
