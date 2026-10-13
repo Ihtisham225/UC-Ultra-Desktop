@@ -106,7 +106,11 @@ export async function pullAll() {
 // ─── Push ───────────────────────────────────────────────────────────────────
 
 export async function pushAll() {
-  const queue = await getAllQueued()
+  // ⚠️ In the order the rows were written. IndexedDB hands the queue back
+  // sorted by its key (table:recordId:…) — random uuid order — and the server
+  // numbers offline bills in the order they arrive (SHAMSHER CORPORATION's
+  // power cut: 525, 524, 526, 532…). The server sorts too; this is the belt.
+  const queue = (await getAllQueued()).sort((a, b) => (a.queuedAt ?? 0) - (b.queuedAt ?? 0))
   if (queue.length === 0) return
 
   const ops: PushOp[] = queue.map((q) => ({

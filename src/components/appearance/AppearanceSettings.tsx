@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Settings → Appearance: this person's colour theme, sidebar/header tone and
  * transparency, plus light/dark mode. Every change shows at once and is saved
@@ -9,7 +7,7 @@
  */
 import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { Check, Monitor, Moon, Palette, ShoppingCart, Sun } from "lucide-react";
+import { Check, Monitor, Moon, Palette, ShoppingCart, Sun, Undo2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -170,6 +168,37 @@ export function AppearanceSettings() {
               className={cn(
                 "flex items-center gap-3 rounded-xl border p-3 text-start transition-colors hover:bg-muted/50",
                 current.checkout === mode && "border-primary ring-2 ring-primary/30",
+              )}
+            >
+              <MiniTill mode={mode} />
+              <span>
+                <span className="block text-sm font-medium">{label}</span>
+                <span className="block text-xs text-muted-foreground">{hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-5 space-y-4">
+        <div>
+          <h3 className="font-semibold flex items-center gap-2"><Undo2 className="size-4 text-primary" /> Return checkout</h3>
+          <p className="text-sm text-muted-foreground">
+            How a return is finished on the New return page. Only changes your own screen.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {([
+            ["inline", "On the screen", "Three columns: products · customer & reason · lines & refund. Save the return without opening anything."],
+            ["popup", "In a pop-up", "Products and the lines coming back; Checkout opens a window for the customer and the refund."],
+          ] as [CheckoutMode, string, string][]).map(([mode, label, hint]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => void change({ returnCheckout: mode })}
+              className={cn(
+                "flex items-center gap-3 rounded-xl border p-3 text-start transition-colors hover:bg-muted/50",
+                current.returnCheckout === mode && "border-primary ring-2 ring-primary/30",
               )}
             >
               <MiniTill mode={mode} />

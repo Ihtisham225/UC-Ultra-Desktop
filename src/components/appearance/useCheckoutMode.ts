@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * This person's POS checkout layout (Settings → Appearance → Till checkout).
  * Read from the stored appearance, and kept live: changing it in Settings, or
@@ -19,10 +17,17 @@ function subscribe(cb: () => void) {
   };
 }
 
-const read = (): CheckoutMode => readStoredAppearance().checkout;
-// The server can't see localStorage; the pop-up layout is the long-standing default.
-const serverRead = (): CheckoutMode => "popup";
+const readPos = (): CheckoutMode => readStoredAppearance().checkout;
+const readReturn = (): CheckoutMode => readStoredAppearance().returnCheckout;
+// The server can't see localStorage: each screen's long-standing layout.
+const serverPos = (): CheckoutMode => "popup";
+const serverReturn = (): CheckoutMode => "inline";
 
-export function useCheckoutMode(): CheckoutMode {
-  return useSyncExternalStore(subscribe, read, serverRead);
+/** "pos" — the till; "return" — the new-return page. Set separately. */
+export function useCheckoutMode(screen: "pos" | "return" = "pos"): CheckoutMode {
+  return useSyncExternalStore(
+    subscribe,
+    screen === "return" ? readReturn : readPos,
+    screen === "return" ? serverReturn : serverPos,
+  );
 }

@@ -16,6 +16,7 @@ import { useAddNew } from "@/hooks/useAddNew";
 import { syncNow } from "@/lib/syncEngine";
 import { bulkUpsertLocal, notifyChange } from "@/lib/localDb";
 import { focusSoon } from "@/lib/checkout-keys";
+import { useCheckoutMode } from "@/components/appearance/useCheckoutMode";
 
 type KhataRows = { debts: Record<string, unknown>[]; debt_payments: Record<string, unknown>[] };
 type SaveResult = { ok: boolean; error?: string; returnId?: string; totalRefund?: number; rows?: KhataRows };
@@ -30,6 +31,7 @@ export default function NewReturn() {
   const navigate = useNavigate();
   const { currentShop } = useShop();
   const cur = currentShop?.currency ?? "USD";
+  const mode = useCheckoutMode("return");
   const [slip, setSlip] = useState<ReturnSlip | null>(null);
 
   useEffect(() => { document.title = "New return — UCU"; }, []);
@@ -122,6 +124,7 @@ export default function NewReturn() {
         renderSupplier={(onChange, chain) => <ReturnSupplierField onChange={onChange} chain={chain} parties={localParties} />}
         submitSupplier={(input) => saveVia("createStandaloneSupplierReturnAction", input)}
         onBack={() => navigate("/returns")}
+        mode={mode}
       />
       <ReturnReceiptDialog
         slip={slip}
