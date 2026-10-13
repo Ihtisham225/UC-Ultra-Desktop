@@ -1,4 +1,5 @@
 import type { PartyField } from "@/lib/party-fields";
+import type { ReturnReceiptOptions } from "@/lib/return-receipt";
 /**
  * apiClient.ts — talks to the new UC Ultra backend (Next.js on ucultra.com),
  * replacing the old @supabase/supabase-js client.
@@ -96,6 +97,8 @@ export interface DeviceShop {
   show_logo_on_receipt?: boolean;
   /** Product form: selling price = latest purchase cost + markup %. */
   price_by_markup?: boolean;
+  /** What the return slip prints (Settings → Receipt → Return receipt). */
+  return_receipt?: ReturnReceiptOptions;
   /** The shop's own customer / supplier fields (lib/party-fields). */
   party_fields?: PartyField[];
   /** Settings → Shop → Date & time (lib/date-format); null = the default. */

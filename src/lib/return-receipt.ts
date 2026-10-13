@@ -5,6 +5,37 @@
  * Keep the two in step.
  */
 
+/**
+ * What the shop prints on its return slip (Settings → Receipt → Return receipt).
+ * Stored on `shops.return_receipt`; a shop that never set it gets the defaults
+ * below, which are what the slip always printed.
+ */
+export interface ReturnReceiptOptions {
+  show_logo: boolean;
+  show_customer: boolean;
+  show_previous_balance: boolean;
+  show_reason: boolean;
+  show_notes: boolean;
+  /** The shop's own customer fields (lib/party-fields) to print, by id. */
+  field_ids: string[];
+}
+
+/** Anything stored → clean options. `legacyBalance` is the sale receipt's switch, which used to govern both. */
+export function normalizeReturnReceiptOptions(raw: unknown, legacyBalance = false): ReturnReceiptOptions {
+  const o = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Partial<Record<keyof ReturnReceiptOptions, unknown>>;
+  const flag = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
+  return {
+    show_logo: flag(o.show_logo, false),
+    show_customer: flag(o.show_customer, true),
+    show_previous_balance: flag(o.show_previous_balance, legacyBalance),
+    show_reason: flag(o.show_reason, true),
+    show_notes: flag(o.show_notes, true),
+    field_ids: Array.isArray(o.field_ids)
+      ? [...new Set(o.field_ids.filter((x): x is string => typeof x === "string" && /^[\w-]{1,40}$/.test(x)))].slice(0, 12)
+      : [],
+  };
+}
+
 export interface ReturnSlip {
   return_number: string | null;
   created_at: string;
@@ -23,6 +54,10 @@ export interface ReturnSlip {
   /** The refund went onto the customer's khata, not out of the till. */
   credited_to_ledger?: boolean;
   customer: { name: string; phone: string | null } | null;
+  /** The customer's own-field answers chosen for the slip (label + value), already filtered. */
+  customer_fields?: { label: string; value: string }[];
+  /** Settings → Receipt → Return receipt. Missing = the defaults (older servers). */
+  options?: ReturnReceiptOptions;
   items: { product_name: string; quantity: number; unit_price: number; line_total: number }[];
   shop: {
     name: string;
@@ -31,8 +66,29 @@ export interface ReturnSlip {
     currency: string;
     receipt_header: string | null;
     receipt_footer: string | null;
+    logo_url?: string | null;
   };
 }
+
+/** The options a slip prints with (defaults when an older server sent none). */
+export const slipOptions = (r: Pick<ReturnSlip, "options" | "show_previous_balance">): ReturnReceiptOptions =>
+  r.options ?? normalizeReturnReceiptOptions(null, !!r.show_previous_balance);
+
+/** The customer rows the slip prints, after the shop's choices. */
+export function slipCustomerRows(r: ReturnSlip): { label: string; value: string }[] {
+  const o = slipOptions(r);
+  const rows: { label: string; value: string }[] = [];
+  if (o.show_customer && r.customer) {
+    rows.push({ label: "Customer", value: r.customer.name });
+    if (r.customer.phone) rows.push({ label: "Phone", value: r.customer.phone });
+  }
+  if (r.customer) rows.push(...(r.customer_fields ?? []));
+  return rows;
+}
+
+/** The logo to print, when the shop asked for it and has one. */
+export const slipLogo = (r: ReturnSlip): string | null =>
+  slipOptions(r).show_logo && r.shop.logo_url ? r.shop.logo_url : null;
 
 type Money = (n: number, currency: string) => string;
 
@@ -46,8 +102,8 @@ const qtyText = (n: number) => String(Number(n.toFixed(3)));
  * balance" on AND the customer owed something — the same rule as the sale
  * receipt (lib/receipt-ledger), so a walk-in or a settled customer prints none.
  */
-export function returnSlipBalance(r: Pick<ReturnSlip, "previous_balance" | "show_previous_balance">): number | null {
-  if (!r.show_previous_balance) return null;
+export function returnSlipBalance(r: Pick<ReturnSlip, "previous_balance" | "show_previous_balance" | "options">): number | null {
+  if (!slipOptions(r).show_previous_balance) return null;
   const n = Number(r.previous_balance);
   return r.previous_balance == null || !Number.isFinite(n) || n <= 0 ? null : Math.round(n * 100) / 100;
 }
@@ -59,9 +115,9 @@ export function returnSlipBalance(r: Pick<ReturnSlip, "previous_balance" | "show
  * more than their balance.
  */
 export function returnSlipLedger(
-  r: Pick<ReturnSlip, "previous_balance" | "show_previous_balance" | "credited_to_ledger" | "total_refund">,
+  r: Pick<ReturnSlip, "previous_balance" | "show_previous_balance" | "credited_to_ledger" | "total_refund" | "options">,
 ): { previous: number; after: number } | null {
-  if (!r.show_previous_balance || !r.credited_to_ledger || r.previous_balance == null) return null;
+  if (!slipOptions(r).show_previous_balance || !r.credited_to_ledger || r.previous_balance == null) return null;
   const previous = Math.round(Number(r.previous_balance) * 100) / 100;
   if (!Number.isFinite(previous)) return null;
   return { previous, after: Math.round((previous - Number(r.total_refund)) * 100) / 100 };
@@ -98,7 +154,10 @@ export function buildReturnMessage(r: ReturnSlip, money: Money, date: string): s
     const after = balanceAfterLabel(led.after);
     out.push("", `Previous balance: ${m(led.previous)}`, `*${after.label}: ${m(after.amount)}*`);
   } else if (owed !== null) out.push("", `Previous balance: ${m(owed)}`);
-  if (r.reason) out.push(`Reason: ${r.reason}`);
+  const o = slipOptions(r);
+  for (const f of r.customer ? r.customer_fields ?? [] : []) out.push(`${f.label}: ${f.value}`);
+  if (o.show_reason && r.reason) out.push(`Reason: ${r.reason}`);
+  if (o.show_notes && r.notes) out.push(`Note: ${r.notes}`);
   if (r.shop.receipt_footer) out.push("", r.shop.receipt_footer);
   return out.join("\n");
 }
@@ -134,7 +193,9 @@ export function buildReturnPrintHtml(r: ReturnSlip, money: Money, date: string):
   th { font-size: 11px; text-align: left; border-bottom: 1px solid #000; }
   .q, .a { text-align: right; white-space: nowrap; padding-left: 6px; }
   .total { display: flex; justify-content: space-between; font-size: 16px; margin-top: 4px; }
+  .logo { display: block; margin: 0 auto 6px; max-width: 48mm; max-height: 22mm; object-fit: contain; }
 </style></head><body><div class="slip">
+  ${slipLogo(r) ? `<img class="logo" src="${esc(slipLogo(r)!)}" alt="" />` : ""}
   <div class="c t">${esc(r.shop.name)}</div>
   ${r.shop.address ? `<div class="c s">${esc(r.shop.address)}</div>` : ""}
   ${r.shop.phone ? `<div class="c s">${esc(r.shop.phone)}</div>` : ""}
@@ -144,8 +205,7 @@ export function buildReturnPrintHtml(r: ReturnSlip, money: Money, date: string):
   ${row("Return", esc(r.return_number ?? ""))}
   ${r.sale_receipt_number ? row("Against bill", esc(r.sale_receipt_number)) : ""}
   ${row("Date", esc(date))}
-  ${r.customer ? row("Customer", esc(r.customer.name)) : ""}
-  ${r.customer?.phone ? row("Phone", esc(r.customer.phone)) : ""}
+  ${slipCustomerRows(r).map((f) => row(f.label, esc(f.value))).join("")}
   <div class="rule"></div>
   <table><thead><tr><th>Description</th><th class="q">Qty</th><th class="a">Amt</th></tr></thead><tbody>${items}</tbody></table>
   <div class="rule"></div>
@@ -161,8 +221,8 @@ export function buildReturnPrintHtml(r: ReturnSlip, money: Money, date: string):
     const owed = returnSlipBalance(r);
     return owed !== null ? `<div class="rule"></div>${row("Previous balance", m(owed))}` : "";
   })()}
-  ${r.reason ? `<div class="s">Reason: ${esc(r.reason)}</div>` : ""}
-  ${r.notes ? `<div class="s">Note: ${esc(r.notes)}</div>` : ""}
+  ${slipOptions(r).show_reason && r.reason ? `<div class="s">Reason: ${esc(r.reason)}</div>` : ""}
+  ${slipOptions(r).show_notes && r.notes ? `<div class="s">Note: ${esc(r.notes)}</div>` : ""}
   ${r.shop.receipt_footer ? `<div class="rule"></div><div class="c s">${esc(r.shop.receipt_footer)}</div>` : ""}
 </div><script>window.onload = function () { window.print(); };</script></body></html>`;
 }

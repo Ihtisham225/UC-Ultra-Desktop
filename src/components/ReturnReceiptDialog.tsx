@@ -1,12 +1,11 @@
 import { useEffect } from "react";
-
 import { toast } from "sonner";
 import { MessageCircle, Printer, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatMoney } from "@/lib/format";
 import { openWhatsApp } from "@/lib/whatsapp-open";
-import { buildReturnMessage, buildReturnPrintHtml, balanceAfterLabel, refundedVia, returnSlipBalance, returnSlipLedger, type ReturnSlip } from "@/lib/return-receipt";
+import { buildReturnMessage, buildReturnPrintHtml, balanceAfterLabel, refundedVia, returnSlipBalance, returnSlipLedger, slipCustomerRows, slipLogo, slipOptions, type ReturnSlip } from "@/lib/return-receipt";
 import { matchPosShortcut } from "@/lib/pos-shortcuts";
 import { fmtDateTime } from "@/lib/date-format";
 
@@ -35,7 +34,6 @@ export function printHtmlPage(html: string) {
  */
 export function ReturnReceiptDialog({ slip, onClose }: { slip: ReturnSlip | null; onClose: () => void }) {
   const date = slip ? fmtDateTime(slip.created_at) : "";
-  const cur = slip?.shop.currency ?? "USD";
 
   const print = () => {
     if (slip) printHtmlPage(buildReturnPrintHtml(slip, formatMoney, date));
@@ -70,52 +68,7 @@ export function ReturnReceiptDialog({ slip, onClose }: { slip: ReturnSlip | null
             <Undo2 className="size-5" /> Return {slip?.return_number}
           </DialogTitle>
         </DialogHeader>
-        {slip && (
-          <div className="font-mono text-xs border border-gray-200 rounded-md p-3 space-y-2 max-h-[55vh] overflow-y-auto">
-            <div className="text-center font-bold text-sm">{slip.shop.name}</div>
-            <div className="text-center">RETURN RECEIPT</div>
-            <div className="flex justify-between"><span>Date</span><span>{date}</span></div>
-            {slip.sale_receipt_number && (
-              <div className="flex justify-between"><span>Against bill</span><span>{slip.sale_receipt_number}</span></div>
-            )}
-            {slip.customer && <div className="flex justify-between"><span>Customer</span><span>{slip.customer.name}</span></div>}
-            <div className="border-t border-gray-300" />
-            {slip.items.map((i, idx) => (
-              <div key={idx} className="flex justify-between gap-2">
-                <span className="truncate">{Number(i.quantity.toFixed(3))} × {i.product_name}</span>
-                <span className="tabular-nums shrink-0">{formatMoney(i.line_total, cur)}</span>
-              </div>
-            ))}
-            <div className="border-t border-gray-300" />
-            {slip.deduction > 0 && (
-              <>
-                <div className="flex justify-between"><span>Items</span><span>{formatMoney(slip.items_total, cur)}</span></div>
-                <div className="flex justify-between"><span>Deduction</span><span>-{formatMoney(slip.deduction, cur)}</span></div>
-              </>
-            )}
-            <div className="flex justify-between font-bold text-sm"><span>REFUNDED</span><span>{formatMoney(slip.total_refund, cur)}</span></div>
-            <div className="flex justify-between"><span>Via</span><span>{refundedVia(slip)}</span></div>
-            {(() => {
-              const led = returnSlipLedger(slip);
-              if (led) {
-                const after = balanceAfterLabel(led.after);
-                return (
-                  <div className="border-t border-gray-300 pt-2 space-y-1">
-                    <div className="flex justify-between"><span>Previous balance</span><span>{formatMoney(led.previous, cur)}</span></div>
-                    <div className="flex justify-between font-bold"><span>{after.label}</span><span>{formatMoney(after.amount, cur)}</span></div>
-                  </div>
-                );
-              }
-              const owed = returnSlipBalance(slip);
-              return owed !== null ? (
-                <div className="flex justify-between border-t border-gray-300 pt-2">
-                  <span>Previous balance</span><span>{formatMoney(owed, cur)}</span>
-                </div>
-              ) : null;
-            })()}
-            {slip.reason && <div>Reason: {slip.reason}</div>}
-          </div>
-        )}
+        {slip && <ReturnSlipPaper slip={slip} />}
         <DialogFooter className="gap-2 sm:gap-2">
           {slip?.customer?.phone && (
             <Button variant="outline" onClick={sendWhatsApp} className="border-gray-300 bg-white text-gray-900 hover:bg-gray-100">
@@ -129,5 +82,71 @@ export function ReturnReceiptDialog({ slip, onClose }: { slip: ReturnSlip | null
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The slip as it reads on screen — the receipt dialog and the live preview in
+ * Settings → Receipt draw the same paper, so the preview shows what prints.
+ */
+export function ReturnSlipPaper({ slip }: { slip: ReturnSlip }) {
+  const date = fmtDateTime(slip.created_at);
+  const cur = slip.shop.currency;
+  const o = slipOptions(slip);
+  const logo = slipLogo(slip);
+  return (
+    <div className="font-mono text-xs border border-gray-200 rounded-md p-3 space-y-2 max-h-[55vh] overflow-y-auto bg-white text-black">
+      {logo && (
+        // eslint-disable-next-line @next/next/no-img-element -- the shop's own upload, printed as-is
+        <img src={logo} alt="" className="mx-auto block max-h-[22mm] max-w-[48mm] object-contain" />
+      )}
+      <div className="text-center font-bold text-sm">{slip.shop.name}</div>
+      <div className="text-center">RETURN RECEIPT</div>
+      {slip.return_number && <div className="flex justify-between"><span>Return</span><span>{slip.return_number}</span></div>}
+      <div className="flex justify-between"><span>Date</span><span>{date}</span></div>
+      {slip.sale_receipt_number && (
+        <div className="flex justify-between"><span>Against bill</span><span>{slip.sale_receipt_number}</span></div>
+      )}
+      {slipCustomerRows(slip).map((f, i) => (
+        <div key={i} className="flex justify-between gap-2"><span className="shrink-0">{f.label}</span><span className="text-right break-words">{f.value}</span></div>
+      ))}
+      <div className="border-t border-gray-300" />
+      {slip.items.map((i, idx) => (
+        <div key={idx} className="flex justify-between gap-2">
+          <span className="truncate">{Number(i.quantity.toFixed(3))} × {i.product_name}</span>
+          <span className="tabular-nums shrink-0">{formatMoney(i.line_total, cur)}</span>
+        </div>
+      ))}
+      <div className="border-t border-gray-300" />
+      {slip.deduction > 0 && (
+        <>
+          <div className="flex justify-between"><span>Items</span><span>{formatMoney(slip.items_total, cur)}</span></div>
+          <div className="flex justify-between"><span>Deduction</span><span>-{formatMoney(slip.deduction, cur)}</span></div>
+        </>
+      )}
+      <div className="flex justify-between font-bold text-sm"><span>REFUNDED</span><span>{formatMoney(slip.total_refund, cur)}</span></div>
+      <div className="flex justify-between"><span>Via</span><span>{refundedVia(slip)}</span></div>
+      {(() => {
+        const led = returnSlipLedger(slip);
+        if (led) {
+          const after = balanceAfterLabel(led.after);
+          return (
+            <div className="border-t border-gray-300 pt-2 space-y-1">
+              <div className="flex justify-between"><span>Previous balance</span><span>{formatMoney(led.previous, cur)}</span></div>
+              <div className="flex justify-between font-bold"><span>{after.label}</span><span>{formatMoney(after.amount, cur)}</span></div>
+            </div>
+          );
+        }
+        const owed = returnSlipBalance(slip);
+        return owed !== null ? (
+          <div className="flex justify-between border-t border-gray-300 pt-2">
+            <span>Previous balance</span><span>{formatMoney(owed, cur)}</span>
+          </div>
+        ) : null;
+      })()}
+      {o.show_reason && slip.reason && <div>Reason: {slip.reason}</div>}
+      {o.show_notes && slip.notes && <div>Note: {slip.notes}</div>}
+      {slip.shop.receipt_footer && <div className="border-t border-gray-300 pt-2 text-center whitespace-pre-line">{slip.shop.receipt_footer}</div>}
+    </div>
   );
 }

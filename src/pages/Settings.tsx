@@ -35,6 +35,8 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { AppVersionBadge } from "@/components/AppVersionBadge";
 import { SignInMethodsCard } from "@/components/SignInMethodsCard";
 import { PartyFieldsEditor, PartyFieldsReceiptSwitches } from "@/components/PartyFieldsSettings";
+import { ReturnReceiptSettings } from "@/components/ReturnReceiptSettings";
+import { normalizeReturnReceiptOptions, type ReturnReceiptOptions } from "@/lib/return-receipt";
 import type { PartyField } from "@/lib/party-fields";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR", "JOD", "EGP", "INR", "PKR", "NGN", "KES", "ZAR", "BRL", "MXN"];
@@ -89,6 +91,7 @@ export default function Settings() {
   const [showPrevBalance, setShowPrevBalance] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showLogo, setShowLogo] = useState(false);
+  const [returnReceipt, setReturnReceipt] = useState<ReturnReceiptOptions>(() => normalizeReturnReceiptOptions(null));
   /** The shop's own customer / supplier fields — Shop tab edits them, Receipt tab picks the printed ones. */
   const [partyFields, setPartyFields] = useState<PartyField[]>([]);
 
@@ -146,6 +149,7 @@ export default function Settings() {
       setShowPrevBalance(currentShop.show_previous_balance_on_receipt ?? false);
       setShowNotes(currentShop.show_notes_on_receipt ?? false);
       setShowLogo(currentShop.show_logo_on_receipt ?? false);
+      setReturnReceipt(currentShop.return_receipt ?? normalizeReturnReceiptOptions(null, currentShop.show_previous_balance_on_receipt));
       setPartyFields(currentShop.party_fields ?? []);
       setNotifyLow(currentShop.notify_low_stock ?? true);
       setNotifyDaily(currentShop.notify_daily_summary ?? false);
@@ -264,6 +268,19 @@ export default function Settings() {
     if (!res.ok) return toast.error(res.error ?? "Couldn't save");
     if (res.fields) setPartyFields(res.fields);
     toast.success("Customer & supplier fields saved");
+    refresh();
+  };
+
+  /** Server-side like every shop setting; the terminal's copy follows on refresh. */
+  const saveReturnReceipt = async () => {
+    if (!currentShop) return;
+    setBusy(true);
+    const res = await rpc<{ ok: boolean; error?: string; options?: ReturnReceiptOptions }>("updateReturnReceiptAction", returnReceipt)
+      .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : "Couldn't save", options: undefined as ReturnReceiptOptions | undefined }));
+    setBusy(false);
+    if (!res.ok) return toast.error(res.error ?? "Couldn't save");
+    if (res.options) setReturnReceipt(res.options);
+    toast.success("Return receipt saved");
     refresh();
   };
 
@@ -849,6 +866,19 @@ export default function Settings() {
             </div>
           )}
           </div>
+          {currentShop && (
+            <div className="mt-6">
+              <ReturnReceiptSettings
+                shop={currentShop}
+                options={returnReceipt}
+                onChange={setReturnReceipt}
+                partyFields={partyFields}
+                onSave={saveReturnReceipt}
+                busy={busy}
+                disabled={!canEditShop}
+              />
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="appearance">
