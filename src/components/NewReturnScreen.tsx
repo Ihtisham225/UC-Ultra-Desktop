@@ -348,7 +348,9 @@ export function NewReturnScreen({
           {filtered.length === 0 ? (
             <Card className="p-8 text-center text-sm text-muted-foreground">No product matches.</Card>
           ) : (
-            <Card className="overflow-hidden divide-y">
+            // Cards, like the till's product grid. On-screen checkout keeps the
+            // products to a narrow first column at xl+, so one card per row there.
+            <div className={`grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 ${popup ? "xl:grid-cols-4" : "xl:grid-cols-1"}`}>
               {filtered.map((o, i) => {
                 const added = lines.some((l) => l.key === optionKey(o));
                 const next = !!search && i === 0;
@@ -357,22 +359,25 @@ export function NewReturnScreen({
                     key={optionKey(o)}
                     type="button"
                     onClick={() => addProduct(o)}
-                    className={`w-full text-start block px-3 py-2 hover:bg-primary/5 transition-colors group ${next ? "bg-primary/10" : ""}`}
+                    className={`text-start p-4 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all group relative ${next ? "border-primary ring-1 ring-primary/40" : ""}`}
                   >
-                    <div className="flex items-start gap-1.5">
-                      <span className="font-medium text-sm leading-snug line-clamp-3 break-words flex-1 min-w-0 group-hover:text-primary">{o.name}</span>
-                      {o.variant_id && <Layers className="size-3.5 mt-0.5 shrink-0 text-primary" />}
-                      {added && <Check className="size-3.5 mt-0.5 shrink-0 text-success" />}
-                      {next && <kbd className="shrink-0 rounded border px-1 text-[10px] text-muted-foreground">Enter</kbd>}
-                    </div>
-                    <div className="mt-0.5 text-sm font-semibold tabular-nums">
-                      {formatMoney(defaultPrice(o, kind), currency)}
-                      {toSupplier && <span className="ms-1.5 text-[11px] font-normal text-muted-foreground">{o.cost != null ? "cost" : "price (no cost yet)"}</span>}
-                    </div>
+                    {(o.variant_id || added || next) && (
+                      <span className="absolute top-2 end-2 inline-flex items-center gap-1">
+                        {next && <kbd className="rounded border bg-card px-1 text-[10px] text-muted-foreground">Enter</kbd>}
+                        {o.variant_id && <Layers className="size-3.5 text-primary" />}
+                        {added && <Check className="size-3.5 text-success" />}
+                      </span>
+                    )}
+                    <div className={`font-semibold text-sm line-clamp-2 break-words group-hover:text-primary ${o.variant_id || added || next ? "pe-10" : ""}`}>{o.name}</div>
+                    <div className="text-lg font-bold mt-2 tabular-nums">{formatMoney(defaultPrice(o, kind), currency)}</div>
+                    {toSupplier && (
+                      <div className="text-xs mt-0.5 text-muted-foreground">{o.cost != null ? "Cost" : "Price (no cost yet)"}</div>
+                    )}
+                    {o.unit && !toSupplier && <div className="text-xs mt-0.5 text-muted-foreground">per {o.unit}</div>}
                   </button>
                 );
               })}
-            </Card>
+            </div>
           )}
         </div>
       </div>
