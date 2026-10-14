@@ -348,9 +348,9 @@ export function NewReturnScreen({
           {filtered.length === 0 ? (
             <Card className="p-8 text-center text-sm text-muted-foreground">No product matches.</Card>
           ) : (
-            // Cards, like the till's product grid. On-screen checkout keeps the
-            // products to a narrow first column at xl+, so one card per row there.
-            <div className={`grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 ${popup ? "xl:grid-cols-4" : "xl:grid-cols-1"}`}>
+            // Cards, like the till's product grid — as many across as fit at a
+            // readable width, so names wrap inside the card instead of escaping it.
+            <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(150px,1fr))]">
               {filtered.map((o, i) => {
                 const added = lines.some((l) => l.key === optionKey(o));
                 const next = !!search && i === 0;
@@ -359,7 +359,7 @@ export function NewReturnScreen({
                     key={optionKey(o)}
                     type="button"
                     onClick={() => addProduct(o)}
-                    className={`text-start p-4 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all group relative ${next ? "border-primary ring-1 ring-primary/40" : ""}`}
+                    className={`min-w-0 text-start p-4 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all group relative ${next ? "border-primary ring-1 ring-primary/40" : ""}`}
                   >
                     {(o.variant_id || added || next) && (
                       <span className="absolute top-2 end-2 inline-flex items-center gap-1">
@@ -368,8 +368,8 @@ export function NewReturnScreen({
                         {added && <Check className="size-3.5 text-success" />}
                       </span>
                     )}
-                    <div className={`font-semibold text-sm line-clamp-2 break-words group-hover:text-primary ${o.variant_id || added || next ? "pe-10" : ""}`}>{o.name}</div>
-                    <div className="text-lg font-bold mt-2 tabular-nums">{formatMoney(defaultPrice(o, kind), currency)}</div>
+                    <div className={`font-semibold text-sm leading-snug [overflow-wrap:anywhere] group-hover:text-primary ${o.variant_id || added || next ? "pe-10" : ""}`}>{o.name}</div>
+                    <div className="text-lg font-bold mt-2 tabular-nums break-words">{formatMoney(defaultPrice(o, kind), currency)}</div>
                     {toSupplier && (
                       <div className="text-xs mt-0.5 text-muted-foreground">{o.cost != null ? "Cost" : "Price (no cost yet)"}</div>
                     )}
