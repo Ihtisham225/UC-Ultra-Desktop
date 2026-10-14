@@ -359,7 +359,7 @@ export function NewReturnScreen({
                     key={optionKey(o)}
                     type="button"
                     onClick={() => addProduct(o)}
-                    className={`min-w-0 text-start p-4 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all group relative ${next ? "border-primary ring-1 ring-primary/40" : ""}`}
+                    className={`min-w-0 text-start p-3 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all group relative ${next ? "border-primary ring-1 ring-primary/40" : ""}`}
                   >
                     {(o.variant_id || added || next) && (
                       <span className="absolute top-2 end-2 inline-flex items-center gap-1">

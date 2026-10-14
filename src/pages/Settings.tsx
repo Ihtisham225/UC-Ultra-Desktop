@@ -413,6 +413,8 @@ export default function Settings() {
     navigate(next, { replace: true });
   };
 
+  const [shopTab, setShopTab] = useState("details");
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -459,259 +461,264 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="shop">
-          <Card className="shadow-card p-6 space-y-5">
+          {/* One long form split into sections. Every section is the same form:
+              the Save button below saves all of them, whichever is open. */}
+          <Tabs value={shopTab} onValueChange={setShopTab} className="space-y-4">
+            <TabsList className="flex-wrap h-auto">
+              <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="business">Business type</TabsTrigger>
+              <TabsTrigger value="features">Features</TabsTrigger>
+              <TabsTrigger value="numbering">Numbering</TabsTrigger>
+              <TabsTrigger value="fields">Customer &amp; supplier fields</TabsTrigger>
+            </TabsList>
             {!canEditShop && <p className="text-xs text-muted-foreground">{t("settings.shop.viewOnly")}</p>}
-            <div className="flex items-start gap-4">
-              <div className="size-20 rounded-xl border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                {logoUrl ? <img src={logoUrl} alt="Shop logo" className="size-full object-cover" /> : <Store className="size-8 text-muted-foreground/40" />}
-              </div>
-              {canEditShop && (
-                <div className="flex-1">
-                  <Label className="block mb-2">{t("settings.shop.logo")}</Label>
-                  <label className="inline-flex cursor-pointer">
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
-                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-background hover:bg-muted text-sm font-medium">
-                      <Upload className="size-3.5" /> {t("settings.shop.uploadLogo")}
-                    </span>
-                  </label>
-                  <p className="text-xs text-muted-foreground mt-1">{t("settings.shop.logoHelp")}</p>
+            <TabsContent value="details" className="mt-0">
+              <Card className="shadow-card p-6 space-y-5">
+                <div className="flex items-start gap-4">
+                  <div className="size-20 rounded-xl border-2 border-dashed border-border bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                    {logoUrl ? <img src={logoUrl} alt="Shop logo" className="size-full object-cover" /> : <Store className="size-8 text-muted-foreground/40" />}
+                  </div>
+                  {canEditShop && (
+                    <div className="flex-1">
+                      <Label className="block mb-2">{t("settings.shop.logo")}</Label>
+                      <label className="inline-flex cursor-pointer">
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
+                        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-background hover:bg-muted text-sm font-medium">
+                          <Upload className="size-3.5" /> {t("settings.shop.uploadLogo")}
+                        </span>
+                      </label>
+                      <p className="text-xs text-muted-foreground mt-1">{t("settings.shop.logoHelp")}</p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="space-y-1.5"><Label>{t("settings.shop.shopName")}</Label><Input value={name} onChange={(e) => setName(e.target.value)} disabled={!canEditShop} /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>{t("settings.shop.currency")}</Label>
-                <Select value={currency} onValueChange={setCurrency} disabled={!canEditShop}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5"><Label>{t("settings.shop.taxRate")}</Label><Input type="number" step="0.01" value={tax} onChange={(e) => setTax(e.target.value)} disabled={!canEditShop} /></div>
-            </div>
-            <div className="space-y-1.5"><Label>{t("common.address")}</Label><Textarea rows={2} value={address} onChange={(e) => setAddress(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.addressPlaceholder")} /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5"><Label>{t("common.phone")}</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.phonePlaceholder")} /></div>
-              <div className="space-y-1.5"><Label>{t("common.email")}</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.emailPlaceholder")} /></div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Date &amp; time format</Label>
-              <div className="grid grid-cols-2 gap-4">
-                <Select value={dateFormat} onValueChange={setDateFormat} disabled={!canEditShop}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {DATE_FORMATS.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.label} <span className="text-muted-foreground">— {fmtDate(SAMPLE_DATE, f.id)}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={timeFormat} onValueChange={setTimeFormat} disabled={!canEditShop}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {TIME_FORMATS.map((f) => <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                How dates are shown and typed everywhere — lists, forms, reports and receipts. For example:{" "}
-                <b>{fmtDateTime(SAMPLE_DATE, dateFormat as DateFormatId, timeFormat as TimeFormatId)}</b>.
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Store type</Label>
-              <Select
-                value={storeType}
-                onValueChange={(v) => {
-                  setStoreType(v);
-                  // Selling ahead of the paperwork is the norm in an oil shop,
-                  // so switch it on with the store type. Still a switch — they
-                  // can turn it off again before saving.
-                  if (v === "oil") setAllowNegative(true);
-                }}
-                disabled={!canEditShop}
-              >
-                <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="phone">Phone Shop</SelectItem>
-                  <SelectItem value="computer">Computer Shop</SelectItem>
-                  <SelectItem value="pharmacy">Pharmacy</SelectItem>
-                  <SelectItem value="supermarket">Supermarket / Mart</SelectItem>
-                  <SelectItem value="industry">Industry</SelectItem>
-                  <SelectItem value="wholesale">Whole Sale</SelectItem>
-                  <SelectItem value="accessories">Accessories</SelectItem>
-                  <SelectItem value="handicraft">Handicraft / Shawls</SelectItem>
-                  <SelectItem value="oil">Oil Change / Lubricants</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">Tailors the app to your business — e.g. a Phone Shop can capture IMEI numbers.</p>
-            </div>
-            {storeType === "handicraft" && (
-              <div className="rounded-lg border p-3 text-xs text-muted-foreground space-y-1.5">
-                <p className="font-medium text-foreground">What changes for a handicraft shop</p>
-                <p>
-                  This shop keeps a register instead of a till: material purchases with a running
-                  balance per party, and job-work challans for goods sent out for bumbul, rangai,
-                  dhulai or press. POS, sales, products and stock are hidden, because none of that
-                  applies — nothing is deleted, and switching the store type back brings it all
-                  straight back.
-                </p>
-                <p>The <b>Processing work</b> tab sets up the work your factories do.</p>
-              </div>
-            )}
-            {storeType === "oil" && (
-              <div className="rounded-lg border p-3 text-xs text-muted-foreground space-y-1.5">
-                <p className="font-medium text-foreground">What changes for an oil shop</p>
-                <p>
-                  Every car that comes in gets written down — plate, make, odometer and the
-                  reading the oil is good until — on the <b>Oil Changes</b>{" "}
-                  page and, when there&apos;s a bill, straight from the till. Products can also
-                  carry sale units, so oil stocked in litres can be sold by the bottle or the
-                  drum without anyone doing the arithmetic.
-                </p>
-              </div>
-            )}
-            {/*
-              Not oil-only: any shop that takes delivery before the paperwork
-              catches up has this problem. It just defaults on for oil shops,
-              where it's the norm rather than the exception.
-            */}
-            <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-              <div>
-                <Label>Allow selling below stock</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Lets the till sell an item whose stock has run out, instead of blocking the
-                  sale. Use it when goods arrive before the purchase bill is entered — the
-                  stock goes negative and rights itself the moment you book the purchase.
-                  Negative lines are flagged on Products and Inventory so nothing is missed.
-                </p>
-              </div>
-              <Switch checked={allowNegative} onCheckedChange={setAllowNegative} disabled={!canEditShop} />
-            </div>
-            <div className="rounded-lg border p-3 space-y-3">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <Label>Cheques</Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Take post-dated cheques on the Ledger. The amount comes off the customer&apos;s
-                    balance straight away; mark the cheque cleared once the bank pays it, or
-                    bounced to put the amount back.
-                  </p>
+                <div className="space-y-1.5"><Label>{t("settings.shop.shopName")}</Label><Input value={name} onChange={(e) => setName(e.target.value)} disabled={!canEditShop} /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>{t("settings.shop.currency")}</Label>
+                    <Select value={currency} onValueChange={setCurrency} disabled={!canEditShop}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5"><Label>{t("settings.shop.taxRate")}</Label><Input type="number" step="0.01" value={tax} onChange={(e) => setTax(e.target.value)} disabled={!canEditShop} /></div>
                 </div>
-                <Switch checked={chequesOn} onCheckedChange={setChequesOn} disabled={!canEditShop} />
-              </div>
-              {chequesOn && (
-                <div className="flex items-center gap-2 text-sm">
-                  <span>Remind me</span>
-                  <Input
-                    type="number" min="0" max="90" className="w-20 h-8"
-                    value={chequeDays} onChange={(e) => setChequeDays(e.target.value)} disabled={!canEditShop}
-                  />
-                  <span>days before a cheque&apos;s date</span>
-                </div>
-              )}
-            </div>
-            {storeType !== "handicraft" && (
-              <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-                <div>
-                  <Label>Roznamcha (daybook)</Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    A rough register for the day: jot down money and goods coming in and going out as
-                    they happen, then at the end of the day turn each line into a ledger entry, an
-                    expense or a purchase.
-                  </p>
-                </div>
-                <Switch checked={daybookOn} onCheckedChange={setDaybookOn} disabled={!canEditShop} />
-              </div>
-            )}
-            {storeType !== "handicraft" && (
-              <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-                <div>
-                  <Label>Price by markup %</Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    The product form shows the previous and latest purchase price (expenses included) and
-                    sets the selling price as the latest purchase price plus a markup %. Off: a plain
-                    selling price.
-                  </p>
-                </div>
-                <Switch checked={priceByMarkup} onCheckedChange={setPriceByMarkup} disabled={!canEditShop} />
-              </div>
-            )}
-            <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-              <div>
-                <Label>Show purchase price in POS</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Puts each product&apos;s average purchase cost on its card at the till, so
-                  whoever is selling can see the margin. Off by default — leave it off if
-                  counter staff should not see what the shop paid.
-                </p>
-              </div>
-              <Switch checked={showCostInPos} onCheckedChange={setShowCostInPos} disabled={!canEditShop} />
-            </div>
-            <div className="rounded-lg border p-3 space-y-3">
-              <div>
-                <Label>Order numbers</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Bills count up from the next number — set it to carry on from where
-                  your old book stopped. The prefix is optional, so leaving it empty
-                  gives plain numbers like 200, 201, 202.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 max-w-md">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Prefix (optional)</Label>
-                  <Input
-                    value={receiptPrefix}
-                    onChange={(e) => setReceiptPrefix(e.target.value)}
-                    placeholder="none"
-                    disabled={!canEditShop}
-                  />
+                <div className="space-y-1.5"><Label>{t("common.address")}</Label><Textarea rows={2} value={address} onChange={(e) => setAddress(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.addressPlaceholder")} /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5"><Label>{t("common.phone")}</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.phonePlaceholder")} /></div>
+                  <div className="space-y-1.5"><Label>{t("common.email")}</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEditShop} placeholder={t("settings.shop.emailPlaceholder")} /></div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Next number</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    step="1"
-                    inputMode="numeric"
-                    value={receiptNext}
-                    onChange={(e) => setReceiptNext(e.target.value)}
-                    placeholder="1"
-                    disabled={!canEditShop}
-                  />
+                  <Label>Date &amp; time format</Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Select value={dateFormat} onValueChange={setDateFormat} disabled={!canEditShop}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {DATE_FORMATS.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.label} <span className="text-muted-foreground">— {fmtDate(SAMPLE_DATE, f.id)}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={timeFormat} onValueChange={setTimeFormat} disabled={!canEditShop}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {TIME_FORMATS.map((f) => <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    How dates are shown and typed everywhere — lists, forms, reports and receipts. For example:{" "}
+                    <b>{fmtDateTime(SAMPLE_DATE, dateFormat as DateFormatId, timeFormat as TimeFormatId)}</b>.
+                  </p>
                 </div>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Next bill will be{" "}
-                <b>{`${receiptPrefix.trim()}${parseInt(receiptNext, 10) || 1}`}</b>.
-              </p>
-            </div>
+              </Card>
+            </TabsContent>
+            <TabsContent value="business" className="mt-0">
+              <Card className="shadow-card p-6 space-y-5">
+                <div className="space-y-1.5">
+                  <Label>Store type</Label>
+                  <Select
+                    value={storeType}
+                    onValueChange={(v) => {
+                      setStoreType(v);
+                      // Selling ahead of the paperwork is the norm in an oil shop,
+                      // so switch it on with the store type. Still a switch — they
+                      // can turn it off again before saving.
+                      if (v === "oil") setAllowNegative(true);
+                    }}
+                    disabled={!canEditShop}
+                  >
+                    <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="phone">Phone Shop</SelectItem>
+                      <SelectItem value="computer">Computer Shop</SelectItem>
+                      <SelectItem value="pharmacy">Pharmacy</SelectItem>
+                      <SelectItem value="supermarket">Supermarket / Mart</SelectItem>
+                      <SelectItem value="industry">Industry</SelectItem>
+                      <SelectItem value="wholesale">Whole Sale</SelectItem>
+                      <SelectItem value="accessories">Accessories</SelectItem>
+                      <SelectItem value="handicraft">Handicraft / Shawls</SelectItem>
+                      <SelectItem value="oil">Oil Change / Lubricants</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">Tailors the app to your business — e.g. a Phone Shop can capture IMEI numbers.</p>
+                </div>
+                {storeType === "handicraft" && (
+                  <div className="rounded-lg border p-3 text-xs text-muted-foreground space-y-1.5">
+                    <p className="font-medium text-foreground">What changes for a handicraft shop</p>
+                    <p>
+                      This shop keeps a register instead of a till: material purchases with a running
+                      balance per party, and job-work challans for goods sent out for bumbul, rangai,
+                      dhulai or press. POS, sales, products and stock are hidden, because none of that
+                      applies — nothing is deleted, and switching the store type back brings it all
+                      straight back.
+                    </p>
+                    <p>The <b>Processing work</b> tab sets up the work your factories do.</p>
+                  </div>
+                )}
+                {storeType === "oil" && (
+                  <div className="rounded-lg border p-3 text-xs text-muted-foreground space-y-1.5">
+                    <p className="font-medium text-foreground">What changes for an oil shop</p>
+                    <p>
+                      Every car that comes in gets written down — plate, make, odometer and the
+                      reading the oil is good until — on the <b>Oil Changes</b>{" "}
+                      page and, when there&apos;s a bill, straight from the till. Products can also
+                      carry sale units, so oil stocked in litres can be sold by the bottle or the
+                      drum without anyone doing the arithmetic.
+                    </p>
+                  </div>
+                )}
+                {storeType === "pharmacy" && (
+                  <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                    <div>
+                      <Label>Lab tests</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Turn on if this pharmacy also runs a lab. Adds the Service toggle on products,
+                        a Lab Tests tab in POS, and the Lab queue &amp; Results pages.
+                      </p>
+                    </div>
+                    <Switch checked={labTests} onCheckedChange={setLabTests} disabled={!canEditShop} />
+                  </div>
+                )}
 
-            <div className="rounded-lg border p-3 space-y-3">
-              <div>
-                <Label>Return &amp; receipt numbers</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Returns and ledger payment receipts each count up on their own sequence, so a
-                  slip is never mistaken for a bill. Clear a prefix for plain numbers.
-                </p>
-              </div>
-              {([
-                ["Customer returns", returnPrefix, setReturnPrefix, returnNext, setReturnNext],
-                ["Supplier returns", supReturnPrefix, setSupReturnPrefix, supReturnNext, setSupReturnNext],
-                ["Ledger payment receipts", payReceiptPrefix, setPayReceiptPrefix, payReceiptNext, setPayReceiptNext],
-              ] as const).map(([label, prefix, setPrefix, next, setNext]) => (
-                <div key={label} className="space-y-1.5">
-                  <div className="text-xs font-medium">{label}</div>
+                {storeType === "phone" && (
+                  <div className="space-y-1.5">
+                    <Label>Capture IMEI</Label>
+                    <Select value={imeiMode} onValueChange={(v) => setImeiMode(v as "sale" | "product")} disabled={!canEditShop}>
+                      <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sale">During sale — type it at checkout</SelectItem>
+                        <SelectItem value="product">On the product — each item/variant has its IMEI</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      "On the product" suits shops that add each handset (or variant) with its own IMEI — POS shows the last digits so you pick the right one.
+                    </p>
+                  </div>
+                )}
+              </Card>
+            </TabsContent>
+            <TabsContent value="features" className="mt-0">
+              <Card className="shadow-card p-6 space-y-5">
+                {/*
+                  Not oil-only: any shop that takes delivery before the paperwork
+                  catches up has this problem. It just defaults on for oil shops,
+                  where it's the norm rather than the exception.
+                */}
+                <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                  <div>
+                    <Label>Allow selling below stock</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Lets the till sell an item whose stock has run out, instead of blocking the
+                      sale. Use it when goods arrive before the purchase bill is entered — the
+                      stock goes negative and rights itself the moment you book the purchase.
+                      Negative lines are flagged on Products and Inventory so nothing is missed.
+                    </p>
+                  </div>
+                  <Switch checked={allowNegative} onCheckedChange={setAllowNegative} disabled={!canEditShop} />
+                </div>
+                <div className="rounded-lg border p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <Label>Cheques</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Take post-dated cheques on the Ledger. The amount comes off the customer&apos;s
+                        balance straight away; mark the cheque cleared once the bank pays it, or
+                        bounced to put the amount back.
+                      </p>
+                    </div>
+                    <Switch checked={chequesOn} onCheckedChange={setChequesOn} disabled={!canEditShop} />
+                  </div>
+                  {chequesOn && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span>Remind me</span>
+                      <Input
+                        type="number" min="0" max="90" className="w-20 h-8"
+                        value={chequeDays} onChange={(e) => setChequeDays(e.target.value)} disabled={!canEditShop}
+                      />
+                      <span>days before a cheque&apos;s date</span>
+                    </div>
+                  )}
+                </div>
+                {storeType !== "handicraft" && (
+                  <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                    <div>
+                      <Label>Roznamcha (daybook)</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        A rough register for the day: jot down money and goods coming in and going out as
+                        they happen, then at the end of the day turn each line into a ledger entry, an
+                        expense or a purchase.
+                      </p>
+                    </div>
+                    <Switch checked={daybookOn} onCheckedChange={setDaybookOn} disabled={!canEditShop} />
+                  </div>
+                )}
+                {storeType !== "handicraft" && (
+                  <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                    <div>
+                      <Label>Price by markup %</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        The product form shows the previous and latest purchase price (expenses included) and
+                        sets the selling price as the latest purchase price plus a markup %. Off: a plain
+                        selling price.
+                      </p>
+                    </div>
+                    <Switch checked={priceByMarkup} onCheckedChange={setPriceByMarkup} disabled={!canEditShop} />
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                  <div>
+                    <Label>Show purchase price in POS</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Puts each product&apos;s average purchase cost on its card at the till, so
+                      whoever is selling can see the margin. Off by default — leave it off if
+                      counter staff should not see what the shop paid.
+                    </p>
+                  </div>
+                  <Switch checked={showCostInPos} onCheckedChange={setShowCostInPos} disabled={!canEditShop} />
+                </div>
+              </Card>
+            </TabsContent>
+            <TabsContent value="numbering" className="mt-0">
+              <Card className="shadow-card p-6 space-y-5">
+                <div className="rounded-lg border p-3 space-y-3">
+                  <div>
+                    <Label>Order numbers</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Bills count up from the next number — set it to carry on from where
+                      your old book stopped. The prefix is optional, so leaving it empty
+                      gives plain numbers like 200, 201, 202.
+                    </p>
+                  </div>
                   <div className="grid grid-cols-2 gap-3 max-w-md">
                     <div className="space-y-1.5">
                       <Label className="text-xs">Prefix (optional)</Label>
                       <Input
-                        value={prefix}
-                        onChange={(e) => setPrefix(e.target.value)}
+                        value={receiptPrefix}
+                        onChange={(e) => setReceiptPrefix(e.target.value)}
                         placeholder="none"
-                        maxLength={12}
                         disabled={!canEditShop}
                       />
                     </div>
@@ -722,163 +729,196 @@ export default function Settings() {
                         min="1"
                         step="1"
                         inputMode="numeric"
-                        value={next}
-                        onChange={(e) => setNext(e.target.value)}
+                        value={receiptNext}
+                        onChange={(e) => setReceiptNext(e.target.value)}
                         placeholder="1"
                         disabled={!canEditShop}
                       />
                     </div>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Next one will be <b>{`${prefix.trim()}${parseInt(next, 10) || 1}`}</b>.
+                    Next bill will be{" "}
+                    <b>{`${receiptPrefix.trim()}${parseInt(receiptNext, 10) || 1}`}</b>.
                   </p>
                 </div>
-              ))}
-            </div>
-            {storeType === "pharmacy" && (
-              <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-                <div>
-                  <Label>Lab tests</Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Turn on if this pharmacy also runs a lab. Adds the Service toggle on products,
-                    a Lab Tests tab in POS, and the Lab queue &amp; Results pages.
-                  </p>
+
+                <div className="rounded-lg border p-3 space-y-3">
+                  <div>
+                    <Label>Return &amp; receipt numbers</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Returns and ledger payment receipts each count up on their own sequence, so a
+                      slip is never mistaken for a bill. Clear a prefix for plain numbers.
+                    </p>
+                  </div>
+                  {([
+                    ["Customer returns", returnPrefix, setReturnPrefix, returnNext, setReturnNext],
+                    ["Supplier returns", supReturnPrefix, setSupReturnPrefix, supReturnNext, setSupReturnNext],
+                    ["Ledger payment receipts", payReceiptPrefix, setPayReceiptPrefix, payReceiptNext, setPayReceiptNext],
+                  ] as const).map(([label, prefix, setPrefix, next, setNext]) => (
+                    <div key={label} className="space-y-1.5">
+                      <div className="text-xs font-medium">{label}</div>
+                      <div className="grid grid-cols-2 gap-3 max-w-md">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Prefix (optional)</Label>
+                          <Input
+                            value={prefix}
+                            onChange={(e) => setPrefix(e.target.value)}
+                            placeholder="none"
+                            maxLength={12}
+                            disabled={!canEditShop}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Next number</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            step="1"
+                            inputMode="numeric"
+                            value={next}
+                            onChange={(e) => setNext(e.target.value)}
+                            placeholder="1"
+                            disabled={!canEditShop}
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Next one will be <b>{`${prefix.trim()}${parseInt(next, 10) || 1}`}</b>.
+                      </p>
+                    </div>
+                  ))}
                 </div>
-                <Switch checked={labTests} onCheckedChange={setLabTests} disabled={!canEditShop} />
-              </div>
-            )}
-
-            {storeType === "phone" && (
-              <div className="space-y-1.5">
-                <Label>Capture IMEI</Label>
-                <Select value={imeiMode} onValueChange={(v) => setImeiMode(v as "sale" | "product")} disabled={!canEditShop}>
-                  <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sale">During sale — type it at checkout</SelectItem>
-                    <SelectItem value="product">On the product — each item/variant has its IMEI</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  "On the product" suits shops that add each handset (or variant) with its own IMEI — POS shows the last digits so you pick the right one.
-                </p>
-              </div>
-            )}
-            {canEditShop && <Button disabled={busy} onClick={saveShop} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.shop.saveShop")}</Button>}
-          </Card>
-          <div className="mt-6">
-            <PartyFieldsEditor
-              fields={partyFields}
-              onChange={setPartyFields}
-              onSave={savePartyFields}
-              busy={busy}
-              disabled={!canEditShop}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="receipt">
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
-          <Card className="shadow-card p-6 space-y-5">
-            <WhatsAppTargetSetting />
-            <div className="flex items-center justify-between gap-4 py-2">
-              <div>
-                <Label>Print shop logo</Label>
-                <p className="text-xs text-muted-foreground">
-                  {currentShop?.logo_url
-                    ? "Print your logo above the shop name."
-                    : "Upload a logo under Settings → Shop first."}
-                </p>
-              </div>
-              <Switch checked={showLogo} onCheckedChange={setShowLogo} disabled={!canEditShop || !currentShop?.logo_url} />
-            </div>
-            <div className="space-y-1.5"><Label>{t("settings.receipt.header")}</Label><Input value={header} onChange={(e) => setHeader(e.target.value)} disabled={!canEditShop} placeholder={t("settings.receipt.headerPlaceholder")} /></div>
-            <div className="space-y-1.5"><Label>{t("settings.receipt.footer")}</Label><Textarea rows={2} value={footer} onChange={(e) => setFooter(e.target.value)} disabled={!canEditShop} placeholder={t("settings.receipt.footerPlaceholder")} /></div>
-            <div className="flex items-center justify-between gap-4 py-2">
-              <div><Label>{t("settings.receipt.showTax")}</Label><p className="text-xs text-muted-foreground">{t("settings.receipt.showTaxHelp")}</p></div>
-              <Switch checked={showTax} onCheckedChange={setShowTax} disabled={!canEditShop} />
-            </div>
-            <div className="flex items-center justify-between gap-4 py-2 border-t pt-4">
-              <div><Label>Print customer name &amp; phone</Label><p className="text-xs text-muted-foreground">Show the sale's customer on the receipt.</p></div>
-              <Switch checked={showCustomer} onCheckedChange={setShowCustomer} disabled={!canEditShop} />
-            </div>
-            {storeType === "phone" && (
-              <div className="flex items-center justify-between gap-4 py-2">
-                <div><Label>Print IMEI</Label><p className="text-xs text-muted-foreground">Show each product's IMEI number(s) on the receipt.</p></div>
-                <Switch checked={showImei} onCheckedChange={setShowImei} disabled={!canEditShop} />
-              </div>
-            )}
-            <div className="flex items-center justify-between gap-4 py-2">
-              <div>
-                <Label>Print customer's old balance</Label>
-                <p className="text-xs text-muted-foreground">
-                  When the customer already owes on their khata, print that balance, this bill, and the new total.
-                </p>
-              </div>
-              <Switch checked={showPrevBalance} onCheckedChange={setShowPrevBalance} disabled={!canEditShop} />
-            </div>
-            <div className="flex items-center justify-between gap-4 py-2">
-              <div>
-                <Label>Print sale notes</Label>
-                <p className="text-xs text-muted-foreground">
-                  Print the note written at checkout. Leave off if your notes are for staff only.
-                </p>
-              </div>
-              <Switch checked={showNotes} onCheckedChange={setShowNotes} disabled={!canEditShop} />
-            </div>
-            <PartyFieldsReceiptSwitches fields={partyFields} onChange={setPartyFields} disabled={!canEditShop} />
-            {/* Terms print at the foot of every receipt. Free text, any
-                language — shops write these in Urdu, Pashto or English. */}
-            <div className="space-y-1.5 border-t pt-4">
-              <Label>Terms &amp; conditions</Label>
-              <p className="text-xs text-muted-foreground">
-                Printed at the bottom of the receipt. Write them in any language, and use the
-                buttons for bold, italic or bullet points. Leave empty to print nothing.
-              </p>
-              <RichTextEditor
-                rows={5}
-                value={terms}
-                onChange={setTerms}
-                disabled={!canEditShop}
-                placeholder={"e.g. Goods once sold are not returnable\nWarranty claims need this receipt"}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4 py-2">
-              <div>
-                <Label>Print terms by default</Label>
-                <p className="text-xs text-muted-foreground">
-                  The cashier can still switch them off for a single receipt before printing.
-                </p>
-              </div>
-              <Switch checked={printTerms} onCheckedChange={setPrintTerms} disabled={!canEditShop || !terms.trim()} />
-            </div>
-            {canEditShop && <Button disabled={busy} onClick={saveReceipt} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.receipt.saveReceipt")}</Button>}
-          </Card>
-
-          {/* Live preview: the same paper the till prints, drawn from the form's
-              unsaved values, so a change is visible before it is saved. */}
-          {currentShop && (
-            <div className="space-y-2 lg:sticky lg:top-4">
-              <div className="flex items-baseline justify-between">
-                <h3 className="text-sm font-medium">Preview</h3>
-                <span className="text-xs text-muted-foreground">Sample bill · updates as you type</span>
-              </div>
-              <ReceiptPreview shop={currentShop} settings={previewSettings} />
-            </div>
-          )}
-          </div>
-          {currentShop && (
-            <div className="mt-6">
-              <ReturnReceiptSettings
-                shop={currentShop}
-                options={returnReceipt}
-                onChange={setReturnReceipt}
-                partyFields={partyFields}
-                onSave={saveReturnReceipt}
+              </Card>
+            </TabsContent>
+            <TabsContent value="fields" className="mt-0">
+              <PartyFieldsEditor
+                fields={partyFields}
+                onChange={setPartyFields}
+                onSave={savePartyFields}
                 busy={busy}
                 disabled={!canEditShop}
               />
+            </TabsContent>
+          </Tabs>
+          {shopTab !== "fields" && canEditShop && (
+            <div className="mt-4 flex items-center gap-3">
+              <Button disabled={busy} onClick={saveShop} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.shop.saveShop")}</Button>
+              <span className="text-xs text-muted-foreground">Saves every section of this tab.</span>
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="receipt">
+          <Tabs defaultValue="sale" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="sale">Sale receipt</TabsTrigger>
+              <TabsTrigger value="return">Return receipt</TabsTrigger>
+            </TabsList>
+            <TabsContent value="sale" className="mt-0">
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
+              <Card className="shadow-card p-6 space-y-5">
+                <WhatsAppTargetSetting />
+                <div className="flex items-center justify-between gap-4 py-2">
+                  <div>
+                    <Label>Print shop logo</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {currentShop?.logo_url
+                        ? "Print your logo above the shop name."
+                        : "Upload a logo under Settings → Shop → Details first."}
+                    </p>
+                  </div>
+                  <Switch checked={showLogo} onCheckedChange={setShowLogo} disabled={!canEditShop || !currentShop?.logo_url} />
+                </div>
+                <div className="space-y-1.5"><Label>{t("settings.receipt.header")}</Label><Input value={header} onChange={(e) => setHeader(e.target.value)} disabled={!canEditShop} placeholder={t("settings.receipt.headerPlaceholder")} /></div>
+                <div className="space-y-1.5"><Label>{t("settings.receipt.footer")}</Label><Textarea rows={2} value={footer} onChange={(e) => setFooter(e.target.value)} disabled={!canEditShop} placeholder={t("settings.receipt.footerPlaceholder")} /></div>
+                <div className="flex items-center justify-between gap-4 py-2">
+                  <div><Label>{t("settings.receipt.showTax")}</Label><p className="text-xs text-muted-foreground">{t("settings.receipt.showTaxHelp")}</p></div>
+                  <Switch checked={showTax} onCheckedChange={setShowTax} disabled={!canEditShop} />
+                </div>
+                <div className="flex items-center justify-between gap-4 py-2 border-t pt-4">
+                  <div><Label>Print customer name &amp; phone</Label><p className="text-xs text-muted-foreground">Show the sale's customer on the receipt.</p></div>
+                  <Switch checked={showCustomer} onCheckedChange={setShowCustomer} disabled={!canEditShop} />
+                </div>
+                {storeType === "phone" && (
+                  <div className="flex items-center justify-between gap-4 py-2">
+                    <div><Label>Print IMEI</Label><p className="text-xs text-muted-foreground">Show each product's IMEI number(s) on the receipt.</p></div>
+                    <Switch checked={showImei} onCheckedChange={setShowImei} disabled={!canEditShop} />
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-4 py-2">
+                  <div>
+                    <Label>Print customer's old balance</Label>
+                    <p className="text-xs text-muted-foreground">
+                      When the customer already owes on their khata, print that balance, this bill, and the new total.
+                    </p>
+                  </div>
+                  <Switch checked={showPrevBalance} onCheckedChange={setShowPrevBalance} disabled={!canEditShop} />
+                </div>
+                <div className="flex items-center justify-between gap-4 py-2">
+                  <div>
+                    <Label>Print sale notes</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Print the note written at checkout. Leave off if your notes are for staff only.
+                    </p>
+                  </div>
+                  <Switch checked={showNotes} onCheckedChange={setShowNotes} disabled={!canEditShop} />
+                </div>
+                <PartyFieldsReceiptSwitches fields={partyFields} onChange={setPartyFields} disabled={!canEditShop} />
+                {/* Terms print at the foot of every receipt. Free text, any
+                    language — shops write these in Urdu, Pashto or English. */}
+                <div className="space-y-1.5 border-t pt-4">
+                  <Label>Terms &amp; conditions</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Printed at the bottom of the receipt. Write them in any language, and use the
+                    buttons for bold, italic or bullet points. Leave empty to print nothing.
+                  </p>
+                  <RichTextEditor
+                    rows={5}
+                    value={terms}
+                    onChange={setTerms}
+                    disabled={!canEditShop}
+                    placeholder={"e.g. Goods once sold are not returnable\nWarranty claims need this receipt"}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 py-2">
+                  <div>
+                    <Label>Print terms by default</Label>
+                    <p className="text-xs text-muted-foreground">
+                      The cashier can still switch them off for a single receipt before printing.
+                    </p>
+                  </div>
+                  <Switch checked={printTerms} onCheckedChange={setPrintTerms} disabled={!canEditShop || !terms.trim()} />
+                </div>
+                {canEditShop && <Button disabled={busy} onClick={saveReceipt} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.receipt.saveReceipt")}</Button>}
+              </Card>
+
+              {/* Live preview: the same paper the till prints, drawn from the form's
+                  unsaved values, so a change is visible before it is saved. */}
+              {currentShop && (
+                <div className="space-y-2 lg:sticky lg:top-4">
+                  <div className="flex items-baseline justify-between">
+                    <h3 className="text-sm font-medium">Preview</h3>
+                    <span className="text-xs text-muted-foreground">Sample bill · updates as you type</span>
+                  </div>
+                  <ReceiptPreview shop={currentShop} settings={previewSettings} />
+                </div>
+              )}
+              </div>
+            </TabsContent>
+            {currentShop && (
+              <TabsContent value="return" className="mt-0">
+                <ReturnReceiptSettings
+                  shop={currentShop}
+                  options={returnReceipt}
+                  onChange={setReturnReceipt}
+                  partyFields={partyFields}
+                  onSave={saveReturnReceipt}
+                  busy={busy}
+                  disabled={!canEditShop}
+                />
+              </TabsContent>
+            )}
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="appearance">

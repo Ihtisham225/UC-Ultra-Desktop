@@ -1020,7 +1020,9 @@ export default function POS() {
           {filtered.length === 0 ? (
             <Card className="p-12 text-center text-muted-foreground">{t("common.noResults")}</Card>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(150px,1fr))]">
+              {/* As many cards across as fit at a readable width, so a long
+                  name wraps inside its card instead of running out of it. */}
               {filtered.map((p) => {
                 const hasVariants = (p.variants?.length ?? 0) > 0;
                 const totalStock = hasVariants
@@ -1038,8 +1040,8 @@ export default function POS() {
                         <Layers className="size-3" />{p.variants!.length}
                       </span>
                     )}
-                    <div className="font-semibold text-sm leading-snug group-hover:text-primary mb-2 pr-6 line-clamp-3">{p.name}</div>
-                    <div className={cn("font-bold break-all", formatMoney(p.price, cur).length > 12 ? "text-sm" : "text-base")}>{formatMoney(p.price, cur)}</div>
+                    <div className={cn("font-semibold text-sm leading-snug [overflow-wrap:anywhere] group-hover:text-primary mb-2", hasVariants && "pe-8")}>{p.name}</div>
+                    <div className={cn("font-bold break-words", formatMoney(p.price, cur).length > 12 ? "text-sm" : "text-base")}>{formatMoney(p.price, cur)}</div>
                     {/* Lab tests have nothing to stock — showing a count (often
                         negative from older sales) only confuses the counter. */}
                     {!isLabTest(p) && (
@@ -1058,10 +1060,10 @@ export default function POS() {
                       </div>
                     )}
                     {imeiOnProduct && !hasVariants && (p.imei1 || p.imei2) && (
-                      <div className="text-[10px] font-mono text-muted-foreground mt-0.5 truncate">IMEI {imeiTail(p.imei1 || p.imei2)}</div>
+                      <div className="text-[10px] font-mono text-muted-foreground mt-0.5 [overflow-wrap:anywhere]">IMEI {imeiTail(p.imei1 || p.imei2)}</div>
                     )}
                     {p.shelf_location && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5 truncate">📍 {p.shelf_location}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5 [overflow-wrap:anywhere]">📍 {p.shelf_location}</div>
                     )}
                   </button>
                 );
