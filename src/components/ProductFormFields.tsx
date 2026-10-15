@@ -18,7 +18,7 @@ import { LocationSelect } from "@/components/LocationSelect";
 import type { LocationRow } from "@/lib/storage-locations";
 import { DateInput } from "@/components/DateInput";
 import { formatMoney } from "@/lib/format";
-import { markupFromPrice, priceFromMarkup, type PurchaseCosts } from "@/lib/purchase-costs";
+import { costBaseFor, markupFromPrice, priceFromMarkup, type PurchaseCosts } from "@/lib/purchase-costs";
 
 /**
  * Shape the shared fields read/write. Deliberately loose so both the Products
@@ -29,8 +29,13 @@ export interface ProductFormValue {
   sku?: string | null;
   barcode?: string | null;
   price?: number;
-  /** Price-by-markup shops: the % on the latest purchase price. */
+  /** Price-by-markup shops: the % on the current cost. */
   markup_percent?: number | null;
+  /**
+   * Price-by-markup shops: the Current cost box. undefined = untouched (it
+   * shows the saved cost, see costBaseFor); null = cleared by hand.
+   */
+  current_cost?: number | null;
   low_stock_threshold?: number;
   unit?: string | null;
   category_id?: string | null;
@@ -72,6 +77,8 @@ interface Props<T extends ProductFormValue> {
    * Undefined for a product never bought, or while they load.
    */
   purchaseCosts?: PurchaseCosts | null;
+  /** The current cost saved on the product (products.current_cost), if any. */
+  savedCost?: number | null;
 }
 
 /**
@@ -85,6 +92,7 @@ export function ProductFormFields<T extends ProductFormValue>({
   hideVariants = false,
   locations,
   purchaseCosts,
+  savedCost,
 }: Props<T>) {
   const { t } = useTranslation();
   const { currentShop } = useShop();
@@ -109,16 +117,15 @@ export function ProductFormFields<T extends ProductFormValue>({
 
   const set = (patch: Partial<ProductFormValue>) => onChange({ ...value, ...patch } as T);
 
-  // Settings → Shop → "Price by markup %": selling price = latest purchase
-  // price (expenses included) + the markup. Services are never bought.
+  // Settings → Shop → "Price by markup %": selling price = current cost +
+  // the markup. Services are never bought.
   const byMarkup = !!currentShop?.price_by_markup && !isService;
   const cur = currentShop?.currency ?? "PKR";
-  const costBase = purchaseCosts?.latest ?? purchaseCosts?.previous ?? null;
-  const markupPrice =
-    byMarkup && costBase != null && value.markup_percent != null
-      ? priceFromMarkup(costBase, Number(value.markup_percent))
-      : null;
-  const priceOutOfStep = markupPrice != null && Math.abs(markupPrice - (Number(value.price) || 0)) >= 0.01;
+  // What it cost last time: the cost saved on the product, else the latest purchase.
+  const previousCost = costBaseFor(undefined, savedCost, purchaseCosts);
+  const costBase = costBaseFor(value.current_cost, savedCost, purchaseCosts);
+  const latestDiffers =
+    purchaseCosts?.latest != null && costBase != null && Math.abs(purchaseCosts.latest - costBase) >= 0.01;
 
   return (
     <div className="space-y-4">
@@ -180,21 +187,34 @@ export function ProductFormFields<T extends ProductFormValue>({
 
       {byMarkup && (
         <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <div className="text-xs text-muted-foreground">Previously purchased at</div>
-              <div className="font-semibold tabular-nums">
-                {purchaseCosts?.previous != null ? formatMoney(purchaseCosts.previous, cur) : "—"}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Latest purchased at</div>
-              <div className="font-semibold tabular-nums">
-                {purchaseCosts?.latest != null ? formatMoney(purchaseCosts.latest, cur) : "—"}
-              </div>
-            </div>
+          <div className="text-sm">
+            <div className="text-xs text-muted-foreground">Previously purchased at</div>
+            <div className="font-semibold tabular-nums">{previousCost != null ? formatMoney(previousCost, cur) : "—"}</div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label>Current cost</Label>
+              <Input
+                type="number" step="0.01" min="0"
+                value={costBase ?? ""}
+                placeholder="What it costs you now"
+                onChange={(e) => {
+                  const c = e.target.value === "" ? null : parseFloat(e.target.value);
+                  const cost = c != null && Number.isFinite(c) ? c : null;
+                  const m = value.markup_percent == null ? null : Number(value.markup_percent);
+                  set({
+                    current_cost: cost,
+                    // The markup stays put and the price follows it; with no
+                    // markup yet, the price stays and the % is worked out.
+                    ...(cost != null && m != null && Number.isFinite(m)
+                      ? { price: priceFromMarkup(cost, m) }
+                      : cost != null && value.price != null
+                        ? { markup_percent: markupFromPrice(cost, Number(value.price)) }
+                        : {}),
+                  });
+                }}
+              />
+            </div>
             <div className="space-y-1.5">
               <Label>Markup %</Label>
               <Input
@@ -224,21 +244,26 @@ export function ProductFormFields<T extends ProductFormValue>({
               />
             </div>
           </div>
-          {costBase == null ? (
-            <p className="text-xs text-muted-foreground">
-              Not bought yet — type the selling price. Once it has been purchased, the markup works from the latest purchase price (expenses included).
-            </p>
-          ) : priceOutOfStep ? (
+          {latestDiffers ? (
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-amber-600">
-                {Number(value.markup_percent)}% on the latest price is {formatMoney(markupPrice!, cur)}.
+              <span className="text-muted-foreground">
+                Last bought at {formatMoney(purchaseCosts!.latest!, cur)} (expenses included).
               </span>
-              <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => set({ price: markupPrice! })}>
-                Use {formatMoney(markupPrice!, cur)}
+              <Button
+                type="button" size="sm" variant="outline" className="h-7"
+                onClick={() => {
+                  const cost = purchaseCosts!.latest!;
+                  const m = value.markup_percent == null ? null : Number(value.markup_percent);
+                  set({ current_cost: cost, ...(m != null && Number.isFinite(m) ? { price: priceFromMarkup(cost, m) } : {}) });
+                }}
+              >
+                Use {formatMoney(purchaseCosts!.latest!, cur)}
               </Button>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">Selling price = latest purchase price (expenses included) + markup %.</p>
+            <p className="text-xs text-muted-foreground">
+              Selling price = current cost + markup %. The current cost is saved with the product and shown as the previous price next time.
+            </p>
           )}
         </div>
       )}
