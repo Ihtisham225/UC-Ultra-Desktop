@@ -1,4 +1,4 @@
-import { purchaseCosts } from "@/lib/purchase-costs";
+import { purchaseCosts, costBaseFor } from "@/lib/purchase-costs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatQty } from "@/lib/format";
 import { useSearchParams } from "react-router-dom";
@@ -72,6 +72,8 @@ interface Product {
   price: number;
   /** Price-by-markup shops: the % the price was set with. */
   markup_percent?: number | null;
+  /** Price-by-markup shops: the cost the % was put on. */
+  current_cost?: number | null;
   stock: number;
   low_stock_threshold: number;
   unit: string | null;
@@ -230,12 +232,22 @@ export default function Products() {
     );
   }, [editingId, costLines, costPurchases, currentShop?.price_by_markup]);
 
+  /** The cost saved on the product being edited — "Previously purchased at". */
+  const savedCost = useMemo(() => {
+    const raw = editingId ? items.find((i) => i.id === editingId)?.current_cost : null;
+    // The synced row carries the Decimal as text.
+    return raw == null || Number.isNaN(Number(raw)) ? null : Number(raw);
+  }, [editingId, items]);
+
   const startEdit = (p: Product) => {
     const variants = (p.product_variants ?? []).map((v) => ({ ...v }));
     setEditing({
       ...p,
       // The synced row carries the Decimal as text.
       markup_percent: p.markup_percent == null ? null : Number(p.markup_percent),
+      // The Current cost box starts untouched and shows the saved cost
+      // (savedCost below) — see costBaseFor.
+      current_cost: undefined,
       hasVariants: variants.length > 0,
       variants,
     });
@@ -316,7 +328,10 @@ export default function Products() {
       price: Number(editing.price) || 0,
       // Only markup shops write it, so nobody else's saved % is touched.
       ...(currentShop.price_by_markup
-        ? { markup_percent: editing.markup_percent == null || Number.isNaN(Number(editing.markup_percent)) ? null : Number(editing.markup_percent) }
+        ? {
+            markup_percent: editing.markup_percent == null || Number.isNaN(Number(editing.markup_percent)) ? null : Number(editing.markup_percent),
+            current_cost: costBaseFor(editing.current_cost, savedCost, editingCosts),
+          }
         : {}),
       stock: editing.id
         ? (items.find((p) => p.id === editing.id)?.stock ?? 0)
@@ -835,6 +850,7 @@ export default function Products() {
               onScanBarcode={() => { setScanTarget("field"); setScannerOpen(true); }}
               locations={locations}
               purchaseCosts={editingCosts}
+              savedCost={savedCost}
             />
           )}
           <DialogFooter>

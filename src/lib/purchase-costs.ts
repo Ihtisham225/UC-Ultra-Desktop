@@ -2,8 +2,9 @@
  * What a product cost the last two times it was bought, landed — the goods
  * plus the line's share of expenses (freight, loading…), per unit.
  *
- * Feeds the "price by markup %" product form: previous and latest purchase
- * price, and selling price = latest × (1 + markup / 100).
+ * Feeds the "price by markup %" product form: selling price = current cost ×
+ * (1 + markup / 100), where the current cost is typed on the form and saved
+ * on the product (products.current_cost).
  *
  * Pure — ⚠️ COPIED verbatim to the desktop app (which feeds it its offline
  * store; the web feeds it from productPurchaseCostsAction).
@@ -57,4 +58,20 @@ export function priceFromMarkup(cost: number, markup: number): number {
 export function markupFromPrice(cost: number, price: number): number | null {
   if (!(cost > 0) || !Number.isFinite(price)) return null;
   return round2(((price - cost) / cost) * 100);
+}
+
+/**
+ * The cost the markup works from. `typed` is the form's Current cost box:
+ * undefined while untouched, null once cleared. Untouched, it starts from the
+ * cost saved on the product last time — kept even after newer purchases, by
+ * design — and only falls back to the purchase history when nothing is saved.
+ * The same fallback is what "Previously purchased at" shows.
+ */
+export function costBaseFor(
+  typed: number | null | undefined,
+  saved: number | null | undefined,
+  costs: PurchaseCosts | null | undefined,
+): number | null {
+  if (typed !== undefined) return typed;
+  return saved ?? costs?.latest ?? costs?.previous ?? null;
 }
