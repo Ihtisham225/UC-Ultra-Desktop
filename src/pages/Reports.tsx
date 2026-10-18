@@ -1,4 +1,5 @@
-// Detailed reports hub: Sales / Purchases / Inventory / P&L / Expenses / Customers & Debts / Tax.
+// Detailed reports hub: Sales / Purchases / Returns / Inventory / P&L / Expenses / Payroll / Assets /
+// Cash & bank / Customers & Ledger / Cheques / Tax.
 // Each report has a date range, KPI cards, a sortable table, CSV export, and print-to-PDF.
 import { printCurrentPageA4 } from "@/lib/printA4";
 import { toast } from "sonner";
@@ -17,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins, PackageCheck } from "lucide-react";
+import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins, PackageCheck, Undo2, BadgeDollarSign, Building2, Landmark, ScrollText } from "lucide-react";
 import { downloadCsv, CsvColumn } from "@/lib/csv";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { isHandicraft } from "@/lib/handicraft";
@@ -28,6 +29,15 @@ import { productMovement, movementTotals, type MovementRow } from "@/lib/product
 import { formatQty } from "@/lib/format";
 import { DateInput } from "@/components/DateInput";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import {
+  AccountsReportTab,
+  AssetsReport,
+  ChequesReport,
+  PayrollReportTab,
+  ReturnsReport,
+  type MoreReportProps,
+} from "@/components/reports/MoreReports";
+import { moreReportsApi } from "@/lib/moreReportsApi";
 
 type Rng = { from: string; to: string };
 
@@ -78,12 +88,17 @@ export default function Reports() {
         <TabsList className="flex-wrap h-auto print:hidden">
           <TabsTrigger value="sales"><ShoppingCart className="size-3.5 mr-1.5" />Sales</TabsTrigger>
           <TabsTrigger value="purchases"><PackageOpen className="size-3.5 mr-1.5" />Purchases</TabsTrigger>
+          <TabsTrigger value="returns"><Undo2 className="size-3.5 mr-1.5" />Returns</TabsTrigger>
           <TabsTrigger value="inventory"><Boxes className="size-3.5 mr-1.5" />Inventory</TabsTrigger>
           <TabsTrigger value="sold-left"><PackageCheck className="size-3.5 mr-1.5" />Sold &amp; left</TabsTrigger>
           <TabsTrigger value="pnl"><TrendingUp className="size-3.5 mr-1.5" />Profit & Loss</TabsTrigger>
           <TabsTrigger value="expenses"><Wallet className="size-3.5 mr-1.5" />Expenses</TabsTrigger>
+          <TabsTrigger value="payroll"><BadgeDollarSign className="size-3.5 mr-1.5" />Payroll</TabsTrigger>
+          <TabsTrigger value="assets"><Building2 className="size-3.5 mr-1.5" />Assets</TabsTrigger>
+          <TabsTrigger value="accounts"><Landmark className="size-3.5 mr-1.5" />Cash &amp; bank</TabsTrigger>
           <TabsTrigger value="customers"><Users className="size-3.5 mr-1.5" />Customers</TabsTrigger>
           <TabsTrigger value="ledger"><HandCoins className="size-3.5 mr-1.5" />Ledger</TabsTrigger>
+          {currentShop.cheques_enabled && <TabsTrigger value="cheques"><ScrollText className="size-3.5 mr-1.5" />Cheques</TabsTrigger>}
           <TabsTrigger value="tax"><Percent className="size-3.5 mr-1.5" />Tax</TabsTrigger>
         </TabsList>
 
@@ -95,12 +110,19 @@ export default function Reports() {
 
           <TabsContent value="sales"><SalesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="purchases"><PurchasesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          <TabsContent value="returns"><ServerReport report={ReturnsReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="inventory"><InventoryReport shopId={currentShop.id} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="sold-left"><SoldLeftReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="pnl"><PnlReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="expenses"><ExpensesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          <TabsContent value="payroll"><ServerReport report={PayrollReportTab} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          <TabsContent value="assets"><ServerReport report={AssetsReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          <TabsContent value="accounts"><ServerReport report={AccountsReportTab} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="customers"><CustomersReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="ledger"><LedgerReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          {currentShop.cheques_enabled && (
+            <TabsContent value="cheques"><ServerReport report={ChequesReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          )}
           <TabsContent value="tax"><TaxReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
         </div>
       </Tabs>
@@ -168,6 +190,16 @@ function useRange(range: Rng) {
 }
 
 type ReportProps = { shopId: string; range: Rng; formatMoney: (n: number | string, c?: string) => string; cur: string };
+
+/* ---------- Assets · Payroll · Returns · Cash & bank · Cheques ---------- */
+// Server-side figures, read over RPC — the same actions the web calls.
+
+const moreUi: MoreReportProps["ui"] = { KPI, Toolbar: ReportToolbar, Empty };
+
+function ServerReport({ report: Report, range, formatMoney, cur }: { report: (p: MoreReportProps) => React.ReactNode; range: Rng; formatMoney: ReportProps["formatMoney"]; cur: string }) {
+  const { fromISO, toISO, fromDate, toDate } = useRange(range);
+  return <Report api={moreReportsApi} ui={moreUi} fromDate={fromDate} toDate={toDate} fromISO={fromISO} toISO={toISO} formatMoney={formatMoney} cur={cur} />;
+}
 
 /* ---------- Sales ---------- */
 

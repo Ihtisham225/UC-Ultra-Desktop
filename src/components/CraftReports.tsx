@@ -1,5 +1,6 @@
 // Reports for a handicraft shop: what was bought, what the factories charged,
-// what they still owe, and where every party's balance stands.
+// what they still owe, and where every party's balance stands — plus the
+// shop-wide payroll, assets, cash & bank and cheques tabs every store type gets.
 import { useCallback, useEffect, useState } from "react";
 import { format, subDays } from "date-fns";
 import { Card } from "@/components/ui/card";
@@ -7,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Download, Printer, FileBarChart, PackageOpen, Factory, Clock, Truck } from "lucide-react";
+import { Download, Printer, FileBarChart, PackageOpen, Factory, Clock, Truck, BadgeDollarSign, Building2, Landmark, ScrollText } from "lucide-react";
 import { useShop } from "@/contexts/ShopContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
@@ -18,6 +19,14 @@ import type {
 } from "@/lib/handicraftTypes";
 import { DateInput } from "@/components/DateInput";
 import { fmtDate } from "@/lib/date-format";
+import {
+  AccountsReportTab,
+  AssetsReport,
+  ChequesReport,
+  PayrollReportTab,
+  type MoreReportProps,
+} from "@/components/reports/MoreReports";
+import { moreReportsApi } from "@/lib/moreReportsApi";
 
 const todayISO = () => format(new Date(), "yyyy-MM-dd");
 const daysAgoISO = (n: number) => format(subDays(new Date(), n), "yyyy-MM-dd");
@@ -53,6 +62,22 @@ function Toolbar<T>({ title, rows, columns, filename }: {
 const Empty = ({ msg }: { msg: string }) => (
   <div className="text-sm text-muted-foreground py-8 text-center">{msg}</div>
 );
+
+const moreUi: MoreReportProps["ui"] = { KPI, Toolbar, Empty };
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A shared server-backed tab (read over RPC), once both dates are whole. */
+function ServerReport({ report: Report, range, formatMoney, cur }: {
+  report: (p: MoreReportProps) => React.ReactNode;
+  range: { from: string; to: string };
+  formatMoney: MoreReportProps["formatMoney"];
+  cur: string;
+}) {
+  if (!ISO_DAY.test(range.from) || !ISO_DAY.test(range.to)) return null;
+  const fromISO = new Date(`${range.from}T00:00:00`).toISOString();
+  const toISO = new Date(`${range.to}T23:59:59.999`).toISOString();
+  return <Report api={moreReportsApi} ui={moreUi} fromDate={range.from} toDate={range.to} fromISO={fromISO} toISO={toISO} formatMoney={formatMoney} cur={cur} />;
+}
 
 export default function CraftReports() {
   const { currentShop } = useShop();
@@ -135,6 +160,10 @@ export default function CraftReports() {
           <TabsTrigger value="jobwork"><Factory className="size-3.5 mr-1.5" />Job work</TabsTrigger>
           <TabsTrigger value="pending"><Clock className="size-3.5 mr-1.5" />At the factories</TabsTrigger>
           <TabsTrigger value="balances"><Truck className="size-3.5 mr-1.5" />Party balances</TabsTrigger>
+          <TabsTrigger value="payroll"><BadgeDollarSign className="size-3.5 mr-1.5" />Payroll</TabsTrigger>
+          <TabsTrigger value="assets"><Building2 className="size-3.5 mr-1.5" />Assets</TabsTrigger>
+          <TabsTrigger value="accounts"><Landmark className="size-3.5 mr-1.5" />Cash &amp; bank</TabsTrigger>
+          {currentShop.cheques_enabled && <TabsTrigger value="cheques"><ScrollText className="size-3.5 mr-1.5" />Cheques</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="purchases" className="space-y-3">
@@ -359,6 +388,12 @@ export default function CraftReports() {
             )}
           </Card>
         </TabsContent>
+        <TabsContent value="payroll"><ServerReport report={PayrollReportTab} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+        <TabsContent value="assets"><ServerReport report={AssetsReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+        <TabsContent value="accounts"><ServerReport report={AccountsReportTab} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+        {currentShop.cheques_enabled && (
+          <TabsContent value="cheques"><ServerReport report={ChequesReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+        )}
       </Tabs>
     </div>
   );
