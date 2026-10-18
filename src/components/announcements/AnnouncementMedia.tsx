@@ -31,12 +31,17 @@ export function AnnouncementMedia({
   className,
   autoPlay = false,
 }: {
-  type: "image" | "video" | "youtube" | null;
+  type: "image" | "video" | "youtube" | "gif" | null;
   url: string | null;
   className?: string;
   autoPlay?: boolean;
 }) {
   if (!type || !url) return null;
+  if (type === "gif") {
+    // Loads at once and is never cropped: a how-to GIF is only useful whole.
+    // eslint-disable-next-line @next/next/no-img-element -- remote, any size; next/image would need every host configured
+    return <img src={url} alt="" className={cn("w-full rounded-lg bg-muted object-contain", className)} />;
+  }
   if (type === "image") {
     // eslint-disable-next-line @next/next/no-img-element -- remote, any size; next/image would need every host configured
     return <img src={url} alt="" className={cn("w-full rounded-lg object-cover", className)} loading="lazy" />;

@@ -22,6 +22,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Megaphone, Pencil, Trash2, Eye, Sparkles } from "lucide-react";
 import { AnnouncementMedia, youtubeId } from "@/components/announcements/AnnouncementMedia";
+import { MEDIA_LABELS, type MediaType } from "@/lib/announcements";
 
 const STORE_TYPES = [
   "phone", "computer", "pharmacy", "supermarket", "industry", "wholesale",
@@ -156,7 +157,7 @@ export default function AdminAnnouncements() {
                     <Pill tone="muted">{reachOf(a)}</Pill>
                     {!a.dismissible && <Pill tone="warning">Can&apos;t dismiss</Pill>}
                     {a.style === "popup" && <Pill tone="muted">Pop-up</Pill>}
-                    {a.media_type && <Pill tone="muted">{a.media_type === "image" ? "Picture" : "Video"}</Pill>}
+                    {a.media_type && <Pill tone="muted">{MEDIA_LABELS[a.media_type]}</Pill>}
                   </div>
                   <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{a.body}</p>
                   <div className="text-xs text-muted-foreground mt-1 flex items-center gap-3">
@@ -351,7 +352,8 @@ export default function AdminAnnouncements() {
  * notice here never drops what was set there.
  */
 function MediaFields({ draft: d, patch }: { draft: AnnouncementInput; patch: (p: Partial<AnnouncementInput>) => void }) {
-  const linkType = (url: string) => (youtubeId(url) ? "youtube" : /\.(mp4|webm|mov)(\?|$)/i.test(url) ? "video" : "image");
+  const linkType = (url: string): MediaType =>
+    youtubeId(url) ? "youtube" : /\.(mp4|webm|mov)(\?|$)/i.test(url) ? "video" : /\.gif(\?|$)/i.test(url) ? "gif" : "image";
   return (
     <div className="space-y-3 rounded-lg border p-3">
       <div>
@@ -377,9 +379,9 @@ function MediaFields({ draft: d, patch }: { draft: AnnouncementInput; patch: (p:
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label>Picture or video link (optional)</Label>
+        <Label>Image, video or GIF link (optional)</Label>
         <Input
-          placeholder="An image, an .mp4, or a YouTube video — upload files from the web admin"
+          placeholder="An image, a .gif, an .mp4, or a YouTube video — upload files from the web admin"
           value={d.media_url ?? ""}
           onChange={(e) => {
             const url = e.target.value.trim();
@@ -389,6 +391,7 @@ function MediaFields({ draft: d, patch }: { draft: AnnouncementInput; patch: (p:
         {d.media_url && (
           <div className="max-w-sm">
             <AnnouncementMedia type={d.media_type ?? null} url={d.media_url} />
+            {d.media_type && <p className="mt-1 text-xs text-muted-foreground">{MEDIA_LABELS[d.media_type]}</p>}
           </div>
         )}
       </div>
