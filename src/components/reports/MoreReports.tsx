@@ -485,9 +485,13 @@ export function ChequesReport({ api, ui, fromDate, toDate, formatMoney, cur }: M
 
   const pendingIn = rows.filter((r) => r.status === "pending" && r.direction === "received");
   const pendingOut = rows.filter((r) => r.status === "pending" && r.direction === "issued");
-  const cleared = rows.filter((r) => r.status === "cleared" && inPeriod(r.settled_on));
-  const bounced = rows.filter((r) => r.status === "bounced" && inPeriod(r.settled_on));
+  // Received and issued cheques are money going opposite ways — never add them together.
+  const settled = (status: ChequeReportRow["status"], direction: ChequeReportRow["direction"]) =>
+    rows.filter((r) => r.status === status && r.direction === direction && inPeriod(r.settled_on));
   const sum = (list: ChequeReportRow[]) => list.reduce((a, r) => a + r.amount, 0);
+  const clearedIn = settled("cleared", "received"), clearedOut = settled("cleared", "issued");
+  const bouncedIn = settled("bounced", "received"), bouncedOut = settled("bounced", "issued");
+  const outLine = (list: ChequeReportRow[], verb: string) => (list.length ? ` · ${verb} ${formatMoney(sum(list), cur)}` : "");
 
   const columns: CsvColumn<ChequeReportRow>[] = [
     { header: "Cheque date", value: (r) => r.cheque_date },
@@ -508,8 +512,8 @@ export function ChequesReport({ api, ui, fromDate, toDate, formatMoney, cur }: M
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KPI label="Pending to receive" value={formatMoney(sum(pendingIn), cur)} sub={`${pendingIn.length} cheques`} />
         <KPI label="Pending to pay" value={formatMoney(sum(pendingOut), cur)} sub={`${pendingOut.length} cheques`} />
-        <KPI label="Cleared in period" value={formatMoney(sum(cleared), cur)} sub={`${cleared.length} cheques`} />
-        <KPI label="Bounced in period" value={formatMoney(sum(bounced), cur)} sub={`${bounced.length} cheques`} />
+        <KPI label="Received & cleared" value={formatMoney(sum(clearedIn), cur)} sub={`${clearedIn.length} in period${outLine(clearedOut, "paid out")}`} />
+        <KPI label="Received & bounced" value={formatMoney(sum(bouncedIn), cur)} sub={`${bouncedIn.length} in period${outLine(bouncedOut, "yours bounced")}`} />
       </div>
       <Card className="shadow-card p-4">
         <Toolbar title="Cheques" rows={rows} columns={columns} filename={`cheques_${fromDate}_${toDate}`} />
