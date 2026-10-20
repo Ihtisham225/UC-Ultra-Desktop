@@ -8,6 +8,9 @@ import { useNavigate } from "react-router-dom";
 import { leaveDeletedShop, refreshShops } from "@/lib/deviceSession";
 import { useTranslation } from "react-i18next";
 import { rpc, uploadShopLogo } from "@/lib/apiClient";
+import { NavOrderEditor } from "@/components/settings/NavOrderEditor";
+import { useAppNav } from "@/hooks/useAppNav";
+import type { NavOrder } from "@/lib/nav-order";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -48,6 +51,7 @@ export default function Settings() {
   usePageMeta({ title: "Shop Settings — UCU", description: "Configure your shop name, logo, currency, tax and receipt details.", path: "/settings" });
   const { t } = useTranslation();
   const { currentShop, role, refresh, shops } = useShop();
+  const { groups: navGroups } = useAppNav();
   const { user } = useAuth();
 
   const [displayName, setDisplayName] = useState("");
@@ -470,6 +474,7 @@ export default function Settings() {
               <TabsTrigger value="features">Features</TabsTrigger>
               <TabsTrigger value="numbering">Numbering</TabsTrigger>
               <TabsTrigger value="fields">Customer &amp; supplier fields</TabsTrigger>
+              <TabsTrigger value="menu">Menu</TabsTrigger>
             </TabsList>
             {!canEditShop && <p className="text-xs text-muted-foreground">{t("settings.shop.viewOnly")}</p>}
             <TabsContent value="details" className="mt-0">
@@ -799,8 +804,26 @@ export default function Settings() {
                 disabled={!canEditShop}
               />
             </TabsContent>
+            <TabsContent value="menu" className="mt-0">
+              <NavOrderEditor
+                key={JSON.stringify(currentShop?.nav_order ?? null)}
+                groups={navGroups}
+                customised={!!currentShop?.nav_order}
+                disabled={role !== "owner"}
+                onSave={async (order: NavOrder | null) => {
+                  // ⚠️ rpc() is variadic — the order goes as ONE argument, not spread.
+                  const res = await rpc<{ ok: boolean; error?: string }>("saveNavOrderAction", order);
+                  if (res.ok) {
+                    // Re-pull the shop so the sidebar reorders now, not on the next minute's refresh.
+                    await refreshShops();
+                    toast.success(order ? "Menu order saved" : "Menu back to the default order");
+                  }
+                  return res;
+                }}
+              />
+            </TabsContent>
           </Tabs>
-          {shopTab !== "fields" && canEditShop && (
+          {shopTab !== "fields" && shopTab !== "menu" && canEditShop && (
             <div className="mt-4 flex items-center gap-3">
               <Button disabled={busy} onClick={saveShop} className="bg-gradient-primary text-primary-foreground hover:opacity-90">{t("settings.shop.saveShop")}</Button>
               <span className="text-xs text-muted-foreground">Saves every section of this tab.</span>
