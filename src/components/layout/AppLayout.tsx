@@ -36,7 +36,7 @@ import { WhatsNew } from "@/components/announcements/WhatsNew";
 import { AppShortcuts } from "@/components/shortcuts/AppShortcuts";
 import { useAppNav } from "@/hooks/useAppNav";
 import { useIsMac } from "@/hooks/useIsMac";
-import { NAV_SECTION_ORDER, NAV_SECTION_LABEL, type NavPage } from "@/lib/app-nav";
+import { NAV_SECTION_LABEL, type NavPage } from "@/lib/app-nav";
 import { appShortcutLabel, openShortcutPopup } from "@/lib/shortcuts";
 
 type NavItem = Pick<NavPage, "to" | "label" | "icon">;
@@ -83,7 +83,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
 
   // The one page list — shared with Go to (Ctrl/Cmd+G) and Add new (Ctrl/Cmd+E),
   // so the sidebar and the popups can't disagree about what this user may open.
-  const { pages: nav, actions } = useAppNav();
+  const { pages: nav, groups, actions } = useAppNav();
   const isMac = useIsMac();
   // Ctrl/Cmd+B hides the sidebar.
   const sidebarHidden = useSyncExternalStore(subscribeSidebar, readSidebarHidden, () => false);
@@ -230,16 +230,12 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
         )}
       >
         <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-3">
-          {NAV_SECTION_ORDER.map((section) => {
-            const items = nav.filter((p) => p.section === section);
-            if (items.length === 0) return null;
-            return (
-              <div key={section} className="space-y-0.5">
-                <SectionHeading>{NAV_SECTION_LABEL[section]}</SectionHeading>
-                {items.map((item) => renderItem(item))}
-              </div>
-            );
-          })}
+          {groups.map(({ section, items }) => (
+            <div key={section} className="space-y-0.5">
+              <SectionHeading>{NAV_SECTION_LABEL[section]}</SectionHeading>
+              {items.map((item) => renderItem(item))}
+            </div>
+          ))}
           {isSuperAdmin && (
             <div className="space-y-0.5">
               <SectionHeading>Platform</SectionHeading>

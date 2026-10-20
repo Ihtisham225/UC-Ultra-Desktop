@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { isHandicraft } from "@/lib/handicraft";
 import { useAppNav } from "@/hooks/useAppNav";
-import { NAV_SECTION_ORDER, NAV_SECTION_LABEL } from "@/lib/app-nav";
+import { NAV_SECTION_LABEL } from "@/lib/app-nav";
 import { useShop } from "@/contexts/ShopContext";
 import { useProAccess } from "@/hooks/useProAccess";
 import { useIsSuperAdmin } from "@/hooks/useIsSuperAdmin";
@@ -31,8 +31,11 @@ export const MobileBottomNav = () => {
 
   // The same page list as the sidebar and Go to, so this menu can't fall
   // behind them. Settings and Support have their own buttons at the foot.
-  const { pages } = useAppNav();
-  const allNav = pages.filter((p) => p.to !== "/settings" && p.to !== "/support");
+  const { groups } = useAppNav();
+  // The shop's own group/page order (Settings → Shop → Menu), as on the sidebar.
+  const menu = groups
+    .map((g) => ({ ...g, items: g.items.filter((p) => p.to !== "/settings" && p.to !== "/support") }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <>
@@ -87,9 +90,7 @@ export const MobileBottomNav = () => {
               </SheetHeader>
 
               <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-1">
-                {NAV_SECTION_ORDER.map((section) => {
-                  const items = allNav.filter((p) => p.section === section);
-                  if (items.length === 0) return null;
+                {menu.map(({ section, items }) => {
                   return (
                     <div key={section} className="space-y-1">
                       <div className="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{NAV_SECTION_LABEL[section]}</div>

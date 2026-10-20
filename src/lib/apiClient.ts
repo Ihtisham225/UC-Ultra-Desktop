@@ -1,4 +1,5 @@
 import type { PartyField } from "@/lib/party-fields";
+import type { NavOrder } from "@/lib/nav-order";
 import type { ReturnReceiptOptions } from "@/lib/return-receipt";
 /**
  * apiClient.ts — talks to the new UC Ultra backend (Next.js on ucultra.com),
@@ -101,6 +102,8 @@ export interface DeviceShop {
   return_receipt?: ReturnReceiptOptions;
   /** The shop's own customer / supplier fields (lib/party-fields). */
   party_fields?: PartyField[];
+  /** Settings → Shop → Menu: the sidebar order (lib/nav-order); null = the default. */
+  nav_order?: NavOrder | null;
   /** Settings → Shop → Date & time (lib/date-format); null = the default. */
   date_format?: string | null;
   time_format?: string | null;
