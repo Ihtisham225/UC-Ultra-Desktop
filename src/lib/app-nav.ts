@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  RotateCcw,
+  RotateCcw, ClipboardList,
   BadgeDollarSign, BarChart3, BookOpenCheck, Boxes, Car, ClipboardCheck, Factory, FileBarChart, FlaskConical,
   FolderTree, HandCoins, HeartPulse, Landmark, LayoutDashboard, LifeBuoy, Package, PackageOpen, Receipt,
   FileCheck2, ScanBarcode, Scissors, ScrollText, Settings, ShieldCheck, Tag, TrendingUp, Truck, Undo2, UserPlus, Users,
@@ -106,6 +106,7 @@ export function navPages(ctx: NavContext): NavPage[] {
     { to: "/analytics", label: t("nav.analytics"), icon: BarChart3, section: "Overview", show: !craft && perms.canManageExpenses, keywords: ["charts", "profit"] },
     { to: "/reports", label: "Reports", icon: FileBarChart, section: "Overview", show: perms.canManageExpenses },
     { to: "/purchases", label: t("nav.purchases"), icon: PackageOpen, section: "Stock", show: !craft && perms.canManagePurchases, keywords: ["buying"] },
+    { to: "/purchase-orders", label: "Purchase orders", icon: ClipboardList, section: "Stock", show: !craft && perms.canManagePurchases, keywords: ["po", "order", "supplier order", "indent"] },
     { to: "/material-purchases", label: t("nav.purchases"), icon: PackageOpen, section: "Workshop", show: craft && perms.canManagePurchases, keywords: ["material", "yarn"] },
     { to: "/making", label: "Making", icon: Scissors, section: "Workshop", show: craft && perms.canManagePurchases, keywords: ["karigar"] },
     { to: "/job-work", label: "Job Work", icon: Factory, section: "Workshop", show: craft && perms.canManagePurchases, keywords: ["factory", "processing"] },
@@ -161,6 +162,7 @@ export function newActions(ctx: NavContext): NewAction[] {
     // Stock
     { id: "product", label: "Product", icon: Package, to: "/products", show: !craft && edit, keywords: ["item"] },
     { id: "purchase", label: "Purchase", icon: PackageOpen, to: "/purchases", show: !craft && perms.canManagePurchases, keywords: ["buying", "stock in"] },
+    { id: "purchase-order", label: "Purchase order", icon: ClipboardList, to: "/purchase-orders", show: !craft && perms.canManagePurchases, keywords: ["po", "order", "supplier"] },
     { id: "supplier", label: craft ? "Party" : "Supplier", icon: Truck, to: "/suppliers", show: perms.canManageSuppliers, keywords: craft ? ["supplier", "maker", "factory"] : ["vendor"] },
     { id: "stock-adjustment", label: "Stock adjustment", icon: SlidersHorizontal, to: "/inventory", show: !craft && perms.canManageProducts, keywords: ["inventory", "count"] },
     { id: "category", label: "Category", icon: FolderTree, to: "/categories", show: !craft && perms.canManageProducts },

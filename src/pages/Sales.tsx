@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
 import { Card } from "@/components/ui/card";
-import { Plus, Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2, Pencil } from "lucide-react";
+import { Plus, Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2, Pencil, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,8 @@ import { useLocalStore } from "@/hooks/useLocalStore";
 import { deleteLocal, notifyChange } from "@/lib/localDb";
 import { voidSaleLocally } from "@/lib/voidSaleLocal";
 import { syncNow } from "@/lib/syncEngine";
+import { DeliveryOrderDialog, type DeliveryOrderInput, type DeliveryOrderRow, type DeliveryOrdersApi } from "@/components/DeliveryOrderDialog";
+import type { OrderSlipDto } from "@/lib/order-slip";
 import { ManualSaleDialog, type ManualSaleApi } from "@/components/ManualSaleDialog";
 import { EditSaleDialog, type EditableSale, type EditableProduct } from "@/components/EditSaleDialog";
 import { soldAs, formatSoldQuantity } from "@/lib/sale-units";
@@ -96,6 +98,21 @@ const manualSaleApi: ManualSaleApi = {
   submit: (input) => rpc("completeSaleAction", input),
 };
 
+/**
+ * Delivery orders live on the server and read the bill's lines there. A bill
+ * rung up on this till may not have been pushed yet, so creating one syncs
+ * first — and needs a connection. ⚠️ rpc() is variadic.
+ */
+const deliveryApi: DeliveryOrdersApi = {
+  list: (saleId: string) => rpc<DeliveryOrderRow[]>("listDeliveryOrdersForSaleAction", saleId),
+  create: async (saleId: string, input: DeliveryOrderInput) => {
+    if (!navigator.onLine) return { ok: false, error: "Delivery orders need a connection — try again when you're online." };
+    await syncNow().catch(() => { /* the server says so if the bill isn't there */ });
+    return rpc<{ ok: boolean; error?: string; slip?: OrderSlipDto }>("createDeliveryOrderAction", saleId, input);
+  },
+  slip: (id: string) => rpc<OrderSlipDto | null>("getDeliveryOrderSlipAction", id),
+};
+
 export default function Sales() {
   const [manualOpen, setManualOpen] = useState(false);
   usePageMeta({ title: "Sales History — UCU", description: "Browse past sales, view receipts, filter by date and export to CSV.", path: "/sales" });
@@ -113,6 +130,8 @@ export default function Sales() {
   const pageSize = SCROLL_BATCH;
   const setPageSize = (_n: number) => { setPage(1); };
   const [openSale, setOpenSale] = useState<any>(null);
+  // The bill a delivery order (gate pass for the truck) is being made for.
+  const [deliveryFor, setDeliveryFor] = useState<{ id: string; number: string | null } | null>(null);
   const [returnSaleId, setReturnSaleId] = useState<string | null>(null);
   const { confirm, dialog: confirmDialog } = useConfirm();
   const sel = useRowSelection();
@@ -465,6 +484,9 @@ export default function Sales() {
                     <div className={`text-lg font-bold tabular-nums ${s.returnStatus === "full" ? "line-through text-muted-foreground" : ""}`}>
                       {formatMoney(s.total, cur)}
                     </div>
+                    <Button variant="ghost" size="icon" title="Delivery order — a pass for the truck" onClick={() => setDeliveryFor({ id: s.id, number: s.receipt_number ?? null })}>
+                      <Truck className="size-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" title={t("sales.viewReceipt")} onClick={() => openReceipt(s.id)}>
                       <Eye className="size-4" />
                     </Button>
@@ -503,6 +525,22 @@ export default function Sales() {
       </Card>
 
       {openSale && <ReceiptDialog sale={openSale} onClose={() => setOpenSale(null)} />}
+      {currentShop && (
+        <DeliveryOrderDialog
+          saleId={deliveryFor?.id ?? null}
+          billNumber={deliveryFor?.number}
+          api={deliveryApi}
+          shop={{
+            name: currentShop.name,
+            address: currentShop.address ?? null,
+            phone: currentShop.phone ?? null,
+            currency: currentShop.currency ?? "PKR",
+            receipt_header: currentShop.receipt_header ?? null,
+            receipt_footer: currentShop.receipt_footer ?? null,
+          }}
+          onClose={() => setDeliveryFor(null)}
+        />
+      )}
       <ReturnDialog
         open={!!returnSaleId}
         onClose={() => setReturnSaleId(null)}

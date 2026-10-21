@@ -87,7 +87,11 @@ export default function Settings() {
   const [supReturnPrefix, setSupReturnPrefix] = useState("SRET-");
   const [supReturnNext, setSupReturnNext] = useState("");
   const [payReceiptPrefix, setPayReceiptPrefix] = useState("PR-");
+  const [poNumPrefix, setPoNumPrefix] = useState("PO-");
+  const [doNumPrefix, setDoNumPrefix] = useState("DO-");
   const [payReceiptNext, setPayReceiptNext] = useState("");
+  const [poNumNext, setPoNumNext] = useState("");
+  const [doNumNext, setDoNumNext] = useState("");
   const [labTests, setLabTests] = useState(false);
   const [imeiMode, setImeiMode] = useState<"sale" | "product">("sale");
   const [showCustomer, setShowCustomer] = useState(false);
@@ -144,8 +148,16 @@ export default function Settings() {
         currentShop.supplier_return_next_number == null ? "" : String(currentShop.supplier_return_next_number),
       );
       setPayReceiptPrefix(currentShop.payment_receipt_prefix ?? "PR-");
+      setPoNumPrefix(currentShop.purchase_order_prefix ?? "PO-");
+      setDoNumPrefix(currentShop.delivery_order_prefix ?? "DO-");
       setPayReceiptNext(
         currentShop.payment_receipt_next_number == null ? "" : String(currentShop.payment_receipt_next_number),
+      );
+      setPoNumNext(
+        currentShop.purchase_order_next_number == null ? "" : String(currentShop.purchase_order_next_number),
+      );
+      setDoNumNext(
+        currentShop.delivery_order_next_number == null ? "" : String(currentShop.delivery_order_next_number),
       );
       setImeiMode((currentShop.imei_capture_mode as "sale" | "product") ?? "sale");
       setShowCustomer(currentShop.show_customer_on_receipt ?? false);
@@ -216,7 +228,11 @@ export default function Settings() {
         supplier_return_prefix: supReturnPrefix.trim(),
         supplier_return_next_number: supReturnNext.trim() === "" ? null : (parseInt(supReturnNext, 10) || null),
         payment_receipt_prefix: payReceiptPrefix.trim(),
+        purchase_order_prefix: poNumPrefix.trim(),
+        delivery_order_prefix: doNumPrefix.trim(),
         payment_receipt_next_number: payReceiptNext.trim() === "" ? null : (parseInt(payReceiptNext, 10) || null),
+        purchase_order_next_number: poNumNext.trim() === "" ? null : (parseInt(poNumNext, 10) || null),
+        delivery_order_next_number: doNumNext.trim() === "" ? null : (parseInt(doNumNext, 10) || null),
         imei_capture_mode: imeiMode,
         cheques_enabled: chequesOn,
         cheque_reminder_days: Math.min(90, Math.max(0, parseInt(chequeDays, 10) || 0)),
@@ -749,7 +765,7 @@ export default function Settings() {
 
                 <div className="rounded-lg border p-3 space-y-3">
                   <div>
-                    <Label>Return &amp; receipt numbers</Label>
+                    <Label>Return, receipt &amp; order numbers</Label>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Returns and ledger payment receipts each count up on their own sequence, so a
                       slip is never mistaken for a bill. Clear a prefix for plain numbers.
@@ -759,6 +775,8 @@ export default function Settings() {
                     ["Customer returns", returnPrefix, setReturnPrefix, returnNext, setReturnNext],
                     ["Supplier returns", supReturnPrefix, setSupReturnPrefix, supReturnNext, setSupReturnNext],
                     ["Ledger payment receipts", payReceiptPrefix, setPayReceiptPrefix, payReceiptNext, setPayReceiptNext],
+                    ["Purchase orders", poNumPrefix, setPoNumPrefix, poNumNext, setPoNumNext],
+                    ["Delivery orders", doNumPrefix, setDoNumPrefix, doNumNext, setDoNumNext],
                   ] as const).map(([label, prefix, setPrefix, next, setNext]) => (
                     <div key={label} className="space-y-1.5">
                       <div className="text-xs font-medium">{label}</div>
