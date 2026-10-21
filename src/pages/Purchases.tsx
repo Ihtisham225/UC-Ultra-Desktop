@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
+import type { PurchaseOrderDto } from "@/lib/purchase-orders";
 import { rpc, uploadInvoiceImage, uploadCnicImage } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -706,6 +708,18 @@ export default function Purchases() {
     }
     toast.success(editingId ? t("purchases.purchaseUpdated") : t("purchases.saved"));
     if (createdId && daybook.entry) await daybook.link(createdId, `Purchase ${reference || ""}`.trim());
+    // Made from a purchase order: that order has now been received. The order
+    // lives on the server, so this needs a connection even when the purchase didn't.
+    if (createdId && fromPo) {
+      try {
+        const marked = await rpc<{ ok: boolean; error?: string }>("markPurchaseOrderReceivedAction", fromPo.id, createdId);
+        if (marked.ok) toast.success(`${fromPo.number} marked received`);
+        else toast.error(marked.error ?? `${fromPo.number} couldn't be marked received`);
+      } catch {
+        toast.error(`Saved, but ${fromPo.number} couldn't be marked received — do it from Purchase orders when you're online`);
+      }
+      setFromPo(null);
+    }
     setOpen(false);
     reset();
     load();
@@ -781,7 +795,7 @@ export default function Purchases() {
 
   const onPurchaseDialogChange = (o: boolean) => {
     setOpen(o);
-    if (!o) { reset(); daybook.abandon(); }
+    if (!o) { reset(); daybook.abandon(); setFromPo(null); }
     else if (!editingId) {
       if (!reference) setReference(generateReference());
       // Pool mode: new purchases draw from the shared pool by default.
@@ -790,6 +804,50 @@ export default function Purchases() {
   };
 
   useAddNew({ purchase: () => { reset(); onPurchaseDialogChange(true); } });
+
+  // "Convert to purchase" on a purchase order lands here as ?from_po=<id>: open
+  // the form filled from the order. The order is marked received on save.
+  const [fromPo, setFromPo] = useState<{ id: string; number: string } | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const fromPoId = searchParams.get("from_po");
+  useEffect(() => {
+    if (!fromPoId) return;
+    // ⚠️ HashRouter: the query lives in the fragment, so clear it through the
+    // router — history.replaceState would drop the hash and leave the page.
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete("from_po"); return next; }, { replace: true });
+    void (async () => {
+      let po: PurchaseOrderDto | null = null;
+      try { po = await rpc<PurchaseOrderDto | null>("getPurchaseOrderAction", fromPoId); } catch { /* handled below */ }
+      if (!po) return toast.error("Purchase order not found — are you online?");
+      if (po.status !== "open") return toast.error(`${po.number} is already ${po.status}`);
+      reset();
+      onPurchaseDialogChange(true);
+      setFromPo({ id: po.id, number: po.number });
+      if (po.supplier_id) setPendingSupplier(po.supplier_id);
+      else {
+        // A supplier typed on the order but not on the register: a walk-in seller.
+        setSourceType("walkin");
+        setSellerName(po.supplier_name);
+        setSellerPhone(po.supplier_phone ?? "");
+      }
+      setReference(po.number);
+      setNotes(po.notes ? `From ${po.number} — ${po.notes}` : `From ${po.number}`);
+      const known = po.items.filter((i) => i.product_id);
+      setLines(known.map((i) => ({
+        key: i.variant_id ?? i.product_id!,
+        product_id: i.product_id!,
+        variant_id: i.variant_id,
+        product_name: i.product_name,
+        unit_cost: i.unit_cost || null,
+        quantity: i.quantity,
+        expense_amount: null,
+      })));
+      const typed = po.items.length - known.length;
+      if (typed > 0) toast.warning(`${typed} item${typed === 1 ? " isn't" : "s aren't"} in your products yet — add ${typed === 1 ? "it" : "them"} to the purchase by hand`);
+    })();
+    // Runs when an order arrives in the address.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromPoId]);
 
   // A Roznamcha line raised as a purchase: open the form with the supplier
   // (when they are on the register) and the line's wording in the notes; the
@@ -933,7 +991,14 @@ export default function Purchases() {
               <Button><Plus className="size-4 mr-2" /> {t("purchases.newPurchase")}</Button>
             </DialogTrigger>
             <DialogContent data-add-new="purchase" className="sm:max-w-6xl max-h-[calc(100dvh-1rem)] flex flex-col">
-              <DialogHeader><DialogTitle>{editingId ? t("purchases.editPurchase") : t("purchases.recordPurchase")}</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>{editingId ? t("purchases.editPurchase") : t("purchases.recordPurchase")}</DialogTitle>
+                {fromPo && !editingId && (
+                  <p className="text-xs text-muted-foreground">
+                    From purchase order <span className="font-mono font-semibold">{fromPo.number}</span> — change anything that arrived differently, then save.
+                  </p>
+                )}
+              </DialogHeader>
               <div className="space-y-4 py-2 overflow-y-auto flex-1 -mx-4 sm:-mx-6 px-4 sm:px-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">

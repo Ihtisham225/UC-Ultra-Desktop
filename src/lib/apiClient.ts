@@ -84,7 +84,11 @@ export interface DeviceShop {
   supplier_return_next_number?: number | null;
   /** Ledger payment receipts: default prefix "PR-" (null), "" = bare numbers. */
   payment_receipt_prefix?: string | null;
+  purchase_order_prefix?: string | null;
+  delivery_order_prefix?: string | null;
   payment_receipt_next_number?: number | null;
+  purchase_order_next_number?: number | null;
+  delivery_order_next_number?: number | null;
   investor_mode?: "individual" | "shared" | "both";
   investor_default_commission?: number;
   investor_deduct_expenses?: boolean;
