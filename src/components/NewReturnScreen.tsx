@@ -5,9 +5,10 @@
  *
  * The keyboard path is the till's: search → Enter adds the first match and
  * lands on its quantity → Enter → price → Enter → back to search. Then the
- * right-hand side walks customer → bill → deduction → account → reason →
- * notes, every dropdown taking ONE Enter, and Enter on the notes (or Ctrl/Cmd
- * +Enter anywhere) saves.
+ * right-hand side walks customer-or-supplier → customer → bill → deduction →
+ * refund to → account → reason → notes, every dropdown taking ONE Enter, and
+ * Enter on the notes (or Ctrl/Cmd+Enter anywhere) saves. The two-way switches
+ * (customer/supplier, cash/ledger) are stops in that chain: ←/→ switch them.
  *
  * Everything the web and the terminal do differently comes in as props
  * (products, the customer/supplier pickers, saving, the bill search), so the
@@ -25,6 +26,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AccountPicker } from "@/components/AccountPicker";
 import {
+  ChoiceToggle,
   RefundToToggle,
   type NewReturnInput,
   type NewSupplierReturnInput,
@@ -38,7 +40,7 @@ import { fmtDate } from "@/lib/date-format";
 type ReturnKind = "customer" | "supplier";
 
 /** Where each field sits in the right-hand Enter chain. */
-const RSTEP = { party: 1, bill: 2, deduction: 3, account: 4, reason: 5, notes: 6 } as const;
+const RSTEP = { kind: 1, party: 2, bill: 3, deduction: 4, refundTo: 5, account: 6, reason: 7, notes: 8 } as const;
 
 /** What a picker needs to take part in the chain. */
 export interface ChainProps {
@@ -342,7 +344,7 @@ export function NewReturnScreen({
             className="ps-9 h-11"
           />
           </div>
-          <p className="mt-1 px-1 text-[11px] text-muted-foreground">Enter on an empty search → {popup ? "checkout" : "customer"}</p>
+          <p className="mt-1 px-1 text-[11px] text-muted-foreground">Enter on an empty search → {popup ? "checkout" : supplierEnabled ? "customer or supplier" : "customer"}</p>
         </div>
         <div className="md:flex-1 md:overflow-y-auto pr-1">
           {filtered.length === 0 ? (
@@ -387,21 +389,19 @@ export function NewReturnScreen({
   const whoSection = (
     <>
             {supplierEnabled && (
-              <div className="grid grid-cols-2 gap-2">
-                {(["customer", "supplier"] as const).map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => switchKind(k)}
-                    className={`rounded-md border px-2 py-2 text-xs leading-tight transition-colors ${kind === k ? "border-primary bg-primary/10 font-medium" : "hover:bg-muted/50"}`}
-                  >
-                    {k === "customer" ? "From a customer" : "To a supplier"}
-                    <span className="block text-[10px] font-normal text-muted-foreground">
-                      {k === "customer" ? "goods come back in" : "goods go back out"}
-                    </span>
-                  </button>
-                ))}
-              </div>
+              <ChoiceToggle
+                value={kind}
+                onChange={switchKind}
+                label="Return from a customer or to a supplier"
+                step={RSTEP.kind}
+                onEnter={() => advanceFromStep(RSTEP.kind)}
+                className="grid grid-cols-2 gap-2"
+                buttonClassName="px-2 py-2 text-xs"
+                options={[
+                  { value: "customer", label: "From a customer", hint: "goods come back in" },
+                  { value: "supplier", label: "To a supplier", hint: "goods go back out" },
+                ]}
+              />
             )}
 
             <Fragment key={`${kind}-${round}`}>
@@ -604,6 +604,8 @@ export function NewReturnScreen({
               onChange={setToLedger}
               label={toSupplier ? "Supplier settles by" : "Refund to"}
               ledgerLabel={toSupplier ? "Supplier's ledger" : "Customer's ledger"}
+              step={RSTEP.refundTo}
+              onEnter={() => advanceFromStep(RSTEP.refundTo)}
               ledgerDisabledReason={canLedger ? null : toSupplier
                 ? "Choose the supplier to take it off their ledger."
                 : "Choose a customer (or a bill with a customer) to put the refund on their ledger."}
