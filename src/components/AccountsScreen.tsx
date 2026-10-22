@@ -7,13 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wallet, Landmark, Banknote, Plus, ArrowLeftRight, History, Pencil, Archive, ArchiveRestore, RefreshCw } from "lucide-react";
+import { Wallet, Landmark, Banknote, Plus, ArrowLeftRight, History, Pencil, Archive, ArchiveRestore, RefreshCw, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { useShop } from "@/contexts/ShopContext";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useAddNew } from "@/hooks/useAddNew";
 import { DateInput } from "@/components/DateInput";
 import { fmtDate } from "@/lib/date-format";
+import { accountStatement, buildAccountStatementHtml, statementPeriod } from "@/lib/account-statement";
 
 export interface AccountRow {
   id: string;
@@ -48,7 +49,43 @@ export interface AccountsApi {
   setArchived: (id: string, archived: boolean) => Promise<{ ok: boolean; error?: string }>;
   adjust: (input: unknown) => Promise<{ ok: boolean; error?: string }>;
   transfer: (input: unknown) => Promise<{ ok: boolean; error?: string }>;
+  /**
+   * Print a complete A4 document. The desktop passes its A4 PDF path
+   * (lib/printA4); without it the sheet prints through a hidden frame.
+   */
+  printDocument?: (html: string, name: string) => Promise<void>;
 }
+
+/** The browser's own print, from a frame parked off-screen at A4 size. */
+function printInFrame(html: string) {
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("aria-hidden", "true");
+  // A real A4 width rather than 0x0: a zero-width viewport can clip a
+  // multi-page print down to its first sheet.
+  iframe.style.cssText =
+    "position:fixed;left:-10000px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentWindow?.document;
+  if (!doc) {
+    iframe.remove();
+    throw new Error("Could not open the print view.");
+  }
+  doc.open();
+  doc.write(html);
+  doc.close();
+  // The sheet prints itself on load; drop the frame once the dialog is done.
+  setTimeout(() => iframe.remove(), 60_000);
+}
+
+/** First day of this month, yyyy-mm-dd, in local time. */
+const monthStart = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+};
+const localToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 const TYPE_ICON = { cash: Banknote, bank: Landmark, wallet: Wallet } as const;
 const TYPE_LABEL = { cash: "Cash", bank: "Bank", wallet: "Wallet" } as const;
@@ -82,6 +119,8 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
 
   const [historyFor, setHistoryFor] = useState<AccountRow | null>(null);
   const [entries, setEntries] = useState<AccountEntry[] | null>(null);
+  /** The history's date range — the list shows it and "Print statement" prints it. Empty = no limit. */
+  const [range, setRange] = useState({ from: "", to: "" });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -164,11 +203,59 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
   const openHistory = async (r: AccountRow) => {
     setHistoryFor(r);
     setEntries(null);
+    setRange({ from: "", to: "" });
     try {
       const d = await api.detail(r.id);
       setEntries(d?.entries ?? []);
     } catch {
       setEntries([]);
+    }
+  };
+
+  const statement = useMemo(
+    () =>
+      historyFor && entries
+        ? accountStatement(
+            entries.map((e) => ({
+              id: e.id,
+              date: e.date,
+              amount: e.amount,
+              running: e.running,
+              label: [KIND_LABEL[e.kind] ?? e.kind, e.transfer_name].filter(Boolean).join(" · "),
+              note: e.note,
+            })),
+            historyFor.opening_balance,
+            range.from,
+            range.to,
+          )
+        : null,
+    [historyFor, entries, range],
+  );
+  /** The entries in range, newest first as the dialog lists them. */
+  const shownEntries = useMemo(() => {
+    if (!entries || !statement) return entries;
+    const ids = new Set(statement.rows.map((r) => r.id));
+    return entries.filter((e) => ids.has(e.id));
+  }, [entries, statement]);
+  const rangeActive = !!(range.from || range.to);
+
+  const printStatement = async () => {
+    if (!historyFor || !statement || !currentShop) return;
+    if (range.from && range.to && range.from > range.to) return toast.error("The From date is after the To date");
+    const html = buildAccountStatementHtml({
+      shop: { name: currentShop.name, phone: currentShop.phone, address: currentShop.address },
+      accountName: historyFor.name,
+      accountType: TYPE_LABEL[historyFor.type],
+      currency: cur,
+      statement,
+      from: range.from,
+      to: range.to,
+    });
+    try {
+      if (api.printDocument) await api.printDocument(html, `${historyFor.name}-statement`);
+      else printInFrame(html);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not print the statement");
     }
   };
 
@@ -390,10 +477,54 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
       <Dialog open={!!historyFor} onOpenChange={(o) => !o && setHistoryFor(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{historyFor?.name} — history</DialogTitle></DialogHeader>
-          {entries === null ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">From</Label>
+              <DateInput value={range.from} onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))} className="h-9 w-36" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">To</Label>
+              <DateInput value={range.to} onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))} className="h-9 w-36" />
+            </div>
+            <Button size="sm" variant="ghost" className="h-9" onClick={() => setRange({ from: monthStart(), to: localToday() })}>
+              This month
+            </Button>
+            {rangeActive && (
+              <Button size="sm" variant="ghost" className="h-9" onClick={() => setRange({ from: "", to: "" })}>
+                All dates
+              </Button>
+            )}
+            <Button size="sm" className="h-9 ms-auto" onClick={printStatement} disabled={!statement}>
+              <Printer className="size-3.5 me-1" /> Print statement
+            </Button>
+          </div>
+          {statement && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+              <div className="rounded-md border p-2">
+                <div className="text-xs text-muted-foreground">Opening</div>
+                <div className="font-semibold tabular-nums">{formatMoney(statement.opening, cur)}</div>
+              </div>
+              <div className="rounded-md border p-2">
+                <div className="text-xs text-muted-foreground">Money in</div>
+                <div className="font-semibold tabular-nums text-emerald-600">{formatMoney(statement.moneyIn, cur)}</div>
+              </div>
+              <div className="rounded-md border p-2">
+                <div className="text-xs text-muted-foreground">Money out</div>
+                <div className="font-semibold tabular-nums text-destructive">{formatMoney(statement.moneyOut, cur)}</div>
+              </div>
+              <div className="rounded-md border p-2">
+                <div className="text-xs text-muted-foreground">Closing</div>
+                <div className="font-semibold tabular-nums">{formatMoney(statement.closing, cur)}</div>
+              </div>
+              <p className="col-span-full text-xs text-muted-foreground">{statementPeriod(range.from, range.to)}</p>
+            </div>
+          )}
+          {entries === null || shownEntries === null ? (
             <p className="py-8 text-center text-muted-foreground">Loading…</p>
           ) : entries.length === 0 ? (
             <p className="py-8 text-center text-muted-foreground">Nothing has moved through this account yet.</p>
+          ) : shownEntries.length === 0 ? (
+            <p className="py-8 text-center text-muted-foreground">Nothing moved through this account in this period.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -405,7 +536,7 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.map((e) => (
+                {shownEntries.map((e) => (
                   <TableRow key={e.id}>
                     <TableCell className="text-sm whitespace-nowrap">{fmtDate(new Date(e.date + "T00:00:00"))}</TableCell>
                     <TableCell className="text-sm">
