@@ -175,12 +175,17 @@ export function computeTodayMoney(input: TodayMoneyInput): TodayMoney {
 
   const debtById = new Map(input.debts.map((d) => [d.id, d]));
   for (const p of input.debtPayments) {
-    // "increase" raises what is owed; a return credit settles without money.
-    if ((p.kind ?? "payment") !== "payment" || p.sale_return_id) continue;
+    // A return credit settles without money. An "increase" raises what is
+    // owed, and moved money only when it names an account — and then the
+    // other way round: more owed TO the shop means the shop paid it out.
+    const kind = p.kind ?? "payment";
+    if (p.sale_return_id) continue;
+    if (kind === "increase" ? !p.account_id || p.cheque_id : kind !== "payment") continue;
     if (!onOrAfter(p.created_at, input.since)) continue;
     const debt = debtById.get(p.debt_id);
     if (!debt) continue;
-    const src: MoneySource = debt.direction === "i_owe" ? "ledger_out" : "ledger_in";
+    const owedOut = debt.direction === "i_owe";
+    const src: MoneySource = (kind === "increase" ? !owedOut : owedOut) ? "ledger_out" : "ledger_in";
     add(src, p.cheque_id ? "cheque" : instrumentOf(p.account_id), num(p.amount));
   }
   // An overpayment's excess: the new row faces the other way, so a customer's

@@ -70,7 +70,7 @@ function EditForm({ entry, onClose, onSave }: Props & { entry: EditableLedgerEnt
       amount: a,
       discount: d,
       payment_date: date,
-      account_id: isIncrease ? null : accountId,
+      account_id: accountId,
       notes: notes.trim() || null,
     }).catch((e: unknown) => (e instanceof Error ? e.message : "Failed to save"));
     setSaving(false);
@@ -84,7 +84,7 @@ function EditForm({ entry, onClose, onSave }: Props & { entry: EditableLedgerEnt
           <DialogTitle>{isIncrease ? "Edit added debt" : "Edit payment"}</DialogTitle>
           <DialogDescription>
             {isIncrease
-              ? "The bill's balance is recalculated from the new amount."
+              ? "The bill's balance is recalculated from the new amount. Choose an account only if money actually changed hands — it moves with the entry."
               : "The balance, the money account and the receipt all move to the new figures." +
                 (entry.spread > 1 ? ` It is spread over the bills again, oldest first (it covered ${entry.spread}).` : "")}
           </DialogDescription>
@@ -105,9 +105,12 @@ function EditForm({ entry, onClose, onSave }: Props & { entry: EditableLedgerEnt
             <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
         </div>
-        {!isIncrease && (
-          <AccountPicker value={accountId} onChange={setAccountId} label="Money in / out of" autoDefault={false} />
-        )}
+        <AccountPicker
+          value={accountId}
+          onChange={setAccountId}
+          label={isIncrease ? "Money account (none if no money changed hands)" : "Money in / out of"}
+          autoDefault={false}
+        />
         <div className="space-y-1.5">
           <Label>Notes (optional)</Label>
           <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
