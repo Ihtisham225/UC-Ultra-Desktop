@@ -94,6 +94,25 @@ describe("computeTodayMoney", () => {
     expect(m.expenses).toMatchObject({ cash: 60, total: 60 });
   });
 
+  it("counts an added debt as money only when it names an account, facing the other way", () => {
+    const m = computeTodayMoney(base({
+      debts: [
+        { id: "cust", direction: "owed_to_me" },
+        { id: "sup", direction: "i_owe" },
+      ],
+      debtPayments: [
+        // Sent to a customer from the bank, onto their khata — money OUT.
+        { debt_id: "cust", kind: "increase", amount: 1500000, account_id: "hbl", created_at: NOW },
+        // Goods on credit: no account, no money.
+        { debt_id: "cust", kind: "increase", amount: 999, created_at: NOW },
+        // Borrowed from a supplier into the drawer — money IN.
+        { debt_id: "sup", kind: "increase", amount: 200, account_id: "cash", created_at: NOW },
+      ],
+    }));
+    expect(m.ledger_out).toMatchObject({ bank: 1500000, total: 1500000 });
+    expect(m.ledger_in).toMatchObject({ cash: 200, total: 200 });
+  });
+
   it("nets in against out, only over the rows the viewer may see", () => {
     const m = computeTodayMoney(base({
       sales: [{ id: "s", total: 1000, amount_paid: 1000, payment_method: "cash", created_at: NOW }],

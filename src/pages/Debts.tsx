@@ -1191,7 +1191,13 @@ export default function Debts() {
                     <Label>Entry type</Label>
                     <RadioGroup
                       value={paymentForm.kind}
-                      onValueChange={(v) => setPaymentForm({ ...paymentForm, kind: v as EntryKind })}
+                      onValueChange={(v) => {
+                        // An added debt moves money only when an account is
+                        // chosen on purpose, so it starts with none — the
+                        // drawer default would take cash out for credit goods.
+                        if (v === "increase") setPayAccountId(null);
+                        setPaymentForm({ ...paymentForm, kind: v as EntryKind });
+                      }}
                       className="grid grid-cols-1 sm:grid-cols-2 gap-2"
                     >
                       <label
@@ -1315,8 +1321,18 @@ export default function Debts() {
                         <DateInput value={paymentForm.cheque_date} onChange={(e) => setPaymentForm({ ...paymentForm, cheque_date: e.target.value })} />
                       </div>
                     </div>
+                  ) : paymentForm.kind === "increase" ? (
+                    <AccountPicker
+                      key="increase"
+                      value={payAccountId}
+                      onChange={setPayAccountId}
+                      autoDefault={false}
+                      label={selectedGroup.direction === "owed_to_me"
+                        ? "Paid out of (leave empty if no money was paid)"
+                        : "Received into (leave empty if no money was received)"}
+                    />
                   ) : (
-                    <AccountPicker value={payAccountId} onChange={setPayAccountId} label="Money in / out of" />
+                    <AccountPicker key="payment" value={payAccountId} onChange={setPayAccountId} label="Money in / out of" />
                   )}
                   <div className="space-y-1.5">
                     <Label>Notes (optional)</Label>
