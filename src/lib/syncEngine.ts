@@ -10,12 +10,14 @@
 
 import { syncPush, syncPull, getToken, type PushOp } from './apiClient'
 import { onServerWrite } from './serverWrites'
+import { mustWipe, rememberResetAt, storedResetAt } from './resetMarker'
 import {
   purgeLocalChildren,
   pruneLocalRows,
   pruneOrphanChildren,
   SYNC_TABLES,
   getAllQueued,
+  wipeLocalShop,
   removeFromQueue,
   bulkUpsertLocal,
   getLastPulledAt,
@@ -31,7 +33,21 @@ export async function pullAll() {
     SYNC_TABLES.map(async (table) => ({ table, since: await getLastPulledAt(table) })),
   )
 
-  const { changes, serverTime, liveIds, liveShopId } = await syncPull(tables)
+  const { changes, serverTime, liveIds, liveShopId, dataResetAt } = await syncPull(tables)
+
+  // The owner cleared this store since the terminal last looked: everything it
+  // holds for the shop is from before, so drop it and pull again from nothing.
+  // This pull's own changes are thrown away with it — the re-pull fetches them.
+  if (liveShopId && dataResetAt) {
+    const fresh = tables.every((t) => !t.since)
+    if (mustWipe(dataResetAt, storedResetAt(liveShopId), fresh)) {
+      await wipeLocalShop(liveShopId)
+      rememberResetAt(liveShopId, dataResetAt)
+      for (const table of SYNC_TABLES) notifyChange(table)
+      return pullAll()
+    }
+    rememberResetAt(liveShopId, dataResetAt)
+  }
 
   // ⚠️ A corrected bill REPLACES its lines and tenders, so the server's set is
   // the whole truth for that sale. Upserting alone would leave the rows it

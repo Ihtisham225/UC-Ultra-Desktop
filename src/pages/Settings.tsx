@@ -9,6 +9,8 @@ import { leaveDeletedShop, refreshShops } from "@/lib/deviceSession";
 import { useTranslation } from "react-i18next";
 import { rpc, uploadShopLogo } from "@/lib/apiClient";
 import { NavOrderEditor } from "@/components/settings/NavOrderEditor";
+import { BranchesCard, ClearStoreDataCard, ImportFromBranchCard, type BranchToolsApi } from "@/components/settings/BranchTools";
+import { syncNow } from "@/lib/syncEngine";
 import { useAppNav } from "@/hooks/useAppNav";
 import type { NavOrder } from "@/lib/nav-order";
 import { useShop } from "@/contexts/ShopContext";
@@ -46,6 +48,19 @@ const CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "KWD", "BHD", "OMR", "QAR
 
 /** The example date in the Date & time picker — an afternoon, so the time shows PM. */
 const SAMPLE_DATE = new Date(2026, 8, 30, 14, 30);
+
+// rpc() is variadic: each argument is passed as itself, never as an array.
+const branchApi: BranchToolsApi = {
+  listBranches: () => rpc("listMyBranchesAction"),
+  clearData: (confirmName) => rpc("clearShopDataAction", confirmName),
+  // Drop the deleted store from the shop switcher straight away.
+  deleteBranch: async (shopId, confirmName) => {
+    const res = await rpc<Awaited<ReturnType<BranchToolsApi["deleteBranch"]>>>("deleteBranchAction", shopId, confirmName);
+    if (res.ok) await refreshShops().catch(() => {});
+    return res;
+  },
+  importFromBranch: (input) => rpc("importFromBranchAction", input),
+};
 
 export default function Settings() {
   usePageMeta({ title: "Shop Settings — UCU", description: "Configure your shop name, logo, currency, tax and receipt details.", path: "/settings" });
@@ -1079,11 +1094,22 @@ export default function Settings() {
               ))}
             </div>
           </Card>
+          {canEdit && <div className="mt-4"><ImportFromBranchCard api={branchApi} onImported={() => { void syncNow(); }} /></div>}
           <AppUpdateCard />
         </TabsContent>
 
         {canEdit && (
-          <TabsContent value="danger">
+          <TabsContent value="danger" className="space-y-6">
+            {currentShop && (
+              <ClearStoreDataCard
+                shopName={currentShop.name}
+                api={branchApi}
+                // The pull sees the new reset stamp and wipes this till's
+                // offline copy before anything is shown again.
+                onCleared={() => { void syncNow().finally(() => navigate("/")); }}
+              />
+            )}
+            <BranchesCard api={branchApi} />
             <Card className="shadow-card p-6 space-y-4 border-destructive/30">
               <div>
                 <h3 className="font-semibold text-destructive">{t("settings.danger.deleteShop")}</h3>
