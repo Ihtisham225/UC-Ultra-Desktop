@@ -38,6 +38,8 @@ import {
   type MoreReportProps,
 } from "@/components/reports/MoreReports";
 import { moreReportsApi } from "@/lib/moreReportsApi";
+import { SalesReportView, type SalesReportRow } from "@/components/reports/SalesReportView";
+import type { CatalogBrand, CatalogCategory } from "@/lib/sales-report";
 
 type Rng = { from: string; to: string };
 
@@ -204,21 +206,35 @@ function ServerReport({ report: Report, range, formatMoney, cur }: { report: (p:
 /* ---------- Sales ---------- */
 
 function SalesReport({ shopId, range, formatMoney, cur }: ReportProps) {
-  const { fromISO, toISO } = useRange(range);
-  const [rows, setRows] = useState<any[]>([]);
+  const { fromISO, toISO, fromDate, toDate } = useRange(range);
+  const [rows, setRows] = useState<SalesReportRow[]>([]);
+  const [catalog, setCatalog] = useState<{ categories: CatalogCategory[]; brands: CatalogBrand[] }>({ categories: [], brands: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [allSales, allItems, allCustomers] = await Promise.all([
+      const [allSales, allItems, allCustomers, allProducts] = await Promise.all([
         getAll<any>("sales", shopId),
         getAll<any>("sale_items", shopId),
         getAll<any>("customers", shopId),
+        getAll<any>("products", shopId),
       ]);
+      // A sold line's category / brand is its product's, as the product reads now.
+      const productById = new Map(allProducts.map((p) => [p.id, p]));
       const itemsBySale = new Map<string, any[]>();
       for (const it of allItems) {
-        const arr = itemsBySale.get(it.sale_id) ?? []; arr.push(it); itemsBySale.set(it.sale_id, arr);
+        const p = it.product_id ? productById.get(it.product_id) : undefined;
+        const line = {
+          ...it,
+          quantity: Number(it.quantity),
+          line_total: Number(it.line_total),
+          category_id: p?.category_id ?? null,
+          category: p?.category ?? null,
+          brand_id: p?.brand_id ?? null,
+          brand: p?.brand ?? null,
+        };
+        const arr = itemsBySale.get(it.sale_id) ?? []; arr.push(line); itemsBySale.set(it.sale_id, arr);
       }
       const custById = new Map(allCustomers.map((c) => [c.id, c]));
       const data = allSales
@@ -236,83 +252,28 @@ function SalesReport({ shopId, range, formatMoney, cur }: ReportProps) {
     })();
   }, [shopId, fromISO, toISO]);
 
-  const stats = useMemo(() => {
-    const revenue = rows.reduce((a, r) => a + Number(r.total), 0);
-    const subtotal = rows.reduce((a, r) => a + Number(r.subtotal), 0);
-    const tax = rows.reduce((a, r) => a + Number(r.tax), 0);
-    const discount = rows.reduce((a, r) => a + Number(r.discount), 0);
-    const items = rows.reduce((a, r) => a + (r.sale_items?.reduce((x: number, i: any) => x + Number(i.quantity), 0) ?? 0), 0);
-    return { revenue, subtotal, tax, discount, items, count: rows.length, avg: rows.length ? revenue / rows.length : 0 };
-  }, [rows]);
-
-  const columns: CsvColumn<any>[] = [
-    { header: "Date", value: (r) => format(new Date(r.created_at), "yyyy-MM-dd HH:mm") },
-    { header: "Receipt", value: (r) => r.receipt_number ?? r.id.slice(0, 8) },
-    { header: "Customer", value: (r) => r.customers?.name ?? "Walk-in" },
-    { header: "Payment", value: (r) => (r.payments?.length ? r.payments.map((p: any) => `${p.account_name} ${p.amount}`).join(" | ") : r.payment_method) },
-    { header: "Balance due", value: (r) => (r.balance_due > 0 ? r.balance_due.toFixed(2) : "") },
-    { header: "Subtotal", value: (r) => Number(r.subtotal).toFixed(2) },
-    { header: "Discount", value: (r) => Number(r.discount).toFixed(2) },
-    { header: "Tax", value: (r) => Number(r.tax).toFixed(2) },
-    { header: "Total", value: (r) => Number(r.total).toFixed(2) },
-  ];
+  // Categories and brands aren't in the offline store. Offline the filters
+  // still work from the names each product carries — just without the tree.
+  useEffect(() => {
+    Promise.all([
+      rpc<CatalogCategory[]>("listCategoriesAction").catch(() => []),
+      rpc<CatalogBrand[]>("listBrandsAction").catch(() => []),
+    ]).then(([categories, brands]) => setCatalog({ categories: categories ?? [], brands: brands ?? [] }));
+  }, [shopId]);
 
   if (loading) return <div className="p-8 text-center text-muted-foreground">Loading…</div>;
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KPI label="Revenue" value={formatMoney(stats.revenue, cur)} sub={`${stats.count} transactions`} />
-        <KPI label="Average ticket" value={formatMoney(stats.avg, cur)} />
-        <KPI label="Items sold" value={String(stats.items)} />
-        <KPI label="Tax collected" value={formatMoney(stats.tax, cur)} sub={`Discounts ${formatMoney(stats.discount, cur)}`} />
-      </div>
-      <Card className="shadow-card p-4">
-        <ReportToolbar title="Sales detail" rows={rows} columns={columns} filename={`sales_${range.from}_${range.to}`} />
-        {rows.length === 0 ? <Empty msg="No sales in this range." /> : (
-          <div className="mt-3 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead><TableHead>Receipt</TableHead><TableHead>Customer</TableHead><TableHead>Payment</TableHead>
-                  <TableHead className="text-right">Subtotal</TableHead><TableHead className="text-right">Tax</TableHead><TableHead className="text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="text-xs">{fmtDateTime(r.created_at)}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.receipt_number ?? r.id.slice(0, 8)}</TableCell>
-                    <TableCell>{r.customers?.name ?? "Walk-in"}</TableCell>
-                    <TableCell>
-                      {r.payments?.length ? (
-                        <div className="space-y-0.5">
-                          {r.payments.map((p: any, i: number) => (
-                            <div key={i} className="text-xs whitespace-nowrap">
-                              {p.account_name} <span className="tabular-nums">{formatMoney(p.amount, cur)}</span>
-                            </div>
-                          ))}
-                          {r.balance_due > 0 && (
-                            <div className="text-xs text-warning font-medium whitespace-nowrap">
-                              {formatMoney(r.balance_due, cur)} due
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="capitalize">{r.payment_method}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatMoney(r.subtotal, cur)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatMoney(r.tax, cur)}</TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">{formatMoney(r.total, cur)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </Card>
-    </div>
+    <SalesReportView
+      rows={rows}
+      categories={catalog.categories}
+      brands={catalog.brands}
+      ui={moreUi}
+      fromDate={fromDate}
+      toDate={toDate}
+      formatMoney={formatMoney}
+      cur={cur}
+    />
   );
 }
 
