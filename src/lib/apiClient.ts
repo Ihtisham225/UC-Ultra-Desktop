@@ -219,6 +219,8 @@ export interface PullResult {
    */
   liveIds?: Record<string, string[]>;
   liveShopId?: string;
+  /** When the owner last cleared the store (lib/resetMarker). Null if never. */
+  dataResetAt?: string | null;
 }
 export async function syncPull(tables: { table: string; since: string | null }[]): Promise<PullResult> {
   return request<PullResult>("/api/sync/pull", { method: "POST", body: JSON.stringify({ tables }) });

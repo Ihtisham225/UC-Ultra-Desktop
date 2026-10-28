@@ -288,3 +288,31 @@ export async function purgeLocalChildren(
   for (const key of doomed) await store.delete(key)
   await tx.done
 }
+
+/**
+ * Forget everything this terminal holds for one shop: its rows, its queued
+ * writes, and every pull watermark — used after the owner cleared the store
+ * (lib/resetMarker), so the next pull starts from nothing.
+ *
+ * Child rows pulled from the server carry the shop's id (the pull stamps it);
+ * the few written locally without one are left, and are harmless — nothing
+ * reaches them once their parent is gone. Queued writes are dropped because the
+ * server discards anything made before the clear anyway. Another shop's rows
+ * and queue are untouched; its watermarks reset, which costs it one full pull.
+ */
+export async function wipeLocalShop(shopId: string): Promise<void> {
+  const db = await getLocalDb()
+  const tx = db.transaction(['records', 'sync_queue', 'sync_state'], 'readwrite')
+  const records = tx.objectStore('records')
+  let cursor = await records.openCursor()
+  while (cursor) {
+    if ((cursor.value as Record<string, unknown>).shop_id === shopId) await cursor.delete()
+    cursor = await cursor.continue()
+  }
+  const queue = tx.objectStore('sync_queue')
+  for (const q of (await queue.getAll()) as QueueItem[]) {
+    if ((q.payload as Record<string, unknown> | undefined)?.shop_id === shopId) await queue.delete(q.qid)
+  }
+  await tx.objectStore('sync_state').clear()
+  await tx.done
+}
