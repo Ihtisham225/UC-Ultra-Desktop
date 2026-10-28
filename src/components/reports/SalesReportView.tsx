@@ -186,7 +186,7 @@ export function SalesReportView({ rows, categories, brands, ui, fromDate, toDate
         <FilterPicker label="Product" all="All products" value={filter.product} options={options.products} onChange={(product) => set({ product })} />
         {filtered && <Button size="sm" variant="ghost" className="h-9" onClick={() => setFilter(EMPTY)}>Clear filters</Button>}
         <div className="ml-auto">
-          <Segmented value={view} onChange={setView} options={[{ value: "bills", label: "Bills" }, { value: "ranking", label: "Most / least sold" }]} />
+          <Segmented<"bills" | "ranking"> value={view} onChange={setView} options={[{ value: "bills", label: "Bills" }, { value: "ranking", label: "Most / least sold" }]} />
         </div>
       </Card>
       {filtered && <p className="hidden print:block text-sm">Filtered: {filterNote}</p>}
@@ -264,9 +264,9 @@ export function SalesReportView({ rows, categories, brands, ui, fromDate, toDate
         <Card className="shadow-card p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2 print:hidden">
             <span className="text-xs text-muted-foreground">Group by</span>
-            <Segmented value={groupBy} onChange={setGroupBy} options={[{ value: "product", label: "Product" }, { value: "category", label: "Category" }, { value: "brand", label: "Brand" }]} />
+            <Segmented<GroupBy> value={groupBy} onChange={setGroupBy} options={[{ value: "product", label: "Product" }, { value: "category", label: "Category" }, { value: "brand", label: "Brand" }]} />
             <span className="text-xs text-muted-foreground ml-2">Sort</span>
-            <Segmented value={sort} onChange={setSort} options={RANK_SORTS.map((s) => ({ value: s.value, label: s.label.replace(" (quantity)", "") }))} />
+            <Segmented<RankSort> value={sort} onChange={setSort} options={RANK_SORTS.map((s) => ({ value: s.value, label: s.label.replace(" (quantity)", "") }))} />
           </div>
           <Toolbar
             title={`${RANK_SORTS.find((s) => s.value === sort)!.label} — by ${groupLabel.toLowerCase()}${filtered ? ` · ${filterNote}` : ""}`}
