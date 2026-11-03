@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Bell, FileCheck2, HandCoins, PackageX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -22,9 +22,44 @@ const SECTION: Record<AppNotification["kind"], string> = {
   debt_due: "Ledger due dates",
 };
 
+/** Today's notifications per shop, so the books are asked at most once a day. */
+const DAILY_KEY = "ucu.notifications.daily";
+interface DailyCache { date: string; items: AppNotification[] }
+
+/** The browser's local calendar day — the day the shop is working in. */
+function localDay(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function readDaily(shopId: string): DailyCache | null {
+  try {
+    const raw = localStorage.getItem(`${DAILY_KEY}.${shopId}`);
+    const parsed = raw ? (JSON.parse(raw) as DailyCache) : null;
+    return parsed && typeof parsed.date === "string" && Array.isArray(parsed.items) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDaily(shopId: string, cache: DailyCache) {
+  try {
+    localStorage.setItem(`${DAILY_KEY}.${shopId}`, JSON.stringify(cache));
+  } catch {
+    /* private window — we'll just ask again next time the app opens */
+  }
+}
+
 /**
  * The bell in the header: low stock, cheques falling due, khata due dates.
- * Refreshed on open, when the window regains focus, and every five minutes.
+ *
+ * Refreshed ONCE A DAY per shop — the first time the app is opened each
+ * morning — and cached in localStorage with the day it was fetched. It used
+ * to poll every five minutes and on every focus and open, which kept the Neon
+ * database from ever suspending (it sleeps after 5 idle minutes) and so raised
+ * the bill. None of these items is urgent: yesterday's low stock or cheques
+ * can stand until the next morning. A window left open overnight checks again
+ * when it is next focused or shown on a new day — never on a timer.
+ *
  * The badge counts what hasn't been looked at yet; opening the list marks it
  * seen (per browser — the items themselves stay until their cause is gone).
  */
@@ -39,27 +74,51 @@ export function NotificationBell({
   const [seen, setSeen] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!loader || !shopId) return;
-    try { setItems(await loader()); } catch { /* offline — keep what we had */ }
-  }, [shopId]);
-
   useEffect(() => {
     if (!shopId) return;
-    setSeen(readSeen(shopId));
-    void load();
-    const timer = setInterval(() => void load(), 5 * 60_000);
-    const onFocus = () => void load();
-    window.addEventListener("focus", onFocus);
-    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
-  }, [shopId, load]);
+    let cancelled = false;
+    // The day a fetch was last started for, so a focus during it doesn't start another.
+    let askedFor: string | null = null;
+
+    // localStorage is read here, after mount, never in a useState initializer
+    // (the server render can't see it, and the mismatch breaks hydration).
+    const check = async () => {
+      const day = localDay();
+      const cached = readDaily(shopId);
+      if (!cancelled) {
+        // Yesterday's list stays on show until today's arrives (or if we're offline).
+        setItems(cached?.items ?? []);
+        setSeen(readSeen(shopId));
+      }
+      if (cached?.date === day || askedFor === day || !loader) return;
+      askedFor = day;
+      try {
+        const fresh = await loader();
+        writeDaily(shopId, { date: day, items: fresh });
+        if (!cancelled) setItems(fresh);
+      } catch {
+        askedFor = null; // offline — try again the next time the window comes back
+      }
+    };
+
+    // Deferred a tick so the effect itself sets no state synchronously.
+    const first = setTimeout(() => void check(), 0);
+    const onVisible = () => { if (document.visibilityState === "visible") void check(); };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [shopId]);
 
   const unseen = items.filter((i) => !seen.has(i.id)).length;
 
   const onOpenChange = (next: boolean) => {
     setOpen(next);
-    if (next) void load();
-    else if (shopId) {
+    if (!next && shopId) {
       // Closing the list is when it has been read.
       const ids = items.map((i) => i.id);
       markSeen(shopId, ids);
