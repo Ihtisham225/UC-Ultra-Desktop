@@ -21,6 +21,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installUpdate: () => ipcRenderer.send('install-update'),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
 
+  // The computer locking / sleeping — the sync loop pauses (see syncSchedule.ts).
+  onPowerState: (cb: (state: 'lock' | 'unlock' | 'suspend' | 'resume') => void) => {
+    const fn = (_e: unknown, state: 'lock' | 'unlock' | 'suspend' | 'resume') => cb(state)
+    ipcRenderer.on('power-state', fn)
+    return () => { ipcRenderer.removeListener('power-state', fn) }
+  },
+
   // Platform
   platform: process.platform,
 

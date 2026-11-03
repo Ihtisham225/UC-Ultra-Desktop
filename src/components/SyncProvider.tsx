@@ -3,7 +3,7 @@ import { useShop } from '@/contexts/ShopContext'
 import { startSyncLoop } from '@/lib/syncEngine'
 import { queueCount } from '@/lib/localDb'
 
-/** Starts the background sync loop once a shop is selected. */
+/** Starts the background sync loop (pace: see lib/syncSchedule.ts) once a shop is selected. */
 export function SyncProvider({ children }: { children: React.ReactNode }) {
   const { currentShop } = useShop()
   const shopIdRef = useRef<string | null>(null)
@@ -16,7 +16,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!currentShop) return
 
-    const stop = startSyncLoop(() => shopIdRef.current, 30_000)
+    const stop = startSyncLoop(() => shopIdRef.current)
     if (stop) stopRef.current = stop
 
     return () => {

@@ -9,6 +9,7 @@
  */
 
 import { openDB, type IDBPDatabase } from 'idb'
+import { announceQueued } from './queueSignal'
 import { orphanIds, staleIds } from './prune'
 
 export type SyncOp = 'upsert' | 'delete'
@@ -164,6 +165,7 @@ async function enqueueOp(
 
   const qid = `${table}:${recordId}:${Date.now()}`
   await db.put('sync_queue', { qid, table, recordId, op, payload, queuedAt: Date.now() })
+  announceQueued()
 }
 
 export async function getAllQueued(): Promise<QueueItem[]> {

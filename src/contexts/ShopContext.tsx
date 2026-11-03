@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 import { getSession, subscribe, switchToShop, refreshShops } from "@/lib/deviceSession";
+import { onSynced } from "@/lib/syncEngine";
 import type { DeviceShop, ShopRole } from "@/lib/apiClient";
 import { setDatePrefs } from "@/lib/date-format";
 
@@ -43,17 +44,18 @@ export const ShopProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // Keep shop settings (investors config, currency, receipt…) in step with the
-  // web app: re-pull on mount, when the window regains focus, and every 60s.
+  // web app: re-pull on mount, then ride along with the background sync at most
+  // every 10 minutes. ⚠️ No timer of its own — a 60s poll kept the shared Neon
+  // database from ever suspending.
   useEffect(() => {
     if (!getSession()) return;
     refreshShops();
-    const onFocus = () => refreshShops();
-    window.addEventListener("focus", onFocus);
-    const id = setInterval(() => { if (document.hasFocus()) refreshShops(); }, 60_000);
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      clearInterval(id);
-    };
+    let last = Date.now();
+    return onSynced(() => {
+      if (Date.now() - last < 10 * 60_000) return;
+      last = Date.now();
+      void refreshShops();
+    });
   }, []);
 
   const setCurrentShopId = useCallback(async (id: string) => {
