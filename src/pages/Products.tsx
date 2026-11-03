@@ -1,3 +1,5 @@
+import { BulkPriceDialog } from "@/components/BulkPriceDialog";
+import { applyBulkPrice, bulkPriceLabel, changesVariantPrices, type BulkPriceOp } from "@/lib/bulk-price";
 import { purchaseCosts, costBaseFor } from "@/lib/purchase-costs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatQty } from "@/lib/format";
@@ -10,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Search, Edit2, Trash2, ScanBarcode, Package as PackageIcon, Printer, RefreshCw, Eye, Layers, Upload, ArrowUpDown, MapPin } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, ScanBarcode, Package as PackageIcon, Printer, RefreshCw, Eye, Layers, Upload, ArrowUpDown, MapPin, Archive, ArchiveRestore, BadgeDollarSign } from "lucide-react";
 import { ImportProductsDialog } from "@/components/ImportProductsDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
@@ -38,6 +40,11 @@ import { BrandSelect, type BrandDto } from "@/components/BrandSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { rpc } from "@/lib/apiClient";
 import { isOil } from "@/lib/oil";
+import { isCafe } from "@/lib/cafe";
+import { averageCostsWithRecipes } from "@/lib/pnl";
+import { productionCostLinesOf } from "@/lib/production";
+import { bookFromRows, recipeModeOf } from "@/lib/recipe";
+import { emptyRecipe, recipeForSave, type RecipeDraft, type RecipeIngredient } from "@/components/RecipeBuilder";
 import { v4 as uuid } from "uuid";
 import { useAddNew } from "@/hooks/useAddNew";
 import { useLocalStore } from "@/hooks/useLocalStore";
@@ -88,10 +95,27 @@ interface Product {
   created_at?: string;
   is_service?: boolean;
   is_lab_test?: boolean;
+  /** "Sold at the till" (cafe shops). Missing on rows synced before it existed = on. */
+  is_sellable?: boolean;
+  /** Recipe mode and yield, straight off the synced row (yield is Decimal text). */
+  recipe_mode?: string | null;
+  recipe_yield?: number | string | null;
   product_variants?: Variant[];
 }
 
+/** A synced product_recipe_lines row. */
+interface LocalRecipeLine {
+  id: string;
+  product_id: string;
+  ingredient_id: string;
+  quantity: number | string;
+  unit: string;
+  sort_order?: number;
+}
+
 interface EditingProduct extends Partial<Product> {
+  /** The recipe, held as typed strings while the form is open (cafe shops). */
+  recipe?: RecipeDraft;
   variants?: Variant[];
   hasVariants?: boolean;
   /** Alternate sale units, held as typed strings while the form is open. */
@@ -212,6 +236,39 @@ export default function Products() {
   const { data: costPurchases } = useLocalStore<{ id: string; created_at: string }>("purchases", currentShop?.id);
   /** A shelf id, "__none__" for products on no shelf yet, or null for all. */
   const [shelfFilter, setShelfFilter] = useState<string | null>(null);
+  /** The list shows active products, or — switched — only the archived ones. */
+  const [showArchived, setShowArchived] = useState(false);
+  /** Bulk "Change price" dialog for the selected products. */
+  const [priceOpen, setPriceOpen] = useState(false);
+
+  /**
+   * Bulk price change, written to the offline store and queued like any product
+   * edit (so it works with no connection). Relative changes carry to variants'
+   * own prices — lib/bulk-price, the same rule as the web's bulkSetPricesAction.
+   */
+  const applyBulkPriceLocal = async (op: BulkPriceOp): Promise<boolean> => {
+    if (!currentShop) return false;
+    const now = new Date().toISOString();
+    const ids = new Set(sel.ids);
+    for (const p of items) {
+      if (!ids.has(p.id)) continue;
+      const { product_variants: _variants, ...row } = p as Product & { product_variants?: unknown };
+      await upsertLocal("products", { ...row, price: applyBulkPrice(Number(p.price), op), updated_at: now }, true);
+    }
+    if (changesVariantPrices(op)) {
+      const variants = await getAll<Record<string, unknown> & { id: string; product_id: string; price_override?: number | string | null }>("product_variants", currentShop.id);
+      for (const v of variants) {
+        if (!ids.has(v.product_id) || v.price_override == null || v.price_override === "") continue;
+        await upsertLocal("product_variants", { ...v, price_override: applyBulkPrice(Number(v.price_override), op), updated_at: now }, true);
+      }
+    }
+    notifyChange("products");
+    notifyChange("product_variants");
+    toast.success(`Changed the price of ${ids.size} product${ids.size === 1 ? "" : "s"} (${bulkPriceLabel(op, (n) => formatMoney(n, currentShop.currency ?? "PKR"))})`);
+    sel.clear();
+    load();
+    return true;
+  };
 
   // Categories & brands feed the filter dropdowns (online-only; the products
   // themselves keep working offline).
@@ -239,6 +296,24 @@ export default function Products() {
     return raw == null || Number.isNaN(Number(raw)) ? null : Number(raw);
   }, [editingId, items]);
 
+  // Cafe shops: what a recipe can be made from, costed from the local purchase
+  // lines — the same average landed cost the P&L uses, so it works offline.
+  const cafe = isCafe(currentShop);
+  const { data: productionRuns } = useLocalStore<{ id: string; product_id: string; quantity: number | string; total_cost: number | string }>("production_runs", currentShop?.id);
+  const { data: recipeLineRows } = useLocalStore<LocalRecipeLine>("product_recipe_lines", currentShop?.id);
+  const recipeIngredients = useMemo<RecipeIngredient[] | undefined>(() => {
+    if (!cafe) return undefined;
+    // Purchases, batches and recipes — the P&L's own cost basis (lib/pnl).
+    const avg = averageCostsWithRecipes(
+      [...costLines.map((l) => ({ ...l, variant_id: null })), ...productionCostLinesOf(productionRuns)],
+      bookFromRows(items, recipeLineRows),
+    );
+    return items
+      .filter((p) => !p.is_service)
+      .map((p) => ({ id: p.id, name: p.name, unit: p.unit, cost: avg.get(p.id) ?? null, is_active: p.is_active !== false }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [cafe, items, costLines, productionRuns, recipeLineRows]);
+
   const startEdit = (p: Product) => {
     const variants = (p.product_variants ?? []).map((v) => ({ ...v }));
     setEditing({
@@ -263,6 +338,23 @@ export default function Products() {
         setEditing((e) => (e && e.id === p.id ? { ...e, sale_units: mine } : e));
       })
       .catch(() => { /* nothing synced yet — the builder opens empty */ });
+    // Recipes are synced too, so the form fills offline.
+    const mode = recipeModeOf(p.recipe_mode);
+    if (cafe && mode) {
+      getAll<LocalRecipeLine>("product_recipe_lines", currentShop.id)
+        .then((rows) => {
+          const recipe: RecipeDraft = {
+            mode,
+            yield: String(Number(p.recipe_yield ?? 1) || 1),
+            lines: rows
+              .filter((l) => l.product_id === p.id)
+              .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+              .map((l) => ({ ingredient_id: l.ingredient_id, quantity: String(Number(l.quantity)), unit: l.unit })),
+          };
+          setEditing((e) => (e && e.id === p.id ? { ...e, recipe } : e));
+        })
+        .catch(() => { /* nothing synced yet */ });
+    }
     // Factors aren't part of the offline catalog, so fetch them for the form.
     // (Without this the builder would open empty and wipe them on save.)
     if ((p as { is_lab_test?: boolean }).is_lab_test) {
@@ -303,6 +395,13 @@ export default function Products() {
       }
     }
 
+    // Cafe shops save the recipe after the product; check it first so a bad
+    // recipe doesn't leave a half-saved product behind.
+    const recipe = cafe && !(editing as { is_service?: boolean }).is_service
+      ? recipeForSave(editing.recipe ?? emptyRecipe())
+      : undefined;
+    if (recipe && "error" in recipe) return toast.error(recipe.error);
+
     const sku = (editing.sku?.trim()) || generateSku(name);
     const barcode = editing.barcode?.trim() || generateBarcode();
     const now = new Date().toISOString();
@@ -326,6 +425,8 @@ export default function Products() {
       brand: editing.brand ?? null,
       brand_id: editing.brand_id ?? null,
       price: Number(editing.price) || 0,
+      // "Sold at the till" — a plain column, so it rides the product row offline.
+      ...(cafe ? { is_sellable: editing.is_sellable !== false } : {}),
       // Only markup shops write it, so nobody else's saved % is touched.
       ...(currentShop.price_by_markup
         ? {
@@ -431,6 +532,23 @@ export default function Products() {
       }
     }
 
+    // The recipe is checked and saved by the server (ingredients, units, cycles);
+    // the product has to reach it first, hence syncNow.
+    if (recipe && !("error" in recipe)) {
+      const hadRecipe = !!recipeModeOf(editing.recipe_mode);
+      if (recipe.mode || hadRecipe) {
+        try {
+          await syncNow();
+          const res = await rpc<{ ok: boolean; error?: string }>("saveProductRecipeAction", {
+            product_id: productId, mode: recipe.mode, yield: recipe.yield, lines: recipe.lines,
+          });
+          if (!res.ok) toast.warning(res.error ?? "The recipe could not be saved");
+        } catch {
+          toast.warning("Saved, but the recipe needs a connection — reopen this product once online.");
+        }
+      }
+    }
+
     const labParams = (editing as { lab_parameters?: { name: string; unit?: string | null; normal_range?: string | null }[] }).lab_parameters;
     if ((editing as { is_lab_test?: boolean }).is_lab_test && labParams) {
       try {
@@ -447,6 +565,56 @@ export default function Products() {
     load();
   };
 
+  /**
+   * Archive (or restore) products. Archived = `is_active: false`, which the
+   * till, purchase picker, alerts and reports already skip. Written to the
+   * local row and queued, so it works offline like any other product edit.
+   */
+  const setArchived = async (ids: string[], archived: boolean) => {
+    const now = new Date().toISOString();
+    for (const id of ids) {
+      const prod = items.find((p) => p.id === id);
+      if (!prod) continue;
+      const { product_variants: _variants, ...row } = prod as Product & { product_variants?: unknown };
+      await upsertLocal("products", { ...row, is_active: !archived, updated_at: now }, true);
+    }
+    notifyChange("products");
+    toast.success(`${archived ? "Archived" : "Restored"} ${ids.length} product${ids.length === 1 ? "" : "s"}`);
+    sel.clear();
+    load();
+  };
+
+  /**
+   * Products already sold, bought or returned can't be deleted — their bills
+   * would lose the line's product. Mirrors the server's rule (lib/archive on
+   * the web), which also archives instead if a delete reaches it anyway.
+   */
+  const withHistory = async (ids: string[]): Promise<string[]> => {
+    if (!currentShop) return [];
+    const wanted = new Set(ids);
+    const used = new Set<string>();
+    for (const table of ["sale_items", "purchase_items", "sale_return_items"]) {
+      const rows = await getAll<{ product_id?: string | null }>(table, currentShop.id);
+      for (const r of rows) if (r.product_id && wanted.has(r.product_id)) used.add(r.product_id);
+    }
+    return [...used];
+  };
+
+  /** Delete refused — offer Archive instead. Returns true when it handled the ids. */
+  const refuseIfUsed = async (ids: string[]): Promise<boolean> => {
+    const used = await withHistory(ids);
+    if (!used.length) return false;
+    const names = used.map((id) => items.find((p) => p.id === id)?.name ?? "").filter(Boolean);
+    const shown = names.slice(0, 3).join(", ") + (names.length > 3 ? ` and ${names.length - 3} more` : "");
+    const ok = await confirm({
+      title: "Archive instead?",
+      description: `Can't delete ${shown}: ${names.length === 1 ? "it is" : "they are"} on past records. Archive instead — hidden, but history stays intact.`,
+      confirmLabel: "Archive",
+    });
+    if (ok) await setArchived(used, true);
+    return true;
+  };
+
   const remove = async (id: string) => {
     const ok = await confirm({
       title: t("products.title"),
@@ -454,6 +622,7 @@ export default function Products() {
       variant: "destructive",
     });
     if (!ok) return;
+    if (await refuseIfUsed([id])) return;
     const prod = items.find((p) => p.id === id);
     const variantIds = (prod?.product_variants ?? []).map((v) => v.id).filter(Boolean) as string[];
     for (const vid of variantIds) await deleteLocal("product_variants", vid, true);
@@ -484,7 +653,9 @@ export default function Products() {
   // Filtering by a rack includes every shelf on it.
   const shelfIds = shelfFilter && shelfFilter !== "__none__" ? locationAndDescendants(shelfFilter, locations) : null;
 
+  const archivedCount = items.filter((p) => p.is_active === false).length;
   const filtered = items.filter((p) => {
+    if (showArchived !== (p.is_active === false)) return false;
     if (categoryIds && (!p.category_id || !categoryIds.has(p.category_id))) return false;
     if (brandFilter && p.brand_id !== brandFilter) return false;
     if (shelfFilter) {
@@ -560,6 +731,7 @@ export default function Products() {
     });
     if (!ok) return;
     const ids = sel.ids;
+    if (await refuseIfUsed(ids)) return;
     for (const id of ids) {
       const prod = items.find((p) => p.id === id);
       const variantIds = (prod?.product_variants ?? []).map((v) => v.id).filter(Boolean) as string[];
@@ -686,6 +858,12 @@ export default function Products() {
           </SelectContent>
         </Select>
         <Button variant="outline" onClick={() => { setScanTarget("lookup"); setScannerOpen(true); }} aria-label="Scan barcode"><ScanBarcode className="size-4" /></Button>
+        {(archivedCount > 0 || showArchived) && (
+          <Button variant={showArchived ? "secondary" : "ghost"} onClick={() => { setShowArchived((v) => !v); sel.clear(); }}>
+            <Archive className="size-4 me-1.5" />
+            {showArchived ? "Back to active" : `Archived (${archivedCount})`}
+          </Button>
+        )}
       </div>
 
       <BulkActionBar
@@ -694,6 +872,23 @@ export default function Products() {
         onExport={bulkExport}
         onDelete={canEdit ? bulkDelete : undefined}
         canDelete={canEdit}
+        onArchive={canEdit ? () => void setArchived(sel.ids, !showArchived) : undefined}
+        restoring={showArchived}
+        extra={canEdit && !showArchived ? (
+          <Button size="sm" variant="outline" onClick={() => setPriceOpen(true)}>
+            <BadgeDollarSign className="size-4 me-1.5" /> Change price
+          </Button>
+        ) : undefined}
+      />
+      <BulkPriceDialog
+        open={priceOpen}
+        products={items.filter((p) => sel.has(p.id)).map((p) => ({
+          id: p.id, name: p.name, price: Number(p.price),
+          has_variant_prices: (p.product_variants ?? []).some((v) => v.price_override != null),
+        }))}
+        onClose={() => setPriceOpen(false)}
+        formatMoney={(n) => formatMoney(n, currentShop?.currency ?? "PKR")}
+        onApply={applyBulkPriceLocal}
       />
 
       {(() => {
@@ -737,7 +932,7 @@ export default function Products() {
         ) : filtered.length === 0 ? (
           <div className="p-16 text-center">
             <PackageIcon className="size-12 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground">{t("products.empty")}</p>
+            <p className="text-muted-foreground">{showArchived ? "No archived products." : t("products.empty")}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -777,6 +972,17 @@ export default function Products() {
                       <td className="p-3">
                         <div className="font-medium flex items-center gap-2">
                           {p.name}
+                          {p.is_active === false && (
+                            <span className="text-[10px] uppercase tracking-wide border rounded px-1.5 py-0.5 text-muted-foreground">Archived</span>
+                          )}
+                          {cafe && p.is_sellable === false && (
+                            <span className="text-[10px] uppercase tracking-wide border rounded px-1.5 py-0.5 text-muted-foreground" title="Not offered at the till">Not sold</span>
+                          )}
+                          {cafe && recipeModeOf(p.recipe_mode) && (
+                            <span className="text-[10px] uppercase tracking-wide bg-primary/10 text-primary rounded px-1.5 py-0.5 font-semibold">
+                              {p.recipe_mode === "batch" ? "Batch recipe" : p.recipe_mode === "deal" ? "Deal" : "Made to order"}
+                            </span>
+                          )}
                           {variantsCount > 0 && (
                             <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide bg-accent/15 text-accent-foreground rounded px-1.5 py-0.5 font-semibold">
                               <Layers className="size-3" /> {t("products.variantsCount", { count: variantsCount })}
@@ -820,6 +1026,9 @@ export default function Products() {
                         {canEdit && (
                           <>
                             <Button variant="ghost" size="icon" onClick={() => startEdit(p)}><Edit2 className="size-4" /></Button>
+                            <Button variant="ghost" size="icon" title={p.is_active === false ? "Restore" : "Archive"} onClick={() => setArchived([p.id], p.is_active !== false)}>
+                              {p.is_active === false ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+                            </Button>
                             <Button variant="ghost" size="icon" onClick={() => remove(p.id)}><Trash2 className="size-4 text-destructive" /></Button>
                           </>
                         )}
@@ -851,6 +1060,8 @@ export default function Products() {
               locations={locations}
               purchaseCosts={editingCosts}
               savedCost={savedCost}
+              recipeIngredients={recipeIngredients}
+              productId={editing.id ?? null}
             />
           )}
           <DialogFooter>

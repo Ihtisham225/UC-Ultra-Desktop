@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Trash2, Wallet, Eye, Edit2, Tags } from "lucide-react";
+import { Plus, Trash2, Wallet, Eye, Edit2, Tags, Archive, ArchiveRestore } from "lucide-react";
 import { toast } from "sonner";
 import { DetailsDialog } from "@/components/DetailsDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -30,7 +30,7 @@ import { DateInput } from "@/components/DateInput";
 import { fmtDate } from "@/lib/date-format";
 
 
-interface Category { id: string; name: string; color: string; }
+interface Category { id: string; name: string; color: string; is_archived?: boolean; }
 interface Expense {
   id: string;
   amount: number;
@@ -285,6 +285,17 @@ export default function Expenses() {
     }
   };
 
+  const toggleCategoryArchived = async (c: Category) => {
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("setExpenseCategoryArchivedAction", c.id, !c.is_archived);
+      if (!res.ok) return toast.error(res.error ?? "Failed");
+      await loadCategories();
+      toast.success(c.is_archived ? "Category restored" : "Category archived");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    }
+  };
+
   const removeCategory = async (c: Category) => {
     const ok = await confirm({
       title: `Delete "${c.name}"?`,
@@ -320,7 +331,7 @@ export default function Expenses() {
             <DialogHeader><DialogTitle>Expense categories</DialogTitle></DialogHeader>
             <p className="text-sm text-muted-foreground">
               The headings your spending is filed under. A category that already has
-              expenses against it can be renamed, but not removed.
+              expenses against it can be renamed or archived (hidden from the form), but not removed.
             </p>
             <div className="flex items-center gap-2 py-1">
               <Input
@@ -355,12 +366,22 @@ export default function Expenses() {
                     </>
                   ) : (
                     <>
-                      <span className="flex-1 truncate text-sm">{c.name}</span>
+                      <span className={`flex-1 truncate text-sm ${c.is_archived ? "text-muted-foreground" : ""}`}>
+                        {c.name}
+                        {c.is_archived && <span className="ms-2 text-[10px] uppercase">Archived</span>}
+                      </span>
                       <Button
                         size="icon" variant="ghost"
                         onClick={() => { setCatEditId(c.id); setCatEditName(c.name); }}
                       >
                         <Edit2 className="size-4" />
+                      </Button>
+                      <Button
+                        size="icon" variant="ghost"
+                        title={c.is_archived ? "Restore" : "Archive"}
+                        onClick={() => void toggleCategoryArchived(c)}
+                      >
+                        {c.is_archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
                       </Button>
                       <Button size="icon" variant="ghost" onClick={() => void removeCategory(c)}>
                         <Trash2 className="size-4 text-destructive" />
@@ -394,7 +415,7 @@ export default function Expenses() {
                 <Select value={form.category_id} onValueChange={(v) => setForm({ ...form, category_id: v })}>
                   <SelectTrigger><SelectValue placeholder={t("expenses.pickCategory")} /></SelectTrigger>
                   <SelectContent>
-                    {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    {categories.filter((c) => !c.is_archived || c.id === form.category_id).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

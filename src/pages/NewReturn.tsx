@@ -61,7 +61,7 @@ export default function NewReturn() {
 
   // The optional Bill field searches the terminal's own copy of the bills.
   const { data: localSales } = useLocalStore<{ id: string; receipt_number: string | null; created_at: string; total: number | string; customer_id: string | null }>("sales", currentShop?.id);
-  const { data: localParties } = useLocalStore<{ id: string; name: string; phone: string | null; is_supplier?: boolean; is_maker?: boolean; is_processor?: boolean }>("suppliers", currentShop?.id);
+  const { data: localParties } = useLocalStore<{ id: string; name: string; phone: string | null; is_supplier?: boolean; is_maker?: boolean; is_processor?: boolean; is_archived?: boolean }>("suppliers", currentShop?.id);
   const searchBills = useCallback(async (query: string): Promise<ReturnBillOption[]> => {
     const byId = new Map(localParties.map((p) => [p.id, p]));
     const q = query.trim().toLowerCase();
@@ -138,13 +138,13 @@ export default function NewReturn() {
 function ReturnSupplierField({ onChange, chain, parties }: {
   onChange: (id: string | null) => void;
   chain: ChainProps;
-  parties: { id: string; name: string; phone: string | null; is_supplier?: boolean; is_maker?: boolean; is_processor?: boolean }[];
+  parties: { id: string; name: string; phone: string | null; is_supplier?: boolean; is_maker?: boolean; is_processor?: boolean; is_archived?: boolean }[];
 }) {
   const [id, setId] = useState("");
   const options = useMemo(
     () => parties
       .filter((p) => p.is_supplier || p.is_maker || p.is_processor)
-      .map((p) => ({ id: p.id, name: p.name, phone: p.phone }))
+      .map((p) => ({ id: p.id, name: p.name, phone: p.phone, is_archived: p.is_archived }))
       .sort((a, b) => a.name.localeCompare(b.name)),
     [parties],
   );

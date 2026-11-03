@@ -1,3 +1,5 @@
+import { productionCostLinesOf } from "@/lib/production";
+import { bookFromRows } from "@/lib/recipe";
 import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -77,6 +79,9 @@ export default function Dashboard() {
   const { data: allExpenses } = useLocalStore<any>("expenses", currentShop?.id);
   const { data: allPurchases } = useLocalStore<any>("purchases", currentShop?.id);
   const { data: allPurchaseItems } = useLocalStore<any>("purchase_items", currentShop?.id);
+  // Cafe: batches are cost lines, recipes cost made-to-order items (lib/pnl).
+  const { data: allProductionRuns } = useLocalStore<any>("production_runs", currentShop?.id);
+  const { data: allRecipeLines } = useLocalStore<any>("product_recipe_lines", currentShop?.id);
   // The khata, for the credit tile. Synced locally, so it reads offline too.
   const { data: allDebts } = useLocalStore<any>("debts", currentShop?.id);
   // Today's money by instrument: settlements, tenders and refunds. The
@@ -157,7 +162,8 @@ export default function Dashboard() {
         .filter((s: any) => todaySaleIds.has(s.id))
         .map((s: any) => ({ subtotal: s.subtotal, tax: s.tax, total: s.total, items: itemsBySale.get(s.id) ?? [] })),
       returns: todayReturns.map((r: any) => ({ total_refund: r.total_refund, items: itemsByReturn.get(r.id) ?? [] })),
-      purchaseItems: allPurchaseItems,
+      purchaseItems: [...allPurchaseItems, ...productionCostLinesOf(allProductionRuns)],
+      recipes: bookFromRows(allProducts, allRecipeLines),
       expenses: 0,
     });
 

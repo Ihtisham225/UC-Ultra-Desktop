@@ -103,7 +103,7 @@ export default function Purchases() {
   // one party table holds customers too, so an unfiltered list would offer
   // every customer as a seller.
   const { data: allParties } = useLocalStore<Supplier & {
-    is_supplier?: boolean; is_maker?: boolean; is_processor?: boolean;
+    is_supplier?: boolean; is_maker?: boolean; is_processor?: boolean; is_archived?: boolean;
   }>("suppliers", currentShop?.id);
   const suppliers = useMemo(
     () => allParties

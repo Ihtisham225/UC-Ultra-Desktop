@@ -1343,7 +1343,9 @@ export default function Debts() {
                     />
                   </div>
                   <div className="flex justify-end">
-                    <Button onClick={savePayment} disabled={paymentSaving} className="w-full sm:w-auto">
+                    {/* data-enter-submit: this sits outside the dialog's footer, so without it
+                        Enter on the last box (notes) found nothing to press. */}
+                    <Button onClick={savePayment} disabled={paymentSaving} className="w-full sm:w-auto" data-enter-submit>
                       {paymentSaving ? "Saving…" : paymentForm.kind === "payment" ? "Record payment" : "Add debt"}
                     </Button>
                   </div>

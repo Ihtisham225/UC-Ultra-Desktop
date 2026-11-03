@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Truck, Trash2, Search, Eye, Edit2 } from "lucide-react";
+import { Plus, Truck, Trash2, Search, Eye, Edit2, Archive, ArchiveRestore } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -50,6 +50,8 @@ interface Supplier {
   city?: string | null;
   opening_balance?: number;
   custom_fields?: PartyFieldValues;
+  /** Hidden from pickers; still on every record that names them. */
+  is_archived?: boolean;
 }
 
 export default function Suppliers() {
@@ -68,6 +70,8 @@ export default function Suppliers() {
   // Handicraft shops read this page as a khata of what each party is owed.
   const [balances, setBalances] = useState<Record<string, PartyBalance>>({});
   const [roleTab, setRoleTab] = useState<"all" | "supplier" | "maker" | "processor" | "customer">("all");
+  /** Show only the archived parties instead of the active ones. */
+  const [showArchived, setShowArchived] = useState(false);
 
   const canManage = perms.canManageSuppliers;
   const craft = isHandicraft(currentShop);
@@ -81,6 +85,8 @@ export default function Suppliers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
+  const archivedCount = items.filter((s) => s.is_archived).length;
+
   const byRole = useMemo(() => {
     if (!craft || roleTab === "all") return items;
     if (roleTab === "supplier") return items.filter(isMaterialSupplier);
@@ -91,14 +97,15 @@ export default function Suppliers() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return byRole;
-    return byRole.filter((s) =>
+    const shown = byRole.filter((s) => !!s.is_archived === showArchived);
+    if (!q) return shown;
+    return shown.filter((s) =>
       s.name.toLowerCase().includes(q) ||
       (s.phone ?? "").toLowerCase().includes(q) ||
       (s.email ?? "").toLowerCase().includes(q) ||
       (s.city ?? "").toLowerCase().includes(q)
     );
-  }, [byRole, search]);
+  }, [byRole, search, showArchived]);
 
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(
     filtered,
@@ -172,6 +179,28 @@ export default function Suppliers() {
     void syncNow().catch(() => { /* offline: the next sync catches up */ });
   };
 
+  // Archiving goes through the server (the party table is shared by both
+  // lists); the rpc's own sync brings the flag down to the local store.
+  const setArchived = async (ids: string[], archived: boolean) => {
+    let res: { ok: boolean; count?: number; error?: string };
+    try {
+      res = await rpc<{ ok: boolean; count?: number; error?: string }>("setPartiesArchivedAction", ids, archived);
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("common.error"));
+    }
+    if (!res.ok) return toast.error(res.error ?? t("common.error"));
+    const n = res.count ?? ids.length;
+    toast.success(`${archived ? "Archived" : "Restored"} ${n} supplier${n === 1 ? "" : "s"}`);
+    sel.clear();
+    load();
+  };
+
+  /** Delete refused because they're on past records — offer Archive. */
+  const offerArchive = async (ids: string[], error: string) => {
+    const ok = await confirm({ title: "Archive instead?", description: error, confirmLabel: "Archive" });
+    if (ok) await setArchived(ids, true);
+  };
+
   const remove = async (id: string) => {
     const ok = await confirm({
       title: t("suppliers.title"),
@@ -179,11 +208,14 @@ export default function Suppliers() {
       variant: "destructive",
     });
     if (!ok) return;
+    // ⚠️ A refused delete comes back as { ok: false }, not a throw.
+    let res: { ok: boolean; error?: string };
     try {
-      await rpc("deleteSuppliersAction", [id]);
+      res = await rpc<{ ok: boolean; error?: string }>("deleteSuppliersAction", [id]);
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : t("common.error"));
     }
+    if (!res.ok) return void offerArchive([id], res.error ?? t("common.error"));
     load();
   };
 
@@ -197,11 +229,14 @@ export default function Suppliers() {
       variant: "destructive",
     });
     if (!ok) return;
+    // ⚠️ A refused delete comes back as { ok: false }, not a throw.
+    let res: { ok: boolean; error?: string };
     try {
-      await rpc("deleteSuppliersAction", sel.ids);
+      res = await rpc<{ ok: boolean; error?: string }>("deleteSuppliersAction", sel.ids);
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : t("common.error"));
     }
+    if (!res.ok) return void offerArchive(sel.ids, res.error ?? t("common.error"));
     toast.success(t("bulk.deleted", { count: sel.count }));
     sel.clear();
     load();
@@ -272,12 +307,23 @@ export default function Suppliers() {
         />
       </div>
 
+      {(archivedCount > 0 || showArchived) && (
+        <div className="flex justify-end -mt-3">
+          <Button size="sm" variant={showArchived ? "secondary" : "ghost"} onClick={() => { setShowArchived((v) => !v); sel.clear(); }}>
+            <Archive className="size-4 me-1.5" />
+            {showArchived ? "Back to active" : `Archived (${archivedCount})`}
+          </Button>
+        </div>
+      )}
+
       <BulkActionBar
         selectedCount={sel.count}
         onClear={sel.clear}
         onExport={bulkExport}
         onDelete={canManage ? bulkDelete : undefined}
         canDelete={canManage}
+        onArchive={canManage ? () => void setArchived(sel.ids, !showArchived) : undefined}
+        restoring={showArchived}
       />
 
       <Card className="shadow-card overflow-hidden">
@@ -310,6 +356,7 @@ export default function Suppliers() {
                   <button className="flex-1 text-start min-w-0" onClick={() => setDetails(s)}>
                     <div className="font-medium flex items-center gap-2">
                       {s.name}
+                      {s.is_archived && <span className="text-[10px] uppercase border rounded px-1.5 py-0.5 text-muted-foreground">Archived</span>}
                       {craft && (
                         <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold">
                           {partyRoleLabel(s)}
@@ -333,6 +380,11 @@ export default function Suppliers() {
                   <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(s)}><Eye className="size-4" /></Button>
                   {canManage && (
                     <Button variant="ghost" size="icon" title={t("common.edit")} onClick={() => setEditing(s)}><Edit2 className="size-4" /></Button>
+                  )}
+                  {canManage && (
+                    <Button variant="ghost" size="icon" title={s.is_archived ? "Restore" : "Archive"} onClick={() => setArchived([s.id], !s.is_archived)}>
+                      {s.is_archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+                    </Button>
                   )}
                   {canManage && (
                     <Button variant="ghost" size="icon" onClick={() => remove(s.id)}><Trash2 className="size-4 text-destructive" /></Button>

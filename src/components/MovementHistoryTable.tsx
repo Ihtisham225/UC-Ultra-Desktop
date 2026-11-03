@@ -18,6 +18,8 @@ type MovementType =
   | "sale_edit" | "purchase_edit"
   | "return" | "return_delete"
   | "supplier_return" | "supplier_return_delete"
+  | "production" | "production_delete"
+  | "write_off" | "write_off_delete"
   | "adjustment" | "initial";
 
 interface Movement {
@@ -52,6 +54,10 @@ const TYPE_LABEL: Record<MovementType, string> = {
   return_delete: "Customer return deleted",
   supplier_return: "Return to supplier",
   supplier_return_delete: "Supplier return deleted",
+  production: "Batch made",
+  production_delete: "Batch deleted",
+  write_off: "Used / wasted",
+  write_off_delete: "Write-off deleted",
   adjustment: "Adjustment",
   initial: "Initial",
 };
@@ -67,6 +73,10 @@ const TYPE_VARIANT: Record<MovementType, "default" | "secondary" | "destructive"
   return_delete: "outline",
   supplier_return: "secondary",
   supplier_return_delete: "outline",
+  production: "default",
+  production_delete: "outline",
+  write_off: "destructive",
+  write_off_delete: "outline",
   adjustment: "secondary",
   initial: "outline",
 };

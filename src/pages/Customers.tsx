@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Users as UsersIcon, Trash2, Search, Eye, Edit2 } from "lucide-react";
+import { Plus, Users as UsersIcon, Trash2, Search, Eye, Edit2, Archive, ArchiveRestore } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { DetailsDialog } from "@/components/DetailsDialog";
@@ -28,7 +28,7 @@ import { downloadCsv } from "@/lib/csv";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useAddNew } from "@/hooks/useAddNew";
 
-interface Customer { id: string; name: string; phone: string | null; email: string | null; notes: string | null; is_supplier?: boolean; custom_fields?: PartyFieldValues; }
+interface Customer { id: string; name: string; phone: string | null; email: string | null; notes: string | null; is_supplier?: boolean; custom_fields?: PartyFieldValues; is_archived?: boolean; }
 
 export default function Customers() {
   usePageMeta({ title: "Customers — UCU", description: "Manage customer profiles, contact details and purchase history.", path: "/customers" });
@@ -57,6 +57,9 @@ export default function Customers() {
   const sel = useRowSelection();
 
   const canDelete = role === "owner" || role === "manager";
+  /** Show only the archived customers instead of the active ones. */
+  const [showArchived, setShowArchived] = useState(false);
+  const archivedCount = items.filter((c) => c.is_archived).length;
 
   useEffect(() => { document.title = "UCU"; }, []);
 
@@ -68,13 +71,14 @@ export default function Customers() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((c) =>
+    const shown = items.filter((c) => !!c.is_archived === showArchived);
+    if (!q) return shown;
+    return shown.filter((c) =>
       c.name.toLowerCase().includes(q) ||
       (c.phone ?? "").toLowerCase().includes(q) ||
       (c.email ?? "").toLowerCase().includes(q)
     );
-  }, [items, search]);
+  }, [items, search, showArchived]);
 
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(
     filtered,
@@ -133,6 +137,28 @@ export default function Customers() {
     void syncNow().catch(() => { /* offline: the next sync catches up */ });
   };
 
+  // Archiving goes through the server (the party table is shared by both
+  // lists); the rpc's own sync brings the flag down to the local store.
+  const setArchived = async (ids: string[], archived: boolean) => {
+    let res: { ok: boolean; count?: number; error?: string };
+    try {
+      res = await rpc<{ ok: boolean; count?: number; error?: string }>("setPartiesArchivedAction", ids, archived);
+    } catch (e) {
+      return toast.error(e instanceof Error ? e.message : t("common.error"));
+    }
+    if (!res.ok) return toast.error(res.error ?? t("common.error"));
+    const n = res.count ?? ids.length;
+    toast.success(`${archived ? "Archived" : "Restored"} ${n} customer${n === 1 ? "" : "s"}`);
+    sel.clear();
+    load();
+  };
+
+  /** Delete refused because they're on past records — offer Archive. */
+  const offerArchive = async (ids: string[], error: string) => {
+    const ok = await confirm({ title: "Archive instead?", description: error, confirmLabel: "Archive" });
+    if (ok) await setArchived(ids, true);
+  };
+
   const remove = async (id: string) => {
     const ok = await confirm({
       title: t("customers.title"),
@@ -140,11 +166,14 @@ export default function Customers() {
       variant: "destructive",
     });
     if (!ok) return;
+    // ⚠️ A refused delete comes back as { ok: false }, not a throw.
+    let res: { ok: boolean; error?: string };
     try {
-      await rpc("deleteCustomersAction", [id]);
+      res = await rpc<{ ok: boolean; error?: string }>("deleteCustomersAction", [id]);
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : t("common.error"));
     }
+    if (!res.ok) return void offerArchive([id], res.error ?? t("common.error"));
     load();
   };
 
@@ -158,11 +187,14 @@ export default function Customers() {
       variant: "destructive",
     });
     if (!ok) return;
+    // ⚠️ A refused delete comes back as { ok: false }, not a throw.
+    let res: { ok: boolean; error?: string };
     try {
-      await rpc("deleteCustomersAction", sel.ids);
+      res = await rpc<{ ok: boolean; error?: string }>("deleteCustomersAction", sel.ids);
     } catch (e) {
       return toast.error(e instanceof Error ? e.message : t("common.error"));
     }
+    if (!res.ok) return void offerArchive(sel.ids, res.error ?? t("common.error"));
     toast.success(t("bulk.deleted", { count: sel.count }));
     sel.clear();
     load();
@@ -205,12 +237,23 @@ export default function Customers() {
         />
       </div>
 
+      {(archivedCount > 0 || showArchived) && (
+        <div className="flex justify-end -mt-3">
+          <Button size="sm" variant={showArchived ? "secondary" : "ghost"} onClick={() => { setShowArchived((v) => !v); sel.clear(); }}>
+            <Archive className="size-4 me-1.5" />
+            {showArchived ? "Back to active" : `Archived (${archivedCount})`}
+          </Button>
+        </div>
+      )}
+
       <BulkActionBar
         selectedCount={sel.count}
         onClear={sel.clear}
         onExport={bulkExport}
         onDelete={canDelete ? bulkDelete : undefined}
         canDelete={canDelete}
+        onArchive={canDelete ? () => void setArchived(sel.ids, !showArchived) : undefined}
+        restoring={showArchived}
       />
 
       <Card className="shadow-card overflow-hidden">
@@ -241,11 +284,16 @@ export default function Customers() {
                     aria-label={`select ${c.name}`}
                   />
                   <button className="flex-1 text-start min-w-0" onClick={() => setDetails(c)}>
-                    <div className="font-medium">{c.name}</div>
+                    <div className="font-medium flex items-center gap-2">{c.name}{c.is_archived && <span className="text-[10px] uppercase border rounded px-1.5 py-0.5 text-muted-foreground">Archived</span>}</div>
                     <div className="text-xs text-muted-foreground">{c.phone || c.email || "—"}</div>
                   </button>
                   <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(c)}><Eye className="size-4" /></Button>
                   <Button variant="ghost" size="icon" title={t("common.edit")} onClick={() => setEditing(c)}><Edit2 className="size-4" /></Button>
+                  {canDelete && (
+                    <Button variant="ghost" size="icon" title={c.is_archived ? "Restore" : "Archive"} onClick={() => setArchived([c.id], !c.is_archived)}>
+                      {c.is_archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+                    </Button>
+                  )}
                   {canDelete && (
                     <Button variant="ghost" size="icon" onClick={() => remove(c.id)}><Trash2 className="size-4 text-destructive" /></Button>
                   )}

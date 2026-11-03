@@ -17,13 +17,16 @@
  * − Cost of goods sold       what the goods sold cost to buy (average landed
  *                            cost × qty), less the cost of goods returned
  * = GROSS PROFIT             profit on the goods alone
- * − Expenses, salaries, asset depreciation (± gain/loss on assets sold)
+ * − Expenses, salaries, asset depreciation (± gain/loss on assets sold),
+ *   stock used in the shop and stock wasted (cafe write-offs, at cost)
  * = NET PROFIT               what is left after running the shop
  *
  * Pure: no React, no server, no dates — the caller passes rows already
  * narrowed to the period (purchase items are ALL of them: the average cost is
  * worked out over every purchase ever made of a product).
  */
+
+import { expandMadeToOrder, soldFromIngredients, type RecipeBook } from "./recipe";
 
 type Num = number | string | null | undefined;
 const n = (v: Num) => {
@@ -46,8 +49,19 @@ export interface PnlInput {
   depreciation?: number;
   /** Gain (or, below zero, loss) on fixed assets sold or written off. */
   assetGain?: number;
+  /** Stock taken for the shop's own use in the period (cups, bags, cleaning), at cost. */
+  shopUse?: number;
+  /** Stock wasted in the period (spilt, expired, burnt), at cost. */
+  wastage?: number;
   /** Services (lab tests, labour) cost nothing by design — never "uncosted". */
   serviceIds?: ReadonlySet<string>;
+  /**
+   * Cafe recipes. A made-to-order item (chai, fried samosa) is never bought,
+   * so it is costed from its ingredients' average cost instead. Batch-made
+   * items need nothing here: their production runs arrive as cost lines in
+   * `purchaseItems`, exactly like a purchase.
+   */
+  recipes?: RecipeBook;
 }
 
 export interface Pnl {
@@ -70,7 +84,9 @@ export interface Pnl {
   payroll: number;
   depreciation: number;
   assetGain: number;
-  /** Expenses + salaries + depreciation. */
+  shopUse: number;
+  wastage: number;
+  /** Expenses + salaries + depreciation + stock used in the shop + wastage. */
   overheads: number;
   netProfit: number;
   /** Lines sold whose product was never bought through the app: their cost
@@ -97,8 +113,34 @@ export function averageCosts(purchaseItems: PnlInput["purchaseItems"]): Map<stri
   return avg;
 }
 
+/**
+ * Average cost per product, plus a cost for every made-to-order item from its
+ * recipe (ingredients at their own average cost; one made to order inside
+ * another is expanded). An item whose ingredients were never bought stays
+ * uncosted rather than counting as free.
+ */
+export function averageCostsWithRecipes(purchaseItems: PnlInput["purchaseItems"], book?: RecipeBook): Map<string, number> {
+  const avg = averageCosts(purchaseItems);
+  if (!book) return avg;
+  for (const [id, r] of book.recipes) {
+    if (!soldFromIngredients(r.mode) || avg.has(id)) continue;
+    // Expanded for a hundred and divided back, so a pinch isn't rounded away.
+    const e = expandMadeToOrder(book, id, 100);
+    if (!e) continue;
+    let cost = 0, known = 0;
+    for (const u of e.uses) {
+      const c = avg.get(u.ingredient_id);
+      if (c === undefined) continue;
+      cost += u.quantity * c;
+      known++;
+    }
+    if (known > 0) avg.set(id, cost / 100);
+  }
+  return avg;
+}
+
 export function computePnl(input: PnlInput): Pnl {
-  const avg = averageCosts(input.purchaseItems);
+  const avg = averageCostsWithRecipes(input.purchaseItems, input.recipes);
   let salesBeforeDiscount = 0, billed = 0, tax = 0, cogsSold = 0;
   const uncosted = { lines: 0, salesValue: 0 };
   for (const s of input.sales) {
@@ -135,7 +177,9 @@ export function computePnl(input: PnlInput): Pnl {
   const payroll = input.payroll ?? 0;
   const depreciation = input.depreciation ?? 0;
   const assetGain = input.assetGain ?? 0;
-  const overheads = input.expenses + payroll + depreciation;
+  const shopUse = input.shopUse ?? 0;
+  const wastage = input.wastage ?? 0;
+  const overheads = input.expenses + payroll + depreciation + shopUse + wastage;
   return {
     salesBeforeDiscount: r2(salesBeforeDiscount),
     discounts: r2(discounts),
@@ -153,6 +197,8 @@ export function computePnl(input: PnlInput): Pnl {
     payroll: r2(payroll),
     depreciation: r2(depreciation),
     assetGain: r2(assetGain),
+    shopUse: r2(shopUse),
+    wastage: r2(wastage),
     overheads: r2(overheads),
     netProfit: r2(grossProfit - overheads + assetGain),
     uncosted: { lines: uncosted.lines, salesValue: r2(uncosted.salesValue) },
@@ -176,6 +222,8 @@ export function pnlStatement(p: Pnl): { label: string; value: number; strong?: b
     { label: "Total expenses", value: -p.expenses },
     ...(p.payroll ? [{ label: "Salaries & wages", value: -p.payroll }] : []),
     ...(p.depreciation ? [{ label: "Depreciation of assets", value: -p.depreciation }] : []),
+    ...(p.shopUse ? [{ label: "Stock used in the shop", value: -p.shopUse }] : []),
+    ...(p.wastage ? [{ label: "Wastage", value: -p.wastage }] : []),
     ...(p.assetGain ? [{ label: p.assetGain > 0 ? "Gain on assets sold" : "Loss on assets sold / written off", value: p.assetGain }] : []),
     { label: "Net profit", value: p.netProfit, strong: true },
   ];

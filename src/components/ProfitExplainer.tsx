@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import { ChevronDown, HelpCircle, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -59,7 +57,7 @@ export function ProfitExplainer({ pnl, format, defaultOpen = false }: {
     {
       term: "Expenses & salaries",
       what: "The cost of running the shop in this period: the expenses you recorded, salaries and wages paid, and the part of your fixed assets (fridge, computer…) used up.",
-      sum: `${m(pnl.expenses)} expenses + ${m(pnl.payroll)} salaries + ${m(pnl.depreciation)} depreciation = ${m(pnl.overheads)}`,
+      sum: `${m(pnl.expenses)} expenses + ${m(pnl.payroll)} salaries + ${m(pnl.depreciation)} depreciation${pnl.shopUse ? ` + ${m(pnl.shopUse)} used in the shop` : ""}${pnl.wastage ? ` + ${m(pnl.wastage)} wastage` : ""} = ${m(pnl.overheads)}`,
     },
     {
       term: "Net profit",

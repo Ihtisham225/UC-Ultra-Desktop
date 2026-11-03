@@ -1,3 +1,6 @@
+import { writeOffTotals } from "@/lib/write-offs";
+import { productionCostLinesOf } from "@/lib/production";
+import { bookFromRows, type RecipeBook } from "@/lib/recipe";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getAll } from "@/lib/localDb";
@@ -12,7 +15,7 @@ import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format, subDays, startOfDay, eachDayOfInterval } from "date-fns";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { computePnl } from "@/lib/pnl";
+import { averageCostsWithRecipes, computePnl } from "@/lib/pnl";
 import { ProfitExplainer } from "@/components/ProfitExplainer";
 
 type Range = 7 | 30 | 90;
@@ -36,7 +39,7 @@ export default function Analytics() {
   /** Weighted average cost per product_id or variant_id, derived from all purchase_items. */
   const [avgCost, setAvgCost] = useState<Map<string, number>>(new Map());
   const [customerCount, setCustomerCount] = useState(0);
-  const [pnlExtra, setPnlExtra] = useState<{ returns: any[]; purchaseItems: any[]; serviceIds: Set<string> }>({
+  const [pnlExtra, setPnlExtra] = useState<{ returns: any[]; purchaseItems: any[]; serviceIds: Set<string>; recipes?: RecipeBook; writeOffs?: { shopUse: number; wastage: number } }>({
     returns: [], purchaseItems: [], serviceIds: new Set(),
   });
 
@@ -49,7 +52,7 @@ export default function Analytics() {
       const since = startOfDay(subDays(new Date(), range)).toISOString();
       const shopId = currentShop.id;
       // Read from the local sync store — offline-capable, all these tables sync.
-      const [allSales, allSaleItems, allProducts, allExpenses, allCustomers, allPurchaseItems, allReturns, allReturnItems] = await Promise.all([
+      const [allSales, allSaleItems, allProducts, allExpenses, allCustomers, allPurchaseItems, allReturns, allReturnItems, runs, recipeLines, writeOffRows] = await Promise.all([
         getAll<any>("sales", shopId),
         getAll<any>("sale_items", shopId),
         getAll<any>("products", shopId),
@@ -58,6 +61,11 @@ export default function Analytics() {
         getAll<any>("purchase_items", shopId),
         getAll<any>("sale_returns", shopId),
         getAll<any>("sale_return_items", shopId),
+        // Cafe: batches are cost lines, recipes cost made-to-order items (lib/pnl).
+        getAll<any>("production_runs", shopId),
+        getAll<any>("product_recipe_lines", shopId),
+        // Used in the shop / wasted — their own P&L lines.
+        getAll<any>("stock_write_offs", shopId),
       ]);
       // Returns in the range take their refund off sales and their goods' cost
       // off COGS (lib/pnl).
@@ -71,8 +79,16 @@ export default function Analytics() {
         returns: allReturns
           .filter((r) => r.created_at >= since)
           .map((r) => ({ total_refund: r.total_refund, items: itemsByReturn.get(r.id) ?? [] })),
-        purchaseItems: allPurchaseItems,
+        purchaseItems: [...allPurchaseItems, ...productionCostLinesOf(runs)],
         serviceIds: new Set(allProducts.filter((p) => p.is_service).map((p) => p.id)),
+        recipes: bookFromRows(allProducts, recipeLines),
+        // write-offs carry a plain day, so compare with the window's LOCAL first day —
+        // `since` is an instant, and its UTC date is the day before east of Greenwich.
+        writeOffs: writeOffTotals(writeOffRows.filter((w) => {
+          const d = new Date(since);
+          const firstDay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          return String(w.date).slice(0, 10) >= firstDay;
+        })),
       });
       const itemsBySale = new Map<string, any[]>();
       for (const it of allSaleItems) {
@@ -105,25 +121,13 @@ export default function Analytics() {
         setAssetEffects({ depreciation: 0, disposal_gain: 0 });
       }
 
-      // Build weighted average cost: key = variant_id || product_id.
-      const totals = new Map<string, { qty: number; cost: number }>();
-      (allPurchaseItems as any[]).forEach((row) => {
-        const key = row.variant_id ?? row.product_id;
-        if (!key) return;
-        const qty = Number(row.quantity);
-        const unitCost = Number(row.unit_cost);
-        const cur = totals.get(key) ?? { qty: 0, cost: 0 };
-        cur.qty += qty;
-        // Landed cost: goods price alone understates what the stock cost.
-        // schema.prisma defines effective unit cost as
-        // (unitCost*quantity + expenseAmount) / quantity — the same basis
-        // investor lots already use.
-        cur.cost += qty * unitCost + Number(row.expense_amount ?? 0);
-        totals.set(key, cur);
-      });
-      const avg = new Map<string, number>();
-      totals.forEach((v, k) => avg.set(k, v.qty > 0 ? v.cost / v.qty : 0));
-      setAvgCost(avg);
+      // Weighted average landed cost, key = variant_id || product_id — the
+      // P&L's own basis (lib/pnl), so batch-made and made-to-order items are
+      // costed too.
+      setAvgCost(averageCostsWithRecipes(
+        [...allPurchaseItems, ...productionCostLinesOf(runs)],
+        bookFromRows(allProducts, recipeLines),
+      ));
 
       setLoading(false);
     })();
@@ -143,6 +147,9 @@ export default function Analytics() {
     depreciation: assetEffects.depreciation,
     assetGain: assetEffects.disposal_gain,
     serviceIds: pnlExtra.serviceIds,
+    recipes: pnlExtra.recipes,
+    shopUse: pnlExtra.writeOffs?.shopUse ?? 0,
+    wastage: pnlExtra.writeOffs?.wastage ?? 0,
   }), [sales, expenses, payroll, assetEffects, pnlExtra]);
 
   const stats = useMemo(() => {

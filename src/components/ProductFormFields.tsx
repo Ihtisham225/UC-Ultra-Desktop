@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { RefreshCw, ScanBarcode, Layers, Pill, Stethoscope, FlaskConical } from "lucide-react";
+import { RefreshCw, ScanBarcode, Layers, Pill, Stethoscope, FlaskConical, ShoppingCart } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
 import { CategorySelect } from "@/components/CategorySelect";
@@ -14,6 +14,8 @@ import { SaleUnitsBuilder, type SaleUnitDraft } from "@/components/SaleUnitsBuil
 import { generateSku } from "@/lib/sku";
 import { isLabEnabled } from "@/lib/lab";
 import { isOil, OIL_UNIT_SUGGESTIONS } from "@/lib/oil";
+import { isCafe } from "@/lib/cafe";
+import { RecipeBuilder, emptyRecipe, type RecipeDraft, type RecipeIngredient } from "@/components/RecipeBuilder";
 import { LocationSelect } from "@/components/LocationSelect";
 import type { LocationRow } from "@/lib/storage-locations";
 import { DateInput } from "@/components/DateInput";
@@ -57,6 +59,10 @@ export interface ProductFormValue {
   sale_units?: SaleUnitDraft[];
   hasVariants?: boolean;
   variants?: BuilderVariant[];
+  /** "Sold at the till" (cafe shops). Undefined = on. */
+  is_sellable?: boolean;
+  /** The recipe being edited (cafe shops). Undefined = none. */
+  recipe?: RecipeDraft;
 }
 
 interface Props<T extends ProductFormValue> {
@@ -79,6 +85,14 @@ interface Props<T extends ProductFormValue> {
   purchaseCosts?: PurchaseCosts | null;
   /** The current cost saved on the product (products.current_cost), if any. */
   savedCost?: number | null;
+  /**
+   * Cafe shops: the products a recipe can use, with their average cost. Each
+   * app supplies its own list (server on the web, offline store on the desktop).
+   * Omitted, the recipe section isn't shown.
+   */
+  recipeIngredients?: RecipeIngredient[];
+  /** The product being edited, so it isn't offered as its own ingredient. */
+  productId?: string | null;
 }
 
 /**
@@ -93,6 +107,8 @@ export function ProductFormFields<T extends ProductFormValue>({
   locations,
   purchaseCosts,
   savedCost,
+  recipeIngredients,
+  productId,
 }: Props<T>) {
   const { t } = useTranslation();
   const { currentShop } = useShop();
@@ -106,6 +122,8 @@ export function ProductFormFields<T extends ProductFormValue>({
   // Oil is stocked in litres and sold by the bottle or the drum, so the unit
   // is a choice at the till rather than a fixed label on the product.
   const isOilShop = isOil(currentShop);
+  // Cafes buy raw materials they never sell and make what they do sell.
+  const isCafeShop = isCafe(currentShop);
   // The Service toggle (and lab test factors) only exist once the shop says it
   // runs a lab — other store types keep services for repair labour etc.
   const labEnabled = isLabEnabled(currentShop);
@@ -425,6 +443,40 @@ export function ProductFormFields<T extends ProductFormValue>({
             These apply when you don&apos;t track batches. Selling two batches at once? Add them below.
           </p>
         </div>
+      )}
+
+      {isCafeShop && (
+        <div className="rounded-lg border bg-card p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <Label htmlFor="isSellable" className="cursor-pointer flex items-center gap-2">
+                <ShoppingCart className="size-4 text-primary" />
+                Sold at the till
+              </Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Turn off for raw materials and shop-use items (milk, almonds, cups, shopping bags) —
+                they are still bought and stocked, just not offered at the POS.
+              </p>
+            </div>
+            <Switch
+              id="isSellable"
+              checked={value.is_sellable !== false}
+              onCheckedChange={(checked) => set({ is_sellable: checked })}
+            />
+          </div>
+        </div>
+      )}
+
+      {isCafeShop && !isService && recipeIngredients && (
+        <RecipeBuilder
+          value={value.recipe ?? emptyRecipe()}
+          onChange={(recipe) => set({ recipe })}
+          ingredients={recipeIngredients}
+          productId={productId}
+          productUnit={value.unit}
+          price={Number(value.price) || 0}
+          formatMoney={(n) => formatMoney(n, cur)}
+        />
       )}
 
       {canBeService && (
