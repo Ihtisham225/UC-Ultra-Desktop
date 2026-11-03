@@ -1,3 +1,6 @@
+import { ORDER_TYPES, type OrderType } from "@/lib/cafe-order";
+import { isCafe } from "@/lib/cafe";
+import { lineTotalOf, qtyForAmount } from "@/lib/sell-by-amount";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatQty } from "@/lib/format";
 import { useTranslation } from "react-i18next";
@@ -127,6 +130,12 @@ interface CartItem {
   unit_factor: number;
   /** Price of one BASE unit, so changing unit can re-price the line. */
   base_price: number;
+  /**
+   * Sold by amount: what the customer is paying for this line ("Rs 100 of
+   * it"). The quantity was worked out from it; it's dropped the moment the
+   * quantity, price or unit is changed by hand. See lib/sell-by-amount.
+   */
+  amount?: number;
 }
 
 export default function POS() {
@@ -199,6 +208,10 @@ export default function POS() {
   const [discountValue, setDiscountValue] = useState<string>("");
   /** A note written at checkout, kept with the bill. */
   const [notes, setNotes] = useState("");
+  /** Cafe shops: how the order is served, and the table for dine-in. The type
+   *  sticks between sales (a counter usually does one kind all day); the table doesn't. */
+  const [orderType, setOrderType] = useState<OrderType>("dine_in");
+  const [tableLabel, setTableLabel] = useState("");
   const isMac = useIsMac();
   /**
    * Per person (Settings → Appearance): finish the sale on the screen, in three
@@ -255,6 +268,8 @@ export default function POS() {
   // Oil shops write the vehicle down at the counter. Optional, because not
   // every bill is a service — someone buying a filter has no odometer to give.
   const oilShop = isOil(currentShop);
+  const cafeShop = isCafe(currentShop);
+  const cafeTables = currentShop?.cafe_tables ?? [];
   const [vehicle, setVehicle] = useState<VehicleDraft>({ ...blankVehicle });
   /** The car chosen from the register; null until one is picked. */
   const [pickedVehicle, setPickedVehicle] = useState<VehicleLite | null>(null);
@@ -347,7 +362,26 @@ export default function POS() {
     });
 
   const setLineQuantity = (key: string, qty: number) => {
-    setCart((prev) => prev.map((c) => (c.key === key ? { ...c, quantity: qty } : c)));
+    setCart((prev) => prev.map((c) => (c.key === key ? { ...c, quantity: qty, amount: undefined } : c)));
+  };
+
+  /** The amount box's in-flight text, per line — same reasoning as qtyDraft. */
+  const [amountDraft, setAmountDraft] = useState<Record<string, string>>({});
+  const clearAmountDraft = (key: string) =>
+    setAmountDraft((d) => {
+      if (!(key in d)) return d;
+      const next = { ...d };
+      delete next[key];
+      return next;
+    });
+
+  /** "Rs 100 of it": the quantity follows from the amount at the line's price. */
+  const setLineAmount = (key: string, amount: number) => {
+    setCart((prev) => prev.map((c) => {
+      if (c.key !== key) return c;
+      const q = qtyForAmount(amount, c.unit_price);
+      return q === null ? c : { ...c, quantity: q, amount };
+    }));
   };
 
   /**
@@ -363,7 +397,7 @@ export default function POS() {
       const max = c.stock / (c.unit_factor || 1);
       if (c.quantity > max) {
         toast.error(t("pos.insufficientStock", { name: c.product_name }));
-        return { ...c, quantity: Math.max(0, Math.round(max * 10000) / 10000) };
+        return { ...c, quantity: Math.max(0, Math.round(max * 10000) / 10000), amount: undefined };
       }
       return c;
     }).filter((c) => c.quantity > 0));
@@ -379,7 +413,7 @@ export default function POS() {
           toast.error(t("pos.insufficientStock", { name: c.product_name }));
           return c;
         }
-        return { ...c, quantity: newQty };
+        return { ...c, quantity: newQty, amount: undefined };
       })
       .filter((c) => c.quantity > 0));
   };
@@ -407,6 +441,7 @@ export default function POS() {
         unit_label: u ? u.name : null,
         unit_factor: factor,
         unit_price: Math.round(c.base_price * factor * 100) / 100,
+        amount: undefined,
       };
     }));
   };
@@ -482,7 +517,7 @@ export default function POS() {
     );
   }, [products, search, labEnabled, posTab, isLabTest]);
 
-  const subtotal = cart.reduce((a, c) => a + c.unit_price * c.quantity, 0);
+  const subtotal = cart.reduce((a, c) => a + lineTotalOf(c.unit_price, c.quantity, c.amount), 0);
   const taxRate = Number(currentShop?.tax_rate ?? 0);
   const discountInput = parseFloat(discountValue) || 0;
   const rawDiscount = discountType === "percent"
@@ -603,6 +638,9 @@ export default function POS() {
       payment_method: derivedMethod(),
       receipt_number: receiptNumber,
       notes: notes.trim() || null,
+      // Plain columns, so they ride the bill row to the server offline too.
+      order_type: cafeShop ? orderType : null,
+      table_label: cafeShop && orderType === "dine_in" ? tableLabel.trim() || null : null,
       updated_at: now,
       created_at: now,
     };
@@ -622,7 +660,7 @@ export default function POS() {
       product_name: c.product_name,
       unit_price: c.unit_price / c.unit_factor,
       quantity: c.quantity * c.unit_factor,
-      line_total: c.unit_price * c.quantity,
+      line_total: lineTotalOf(c.unit_price, c.quantity, c.amount),
       // Always record what the line was measured in — the alternate unit if
       // one was picked, otherwise the product's own — so the receipt's Unit
       // column is filled whether or not any conversion happened.
@@ -839,8 +877,9 @@ export default function POS() {
     setVehicle({ ...blankVehicle });
     setPickedVehicle(null);
     setKnownVehicle(null);
-    setCart([]); setQtyDraft({}); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
+    setCart([]); setQtyDraft({}); setAmountDraft({}); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
     setNotes("");
+    setTableLabel("");
     setTendersTouched(false);
     setTenders((prev) => (prev.length > 0 ? [{ ...prev[0], amount: "" }] : prev));
     toast.success("Sale completed!");
@@ -869,7 +908,7 @@ export default function POS() {
     }
     setCart([]);
     // Stale typed quantities would otherwise resurface on the next line added.
-    setQtyDraft({});
+    setQtyDraft({}); setAmountDraft({});
     focusSoon(SEARCH);
   };
 
@@ -1040,7 +1079,7 @@ export default function POS() {
                         <Layers className="size-3" />{p.variants!.length}
                       </span>
                     )}
-                    <div className={cn("font-semibold text-sm leading-snug [overflow-wrap:anywhere] group-hover:text-primary mb-2", hasVariants && "pe-8")}>{p.name}</div>
+                    <div className={cn("font-semibold text-sm leading-snug [overflow-wrap:anywhere] group-hover:text-primary mb-2", hasVariants && "pe-8")}>{p.name}{p.is_deal && <span className="ms-1.5 align-middle text-[10px] uppercase rounded px-1 py-0.5 bg-primary/10 text-primary font-semibold">Deal</span>}</div>
                     <div className={cn("font-bold break-words", formatMoney(p.price, cur).length > 12 ? "text-sm" : "text-base")}>{formatMoney(p.price, cur)}</div>
                     {/* Lab tests have nothing to stock — showing a count (often
                         negative from older sales) only confuses the counter. */}
@@ -1098,7 +1137,7 @@ export default function POS() {
                     {/* Name gets the whole width; price and stock sit under it,
                         so the column can stay narrow and the bill gets the room. */}
                     <div className="flex items-start gap-1.5">
-                      <span className="font-medium text-sm leading-snug line-clamp-3 break-words flex-1 min-w-0 group-hover:text-primary">{p.name}</span>
+                      <span className="font-medium text-sm leading-snug line-clamp-3 break-words flex-1 min-w-0 group-hover:text-primary">{p.name}{p.is_deal && <span className="ms-1.5 align-middle text-[10px] uppercase rounded px-1 py-0.5 bg-primary/10 text-primary font-semibold">Deal</span>}</span>
                       {hasVariants && (
                         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5">
                           <Layers className="size-3" />{p.variants!.length}
@@ -1146,7 +1185,35 @@ export default function POS() {
                     <div className="min-w-0 flex-1">
                       <div className="font-medium text-sm truncate">{c.product_name}</div>
                     </div>
-                    <div className="font-semibold tabular-nums">{formatMoney(c.unit_price * c.quantity, cur)}</div>
+                    {/* The line's amount, editable: type what the customer wants to
+                        spend ("Rs 100 of it") and the quantity is worked out. */}
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0"
+                      inputMode="decimal"
+                      title="Amount — type what the customer is paying and the quantity is worked out"
+                      aria-label={`Amount for ${c.product_name}`}
+                      value={amountDraft[c.key] ?? String(lineTotalOf(c.unit_price, c.quantity, c.amount))}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setAmountDraft((d) => ({ ...d, [c.key]: raw }));
+                        clearQtyDraft(c.key);
+                        const n = parseFloat(raw);
+                        if (Number.isFinite(n) && n > 0) setLineAmount(c.key, n);
+                      }}
+                      onBlur={() => { clearAmountDraft(c.key); commitQuantity(c.key); }}
+                      onFocus={(e) => e.currentTarget.select()}
+                      data-pos-amount={c.key}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
+                        e.preventDefault();
+                        clearAmountDraft(c.key);
+                        commitQuantity(c.key);
+                        focusSoon(SEARCH);
+                      }}
+                      className="h-7 w-24 text-end font-semibold tabular-nums px-2"
+                    />
                   </div>
                   <div className="flex items-center gap-1 mt-2">
                     <Button size="icon" variant="outline" className="size-7" onClick={() => updateQty(c.key, -1)}><Minus className="size-3" /></Button>
@@ -1215,7 +1282,7 @@ export default function POS() {
                         }}
                         onChange={(e) => {
                           const v = parseFloat(e.target.value);
-                          setCart((prev) => prev.map((x) => x.key === c.key ? { ...x, unit_price: isNaN(v) ? 0 : v } : x));
+                          setCart((prev) => prev.map((x) => x.key === c.key ? { ...x, unit_price: isNaN(v) ? 0 : v, amount: undefined } : x));
                         }}
                         className="h-7 w-20 text-xs px-2 tabular-nums"
                       />
@@ -1265,6 +1332,46 @@ export default function POS() {
 
   const customerSection = (
     <>
+                {cafeShop && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Order type">
+                      {ORDER_TYPES.map((o) => (
+                        <Button
+                          key={o.value}
+                          type="button"
+                          size="sm"
+                          role="radio"
+                          aria-checked={orderType === o.value}
+                          variant={orderType === o.value ? "default" : "outline"}
+                          onClick={() => setOrderType(o.value)}
+                        >
+                          {o.label}
+                        </Button>
+                      ))}
+                    </div>
+                    {orderType === "dine_in" && (
+                      cafeTables.length > 0 ? (
+                        <div className="flex flex-wrap gap-1" aria-label="Table">
+                          {cafeTables.map((tb) => (
+                            <Button
+                              key={tb}
+                              type="button"
+                              size="sm"
+                              variant={tableLabel === tb ? "secondary" : "ghost"}
+                              className={`h-7 px-2 ${tableLabel === tb ? "ring-1 ring-primary" : "border"}`}
+                              onClick={() => setTableLabel(tableLabel === tb ? "" : tb)}
+                            >
+                              {tb}
+                            </Button>
+                          ))}
+                        </div>
+                      ) : (
+                        <Input placeholder="Table (optional)" value={tableLabel} maxLength={30}
+                          onChange={(e) => setTableLabel(e.target.value)} aria-label="Table" />
+                      )
+                    )}
+                  </div>
+                )}
                 {hasLabTests
                   ? <PatientPicker value={patient} onChange={setPatient} step={STEP.customer} onPicked={() => advancePastPicker(STEP.customer)} />
                   : <CustomerPicker value={customer} onChange={setCustomer} step={STEP.customer} onPicked={() => advancePastPicker(STEP.customer)} />}

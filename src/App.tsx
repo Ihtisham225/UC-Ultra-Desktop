@@ -36,6 +36,8 @@ const POS = lazy(() => import("./pages/POS"));
 const Products = lazy(() => import("./pages/Products"));
 const Categories = lazy(() => import("./pages/Categories"));
 const Brands = lazy(() => import("./pages/Brands"));
+const Production = lazy(() => import("./pages/Production"));
+const WriteOffs = lazy(() => import("./pages/WriteOffs"));
 const Sales = lazy(() => import("./pages/Sales"));
 const Returns = lazy(() => import("./pages/Returns"));
 const NewReturn = lazy(() => import("./pages/NewReturn"));
@@ -194,6 +196,8 @@ const App = () => {
               <Route path="/products" element={<SubShell><Products /></SubShell>} />
               <Route path="/categories" element={<SubShell><RequireRole roles={["owner", "manager"]}><Categories /></RequireRole></SubShell>} />
               <Route path="/brands" element={<SubShell><RequireRole roles={["owner", "manager"]}><Brands /></RequireRole></SubShell>} />
+              <Route path="/production" element={<SubShell><RequireRole roles={["owner", "manager"]}><Production /></RequireRole></SubShell>} />
+              <Route path="/write-offs" element={<SubShell><RequireRole roles={["owner", "manager"]}><WriteOffs /></RequireRole></SubShell>} />
               <Route path="/sales" element={<SubShell><Sales /></SubShell>} />
               <Route path="/returns" element={<SubShell><Returns /></SubShell>} />
               <Route path="/returns/new" element={<SubShell><NewReturn /></SubShell>} />

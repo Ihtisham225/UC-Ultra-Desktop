@@ -4,7 +4,7 @@ import {
   BadgeDollarSign, BarChart3, BookOpenCheck, Boxes, Car, ClipboardCheck, Factory, FileBarChart, FlaskConical,
   FolderTree, HandCoins, HeartPulse, Landmark, LayoutDashboard, LifeBuoy, Package, PackageOpen, Receipt,
   FileCheck2, ScanBarcode, Scissors, ScrollText, Settings, ShieldCheck, Tag, TrendingUp, Truck, Undo2, UserPlus, Users,
-  Wallet, FileText, Banknote, SlidersHorizontal, KeyRound, MapPin, Building2, HandHeart,
+  Wallet, FileText, Banknote, SlidersHorizontal, KeyRound, MapPin, Building2, HandHeart, ChefHat, PackageMinus,
 } from "lucide-react";
 
 /**
@@ -56,6 +56,8 @@ export interface NavContext {
   t: (key: string) => string;
   craft: boolean;
   oil: boolean;
+  /** Cafe shops: batches made ahead (lib/cafe). Optional so older callers still type. */
+  cafe?: boolean;
   lab: boolean;
   role: string | null | undefined;
   hasPerm: (module: string, action: string) => boolean;
@@ -92,6 +94,9 @@ export function navPages(ctx: NavContext): NavPage[] {
     { to: "/brands", label: "Brands", icon: Tag, section: "Stock", show: !craft && perms.canManageProducts },
     { to: "/inventory", label: "Inventory", icon: Boxes, section: "Stock", show: !craft && perms.canManageProducts, keywords: ["stock", "adjustment"] },
     // Where goods are kept. Not for handicraft shops: they hold no catalogue.
+    // Cafes make mix milk, kheer, cake ahead of selling them.
+    { to: "/production", label: "Production", icon: ChefHat, section: "Stock", show: !!ctx.cafe && ownerOrManager(ctx), keywords: ["batch", "make", "kitchen", "recipe"] },
+    { to: "/write-offs", label: "Used & wasted", icon: PackageMinus, section: "Stock", show: !!ctx.cafe && ownerOrManager(ctx), keywords: ["wastage", "waste", "spilt", "expired", "used in shop", "write off"] },
     { to: "/shelves", label: "Shelves & racks", icon: MapPin, section: "Stock", show: !craft && perms.canManageProducts, keywords: ["shelf", "rack", "location", "godown", "count"] },
     { to: "/lab", label: "Lab", icon: FlaskConical, section: "Lab", show: labView, keywords: ["tests"] },
     { to: "/lab-results", label: "Results", icon: ClipboardCheck, section: "Lab", show: labView, keywords: ["lab results", "reports"] },
@@ -157,6 +162,8 @@ export function newActions(ctx: NavContext): NewAction[] {
     { id: "return", label: "Return", icon: Undo2, to: "/returns", show: !craft && edit, keywords: ["refund", "sale return", "exchange"] },
     { id: "customer", label: "Customer", icon: Users, to: "/customers", show: craft ? perms.canManageSuppliers : true },
     { id: "vehicle", label: "Vehicle", icon: Car, to: "/oil-changes", show: oil, keywords: ["car", "register"] },
+    { id: "wastage", label: "Wastage / used in shop", icon: PackageMinus, to: "/write-offs", show: !!ctx.cafe && edit, keywords: ["waste", "spilt", "write off"] },
+    { id: "batch", label: "Batch (production)", icon: ChefHat, to: "/production", show: !!ctx.cafe && edit, keywords: ["make", "kitchen"] },
     { id: "patient", label: "Patient", icon: HeartPulse, to: "/patients", show: labView },
 
     // Stock

@@ -100,6 +100,8 @@ export interface DeviceShop {
   show_notes_on_receipt?: boolean;
   /** Print the logo at the top of the receipt. */
   show_logo_on_receipt?: boolean;
+  /** Cafe shops: tables offered for dine-in at checkout (lib/cafe-order). */
+  cafe_tables?: string[];
   /** Product form: selling price = latest purchase cost + markup %. */
   price_by_markup?: boolean;
   /** What the return slip prints (Settings → Receipt → Return receipt). */

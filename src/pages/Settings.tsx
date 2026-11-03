@@ -1,3 +1,4 @@
+import { normalizeTables } from "@/lib/cafe-order";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { WhatsAppTargetSetting } from "@/components/WhatsAppChooser";
 import {
@@ -86,6 +87,8 @@ export default function Settings() {
   const [showTax, setShowTax] = useState(true);
   const [storeType, setStoreType] = useState("other");
   const [allowNegative, setAllowNegative] = useState(false);
+  /** Cafe shops: the tables offered for dine-in, one per line while typed. */
+  const [cafeTables, setCafeTables] = useState("");
   const [chequesOn, setChequesOn] = useState(false);
   const [chequeDays, setChequeDays] = useState("10");
   const [daybookOn, setDaybookOn] = useState(false);
@@ -146,6 +149,7 @@ export default function Settings() {
       setStoreType(currentShop.store_type ?? "other");
       setLabTests(!!currentShop.lab_tests_enabled);
       setAllowNegative(!!currentShop.allow_negative_stock);
+      setCafeTables((currentShop.cafe_tables ?? []).join("\n"));
       setChequesOn(!!currentShop.cheques_enabled);
       setChequeDays(String(currentShop.cheque_reminder_days ?? 10));
       setDaybookOn(!!currentShop.daybook_enabled);
@@ -234,6 +238,7 @@ export default function Settings() {
         store_type: storeType,
         lab_tests_enabled: labTests,
         allow_negative_stock: allowNegative,
+        ...(storeType === "cafe" ? { cafe_tables: normalizeTables(cafeTables) } : {}),
         show_cost_in_pos: showCostInPos,
         receipt_prefix: receiptPrefix.trim() || null,
         receipt_next_number: receiptNext.trim() === "" ? null : (parseInt(receiptNext, 10) || null),
@@ -596,6 +601,7 @@ export default function Settings() {
                       <SelectItem value="accessories">Accessories</SelectItem>
                       <SelectItem value="handicraft">Handicraft / Shawls</SelectItem>
                       <SelectItem value="oil">Oil Change / Lubricants</SelectItem>
+                      <SelectItem value="cafe">Cafe, Restaurant and Fast Food</SelectItem>
                       <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>
@@ -624,6 +630,31 @@ export default function Settings() {
                       carry sale units, so oil stocked in litres can be sold by the bottle or the
                       drum without anyone doing the arithmetic.
                     </p>
+                  </div>
+                )}
+                {storeType === "cafe" && (
+                  <div className="rounded-lg border p-3 text-xs text-muted-foreground space-y-1.5">
+                    <p className="font-medium text-foreground">What changes for a cafe</p>
+                    <p>
+                      Products get a <b>Sold at the till</b> switch — turn it off for raw materials and
+                      shop-use items (milk, almonds, cups, shopping bags) so they are bought and stocked
+                      but never offered at the POS. You can still sell a raw material by leaving it on.
+                    </p>
+                    <p>
+                      A product can also have a <b>recipe</b>: <i>made to order</i> items (fried samosa,
+                      chai) use up their ingredients when sold; <i>made in batches</i> items (mix milk,
+                      kheer, cake) are made ahead and add to their own stock.
+                    </p>
+                  </div>
+                )}
+                {storeType === "cafe" && (
+                  <div className="space-y-1.5 rounded-lg border p-3">
+                    <Label htmlFor="cafeTables">Tables</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Offered at checkout for dine-in orders and printed on the bill and the kitchen slip.
+                      One per line (or separated by commas) — e.g. 1, 2, 3, Family 1. Leave empty to type a table each time.
+                    </p>
+                    <Textarea id="cafeTables" rows={3} value={cafeTables} onChange={(e) => setCafeTables(e.target.value)} placeholder={"1\n2\n3\nFamily 1"} />
                   </div>
                 )}
                 {storeType === "pharmacy" && (

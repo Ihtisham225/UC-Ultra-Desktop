@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { FolderTree, Plus, Pencil, Trash2, CornerDownRight, WifiOff, Search } from "lucide-react";
+import { FolderTree, Plus, Pencil, Trash2, CornerDownRight, WifiOff, Search, Archive, ArchiveRestore } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -73,6 +73,17 @@ export default function Categories() {
       toast.error(e instanceof Error ? e.message : "Failed to save category");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleArchived = async (x: { id: string; name: string; is_archived?: boolean }) => {
+    try {
+      const res = await rpc<{ ok: boolean; error?: string }>("setCategoryArchivedAction", x.id, !x.is_archived);
+      if (!res.ok) throw new Error(res.error || "Failed");
+      toast.success(`${x.is_archived ? "Restored" : "Archived"} “${x.name}”`);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
     }
   };
 
@@ -184,7 +195,7 @@ export default function Categories() {
         ) : (
           <div className="divide-y">
             {visibleItems.map((c) => (
-              <div key={c.id} className="flex items-center gap-2 px-4 py-2.5">
+              <div key={c.id} className={`flex items-center gap-2 px-4 py-2.5 ${c.is_archived ? "opacity-60" : ""}`}>
                 <button
                   type="button"
                   className="flex items-center gap-1.5 min-w-0 flex-1 text-start hover:underline underline-offset-2"
@@ -193,7 +204,7 @@ export default function Categories() {
                   onClick={() => navigate(`/products?category=${c.id}`)}
                 >
                   {c.depth > 0 && <CornerDownRight className="size-3.5 shrink-0 text-muted-foreground rtl-flip" />}
-                  <span className="font-medium truncate">{c.name}</span>
+                  <span className="font-medium truncate">{c.name}</span> {c.is_archived && <span className="text-[10px] uppercase border rounded px-1.5 py-0.5 text-muted-foreground shrink-0">Archived</span>}
                   <span className="text-xs text-muted-foreground shrink-0">
                     {c.product_count > 0 ? `· ${c.product_count} product${c.product_count === 1 ? "" : "s"}` : ""}
                   </span>
@@ -207,6 +218,10 @@ export default function Categories() {
                     <Button variant="ghost" size="icon" title="Edit" aria-label="Edit"
                       onClick={() => setEditing({ id: c.id, name: c.name, parent_id: c.parent_id })}>
                       <Pencil className="size-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" title={c.is_archived ? "Restore" : "Archive"} aria-label={c.is_archived ? "Restore" : "Archive"}
+                      onClick={() => toggleArchived(c)}>
+                      {c.is_archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
                     </Button>
                     <Button variant="ghost" size="icon" title="Delete" aria-label="Delete"
                       className="text-destructive hover:text-destructive" onClick={() => remove(c)}>

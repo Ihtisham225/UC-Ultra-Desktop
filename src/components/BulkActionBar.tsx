@@ -1,6 +1,7 @@
+import type React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Trash2, Download, X } from "lucide-react";
+import { Trash2, Download, X, Archive, ArchiveRestore } from "lucide-react";
 
 interface BulkActionBarProps {
   selectedCount: number;
@@ -8,6 +9,11 @@ interface BulkActionBarProps {
   onDelete?: () => void;
   onExport?: () => void;
   canDelete?: boolean;
+  /** Archive (or, when `restoring`, restore) the selection. */
+  onArchive?: () => void;
+  restoring?: boolean;
+  /** Page-specific actions, shown before Archive and Delete (e.g. "Change price"). */
+  extra?: React.ReactNode;
 }
 
 /**
@@ -20,6 +26,9 @@ export function BulkActionBar({
   onDelete,
   onExport,
   canDelete = true,
+  onArchive,
+  restoring = false,
+  extra,
 }: BulkActionBarProps) {
   const { t } = useTranslation();
   if (selectedCount === 0) return null;
@@ -36,6 +45,13 @@ export function BulkActionBar({
           {onExport && (
             <Button size="sm" variant="outline" onClick={onExport}>
               <Download className="size-4 me-1.5" /> {t("bulk.exportCsv")}
+            </Button>
+          )}
+          {extra}
+          {onArchive && (
+            <Button size="sm" variant="outline" onClick={onArchive}>
+              {restoring ? <ArchiveRestore className="size-4 me-1.5" /> : <Archive className="size-4 me-1.5" />}
+              {restoring ? "Restore selected" : "Archive selected"}
             </Button>
           )}
           {onDelete && canDelete && (

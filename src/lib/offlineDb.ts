@@ -16,6 +16,8 @@ export interface CachedProduct {
   shelf_location?: string | null
   is_service?: boolean
   is_lab_test?: boolean
+  /** A deal / combo (cafe recipes) — marked on the till's card. */
+  is_deal?: boolean
   /** What stock is counted in — the unit a bare quantity means. */
   unit?: string | null
   /** Other units it can be billed in, e.g. a 4-litre bottle of a litre oil. */

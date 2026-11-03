@@ -57,6 +57,16 @@ export const SYNC_TABLES = [
   // Alternate sale units (oil sold by the bottle). Pull-only — edited on the
   // Products page through an online action, but the till needs them offline.
   'product_units',
+  // Recipes (cafe shops). Pull-only like product_units — saved through an
+  // online action, but a made-to-order sale needs them offline. Pruned by the
+  // server's live ids, since a save replaces every line.
+  'product_recipe_lines',
+  // Cafe batches. Pull-only (made on the online Production page); the P&L
+  // costs a batch-made item from its runs, so they're needed offline.
+  'production_runs',
+  // Used in the shop / wasted. Pull-only (recorded on the online page); the
+  // P&L shows them as their own lines, so they're needed offline.
+  'stock_write_offs',
   // Shelves and racks. Pull-only like product_units: the till shows where a
   // product is kept offline, but places are edited through online actions.
   'storage_locations',

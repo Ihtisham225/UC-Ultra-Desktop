@@ -20,6 +20,8 @@ export interface BrandDto {
   name: string;
   sort_order: number;
   product_count: number;
+  /** Hidden from this picker; products keep it. */
+  is_archived?: boolean;
 }
 
 const NONE = "__none__";
@@ -83,7 +85,8 @@ export function BrandSelect({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={NONE}>No brand</SelectItem>
-          {options.map((b) => (
+          {/* Archived brands stay selectable only on a product that already has one. */}
+          {options.filter((b) => !b.is_archived || b.id === value).map((b) => (
             <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
           ))}
         </SelectContent>

@@ -1,6 +1,9 @@
 // Detailed reports hub: Sales / Purchases / Returns / Inventory / P&L / Expenses / Payroll / Assets /
 // Cash & bank / Customers & Ledger / Cheques / Tax.
 // Each report has a date range, KPI cards, a sortable table, CSV export, and print-to-PDF.
+import { writeOffTotals } from "@/lib/write-offs";
+import { productionCostLinesOf } from "@/lib/production";
+import { bookFromRows } from "@/lib/recipe";
 import { printCurrentPageA4 } from "@/lib/printA4";
 import { toast } from "sonner";
 import { computePnl, pnlStatement, type Pnl } from "@/lib/pnl";
@@ -477,7 +480,7 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
 
   useEffect(() => {
     (async () => {
-      const [allSales, allSaleItems, allExpenses, pi, cats, extras, allReturns, allReturnItems, allProducts] = await Promise.all([
+      const [allSales, allSaleItems, allExpenses, pi, cats, extras, allReturns, allReturnItems, allProducts, runs, recipeLines, writeOffRows] = await Promise.all([
         getAll<any>("sales", shopId),
         getAll<any>("sale_items", shopId),
         getAll<any>("expenses", shopId),
@@ -489,7 +492,13 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
         getAll<any>("sale_returns", shopId),
         getAll<any>("sale_return_items", shopId),
         getAll<any>("products", shopId),
+        // Cafe: batches are cost lines, recipes cost made-to-order items (lib/pnl).
+        getAll<any>("production_runs", shopId),
+        getAll<any>("product_recipe_lines", shopId),
+        // Used in the shop / wasted — their own P&L lines.
+        getAll<any>("stock_write_offs", shopId),
       ]);
+      const writeOffs = writeOffTotals(writeOffRows.filter((w) => String(w.date).slice(0, 10) >= fromDate && String(w.date).slice(0, 10) <= toDate));
       const itemsBySale = new Map<string, any[]>();
       for (const it of allSaleItems) { const arr = itemsBySale.get(it.sale_id) ?? []; arr.push(it); itemsBySale.set(it.sale_id, arr); }
       const itemsByReturn = new Map<string, any[]>();
@@ -508,12 +517,15 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
       setData(computePnl({
         sales: sales.map((sl) => ({ subtotal: sl.subtotal, tax: sl.tax, total: sl.total, items: itemsBySale.get(sl.id) ?? [] })),
         returns: returns.map((r) => ({ total_refund: r.total_refund, items: itemsByReturn.get(r.id) ?? [] })),
-        purchaseItems: pi as any[],
+        purchaseItems: [...(pi as any[]), ...productionCostLinesOf(runs)],
+        recipes: bookFromRows(allProducts, recipeLines),
         expenses: exps.reduce((a, x) => a + Number(x.amount), 0),
         expensesByCategory: Array.from(byCat.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total),
         payroll: extras.payroll ?? 0,
         depreciation: extras.depreciation ?? 0,
         assetGain: extras.asset_gain ?? 0,
+        shopUse: writeOffs.shopUse,
+        wastage: writeOffs.wastage,
         serviceIds: new Set(allProducts.filter((p) => p.is_service).map((p) => p.id)),
       }));
     })();

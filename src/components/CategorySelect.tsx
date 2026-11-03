@@ -22,6 +22,8 @@ export interface CategoryDto {
   parent_id: string | null;
   sort_order: number;
   product_count: number;
+  /** Hidden from this picker; products keep it. */
+  is_archived?: boolean;
 }
 
 export interface CategoryOption extends CategoryDto {
@@ -119,7 +121,8 @@ export function CategorySelect({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={NONE}>No category</SelectItem>
-          {options.map((c) => (
+          {/* Archived categories stay selectable only on a product that already has one. */}
+          {options.filter((c) => !c.is_archived || c.id === value).map((c) => (
             <SelectItem key={c.id} value={c.id}>
               {`${"   ".repeat(c.depth)}${c.depth > 0 ? "↳ " : ""}${c.name}`}
             </SelectItem>
@@ -164,7 +167,7 @@ export function CategorySelect({
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>None (top level)</SelectItem>
-                  {options.map((c) => (
+                  {options.filter((c) => !c.is_archived).map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {`${"   ".repeat(c.depth)}${c.depth > 0 ? "↳ " : ""}${c.name}`}
                     </SelectItem>

@@ -1,8 +1,9 @@
+import { buildKitchenSlipHtml, orderLine } from "@/lib/cafe-order";
 import { receiptFieldRows } from "@/lib/party-fields";
 import { Fragment, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Printer, MessageCircle, Sparkles } from "lucide-react";
+import { Printer, MessageCircle, Sparkles, ChefHat } from "lucide-react";
 import { formatMoney, formatAmount, orderNumberLabel } from "@/lib/format";
 import { soldAs, formatUnitQty } from "@/lib/sale-units";
 import { rpc } from "@/lib/apiClient";
@@ -67,6 +68,8 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
   const metaRows = [
     { label: "Receipt", value: orderNumberLabel(sale.receipt_number) },
     { label: "Date", value: fmtDateTime(sale.created_at) },
+    // Cafe shops: dine-in at table 4, takeaway, delivery.
+    ...(orderLine(sale) ? [{ label: "Order", value: orderLine(sale) }] : []),
     ...(showCustomer && customer ? [{ label: "Customer", value: customer.name }] : []),
     ...(showCustomer && customer?.phone ? [{ label: "Phone", value: customer.phone }] : []),
     ...customFieldRowsFor(sale, customer),
@@ -433,6 +436,9 @@ export const ReceiptPaper = ({
       <div className="text-[11px] space-y-0.5">
         <div className="flex items-start justify-between gap-2"><span className="shrink-0">Receipt</span><span className="min-w-0 max-w-[58%] text-right break-words">{orderNumberLabel(sale.receipt_number)}</span></div>
         <div className="flex items-start justify-between gap-2"><span className="shrink-0">Date</span><span className="min-w-0 max-w-[58%] text-right break-words">{fmtDateTime(sale.created_at)}</span></div>
+        {orderLine(sale) && (
+          <div className="flex items-start justify-between gap-2"><span className="shrink-0">Order</span><span className="min-w-0 max-w-[58%] text-right break-words font-bold">{orderLine(sale)}</span></div>
+        )}
         {sale.shop?.show_customer_on_receipt && customer && (
           <div className="flex items-start justify-between gap-2"><span className="shrink-0">Customer</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.name}</span></div>
         )}
@@ -753,6 +759,16 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
                 </Link>
               </Button>
             )
+          )}
+          {/* Cafe orders: the kitchen's copy — items and table, no prices. */}
+          {sale.order_type && (
+            <Button
+              variant="outline"
+              onClick={() => void printThermalHtml(buildKitchenSlipHtml(sale, sale.shop?.name ?? "", fmtDateTime(sale.created_at)))}
+              className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900"
+            >
+              <ChefHat className="size-4 mr-2" /> Kitchen slip
+            </Button>
           )}
           <Button variant="outline" onClick={print} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
             <Printer className="size-4 mr-2" /> Print

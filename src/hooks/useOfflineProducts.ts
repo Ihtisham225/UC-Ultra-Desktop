@@ -3,9 +3,11 @@ import { getAll, onLocalChange } from '@/lib/localDb'
 import { syncNow } from '@/lib/syncEngine'
 import type { CachedProduct, CachedVariant } from '@/lib/offlineDb'
 import { locationPath, type LocationRow } from '@/lib/storage-locations'
+import { bookFromRows, makeableCount } from '@/lib/recipe'
 
 // Raw synced rows (snake_case, from /api/sync/pull) as they land in the local store.
-interface ProductRow { id: string; name: string; barcode: string | null; price: number | string; stock: number | string; shop_id: string; is_active?: boolean }
+interface ProductRow { id: string; name: string; barcode: string | null; price: number | string; stock: number | string; shop_id: string; is_active?: boolean; is_sellable?: boolean }
+interface RecipeLineRow { product_id: string; ingredient_id: string; quantity: number | string; unit: string; sort_order?: number }
 interface UnitRow { id: string; product_id: string; name: string; factor: number | string; sort_order?: number }
 interface VariantRow { id: string; product_id: string; name: string; sku: string | null; barcode: string | null; price_override: number | string | null; stock: number | string; is_active?: boolean; sort_order?: number; imei1?: string | null; imei2?: string | null }
 
@@ -32,13 +34,18 @@ export function useOfflineProducts(shopId: string | undefined) {
 
   const loadFromStore = useCallback(async () => {
     if (!shopId) { setProducts([]); return }
-    const [prods, vars, unitRows, places] = await Promise.all([
+    const [prods, vars, unitRows, places, recipeLines] = await Promise.all([
       getAll<ProductRow>('products', shopId),
       getAll<VariantRow>('product_variants', shopId),
       getAll<UnitRow>('product_units', shopId),
       // Shelves, so the card can say where to fetch it — synced, so offline too.
       getAll<LocationRow>('storage_locations', shopId),
+      // Recipes (cafe shops): a made-to-order item shows how many the
+      // ingredients on the shelf can make, as its stock.
+      getAll<RecipeLineRow>('product_recipe_lines', shopId),
     ])
+    const book = bookFromRows(prods as (ProductRow & { unit?: string | null; recipe_mode?: string | null; recipe_yield?: number | string | null })[], recipeLines)
+    const stockById = new Map(prods.map((p) => [p.id, Number(p.stock)]))
     // Alternate sale units (oil sold by the bottle), so an offline till can
     // still offer them.
     const unitsByProduct = new Map<string, { id: string; name: string; factor: number }[]>()
@@ -72,13 +79,14 @@ export function useOfflineProducts(shopId: string | undefined) {
       variantsByProduct.set(v.product_id, arr)
     }
     const merged: CachedProduct[] = prods
-      .filter((p) => p.is_active !== false)
+      // "Sold at the till" off = raw materials and shop-use items (cafe shops).
+      .filter((p) => p.is_active !== false && p.is_sellable !== false)
       .map((p) => ({
         id: p.id,
         name: p.name,
         barcode: p.barcode,
         price: Number(p.price),
-        stock: Number(p.stock),
+        stock: makeableCount(book, p.id, (id) => stockById.get(id) ?? 0) ?? Number(p.stock),
         shop_id: shopId,
         imei1: (p as { imei1?: string | null }).imei1 ?? null,
         imei2: (p as { imei2?: string | null }).imei2 ?? null,
@@ -94,6 +102,8 @@ export function useOfflineProducts(shopId: string | undefined) {
           (p as { shelf_location?: string | null }).shelf_location ?? null,
         is_service: (p as { is_service?: boolean }).is_service ?? false,
         is_lab_test: (p as { is_lab_test?: boolean }).is_lab_test ?? false,
+        // A deal / combo (cafe recipes) — marked on the till's card.
+        is_deal: (p as { recipe_mode?: string | null }).recipe_mode === "deal",
         unit: (p as { unit?: string | null }).unit ?? null,
         units: unitsByProduct.get(p.id) ?? [],
         variants: variantsByProduct.get(p.id) ?? [],
@@ -127,7 +137,7 @@ export function useOfflineProducts(shopId: string | undefined) {
   // Re-read when the sync engine (or another screen) writes products/variants.
   useEffect(() => {
     return onLocalChange((table) => {
-      if (table === 'products' || table === 'product_variants' || table === 'product_units') loadFromStore()
+      if (table === 'products' || table === 'product_variants' || table === 'product_units' || table === 'product_recipe_lines') loadFromStore()
     })
   }, [loadFromStore])
 

@@ -51,11 +51,12 @@ export const CustomerPicker = ({
   // Customers and suppliers are one party table now, so this filters by the
   // role rather than reading a customers-only table — that is what lets a
   // supplier who also buys appear here without a second record.
-  const { data: parties, save } = useLocalStore<CustomerLite & { name: string; is_customer?: boolean }>(
+  const { data: parties, save } = useLocalStore<CustomerLite & { name: string; is_customer?: boolean; is_archived?: boolean }>(
     "suppliers",
     currentShop?.id,
   );
-  const list = parties.filter((p) => p.is_customer);
+  // Archived customers are off the till; bills already naming one keep it.
+  const list = parties.filter((p) => p.is_customer && !p.is_archived);
   const { confirmDuplicates, duplicateDialog } = useDuplicatePartyConfirm();
 
   const choose = (c: CustomerLite | null) => {

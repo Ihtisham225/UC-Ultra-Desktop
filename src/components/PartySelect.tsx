@@ -6,7 +6,13 @@ import {
 } from "@/components/ui/command";
 import { Check, ChevronsUpDown } from "lucide-react";
 
-export interface PartyOptionLite { id: string; name: string; phone?: string | null; }
+export interface PartyOptionLite {
+  id: string;
+  name: string;
+  phone?: string | null;
+  /** Archived parties are left out of the list — unless already chosen, so an old record still shows who it names. */
+  is_archived?: boolean;
+}
 
 /**
  * A searchable party picker for forms that used to use a plain <Select>.
@@ -38,6 +44,7 @@ export function PartySelect({
     setOpen(false);
   };
   const selected = options.find((o) => o.id === value);
+  const listed = options.filter((o) => !o.is_archived || o.id === value);
 
   return (
     // ⚠️ `modal` matters: this picker is used inside dialogs (the purchase
@@ -95,7 +102,7 @@ export function PartySelect({
                   <span className="text-muted-foreground">{emptyLabel}</span>
                 </CommandItem>
               )}
-              {options.map((o) => (
+              {listed.map((o) => (
                 <CommandItem
                   key={o.id}
                   // cmdk matches on this string, so the phone is searchable too.
@@ -104,6 +111,7 @@ export function PartySelect({
                 >
                   <Check className={`size-4 me-2 ${value === o.id ? "opacity-100" : "opacity-0"}`} />
                   <span className="truncate">{o.name}</span>
+                  {o.is_archived && <span className="ms-2 text-[10px] uppercase text-muted-foreground shrink-0">Archived</span>}
                   {o.phone && (
                     <span className="ms-auto text-xs text-muted-foreground shrink-0">{o.phone}</span>
                   )}

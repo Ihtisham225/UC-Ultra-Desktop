@@ -1,3 +1,4 @@
+import { lineTotalOf } from "@/lib/sell-by-amount";
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,12 @@ interface Line {
   unit_factor: number;
   imei1?: string | null;
   imei2?: string | null;
+  /**
+   * The line's stored total, carried so a bill sold by amount ("Rs 100 of
+   * it") keeps its Rs 100 — lineTotalOf drops it once quantity or price is
+   * changed enough that it no longer fits. See lib/sell-by-amount.
+   */
+  amount?: number;
 }
 
 export interface EditableSale {
@@ -129,6 +136,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
           unit_factor: s.converted ? Number(it.unit_factor) : 1,
           imei1: it.imei1,
           imei2: it.imei2,
+          amount: Number(it.line_total),
         };
       }),
     );
@@ -190,7 +198,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
   };
 
   const subtotal = useMemo(
-    () => round2(lines.reduce((a, l) => a + num(l.quantity) * num(l.unit_price), 0)),
+    () => round2(lines.reduce((a, l) => a + lineTotalOf(num(l.unit_price), num(l.quantity), l.amount), 0)),
     [lines],
   );
   const discountValue = Math.min(round2(num(discount)), subtotal);
@@ -263,6 +271,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
           unit_factor: l.unit_factor > 1 ? l.unit_factor : null,
           imei1: l.imei1 ?? null,
           imei2: l.imei2 ?? null,
+          ...(l.amount != null ? { line_total: l.amount } : {}),
         })),
         discount: discountValue,
         amount_paid: Math.min(tendered, total),
