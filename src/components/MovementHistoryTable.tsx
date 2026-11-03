@@ -15,6 +15,7 @@ import { fmtDateTime } from "@/lib/date-format";
 type MovementType =
   | "sale" | "sale_delete"
   | "purchase" | "purchase_delete"
+  | "sale_edit" | "purchase_edit"
   | "return" | "return_delete"
   | "supplier_return" | "supplier_return_delete"
   | "adjustment" | "initial";
@@ -25,6 +26,9 @@ interface Movement {
   product_id: string | null;
   variant_id: string | null;
   movement_type: MovementType;
+  /** The server's name for the row — the reversal half of an edit comes back as
+   *  `purchase_edit` / `sale_edit`. Absent from an older server. */
+  display_type?: MovementType;
   quantity: number;
   stock_after: number | null;
   reason: string | null;
@@ -42,6 +46,8 @@ const TYPE_LABEL: Record<MovementType, string> = {
   sale_delete: "Sale deleted",
   purchase: "Purchase",
   purchase_delete: "Purchase deleted",
+  sale_edit: "Sale edited",
+  purchase_edit: "Purchase edited",
   return: "Customer return",
   return_delete: "Customer return deleted",
   supplier_return: "Return to supplier",
@@ -55,6 +61,8 @@ const TYPE_VARIANT: Record<MovementType, "default" | "secondary" | "destructive"
   sale_delete: "outline",
   purchase: "default",
   purchase_delete: "outline",
+  sale_edit: "outline",
+  purchase_edit: "outline",
   return: "default",
   return_delete: "outline",
   supplier_return: "secondary",
@@ -62,6 +70,12 @@ const TYPE_VARIANT: Record<MovementType, "default" | "secondary" | "destructive"
   adjustment: "secondary",
   initial: "outline",
 };
+
+/** Editing a purchase or bill takes the old lines out and books the new ones;
+ *  the "take out" rows are named as an edit, not a deletion. */
+const typeOf = (r: Movement): MovementType => r.display_type ?? r.movement_type;
+/** Marker the server writes on those rows — the badge already says it. */
+const EDIT_REASON = "edit";
 
 interface Props {
   productId?: string;
@@ -102,7 +116,7 @@ export function MovementHistoryTable({ productId, variantId, compact }: Props) {
 
   const filtered = useMemo(() => {
     return rows.filter(r => {
-      if (typeFilter !== "all" && r.movement_type !== typeFilter) return false;
+      if (typeFilter !== "all" && typeOf(r) !== typeFilter) return false;
       if (search) {
         const s = search.toLowerCase();
         const hay = `${r.product_name || ""} ${r.variant_name || ""} ${r.notes || ""} ${r.reason || ""}`.toLowerCase();
@@ -117,7 +131,7 @@ export function MovementHistoryTable({ productId, variantId, compact }: Props) {
       { header: "Date", value: (r) => format(new Date(r.created_at), "yyyy-MM-dd HH:mm") },
       { header: "Product", value: (r) => r.product_name || "" },
       { header: "Variant", value: (r) => r.variant_name || "" },
-      { header: "Type", value: (r) => TYPE_LABEL[r.movement_type] },
+      { header: "Type", value: (r) => TYPE_LABEL[typeOf(r)] ?? r.movement_type },
       { header: "Quantity", value: (r) => r.quantity },
       { header: "Stock After", value: (r) => r.stock_after ?? "" },
       { header: "Reason", value: (r) => r.reason || "" },
@@ -182,13 +196,13 @@ export function MovementHistoryTable({ productId, variantId, compact }: Props) {
                     {r.variant_name && <div className="text-xs text-muted-foreground">{r.variant_name}</div>}
                   </TableCell>
                 )}
-                <TableCell><Badge variant={TYPE_VARIANT[r.movement_type]}>{TYPE_LABEL[r.movement_type]}</Badge></TableCell>
+                <TableCell><Badge variant={TYPE_VARIANT[typeOf(r)] ?? "outline"}>{TYPE_LABEL[typeOf(r)] ?? r.movement_type}</Badge></TableCell>
                 <TableCell className={`text-end font-semibold tabular-nums ${Number(r.quantity) >= 0 ? "text-success" : "text-destructive"}`}>
                   {Number(r.quantity) >= 0 ? "+" : ""}{r.quantity}
                 </TableCell>
                 <TableCell className="text-end tabular-nums">{r.stock_after ?? "—"}</TableCell>
                 <TableCell className="text-xs max-w-[260px]">
-                  {r.reason && <div className="font-medium capitalize">{r.reason}</div>}
+                  {r.reason && r.reason !== EDIT_REASON && <div className="font-medium capitalize">{r.reason}</div>}
                   {r.notes && <div className="text-muted-foreground truncate">{r.notes}</div>}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">{r.user_name || "—"}</TableCell>
