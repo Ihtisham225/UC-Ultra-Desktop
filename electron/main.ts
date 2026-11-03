@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, PrinterInfo } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Tray, Menu, nativeImage, PrinterInfo, powerMonitor } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -418,6 +418,14 @@ app.whenReady().then(() => {
   registerProtocol()
   createWindow()
   createTray()
+
+  // Tell the page when the computer locks or sleeps, so it stops syncing (every
+  // sync keeps the shared database awake) and catches up when it comes back.
+  for (const state of ['lock-screen', 'unlock-screen', 'suspend', 'resume'] as const) {
+    powerMonitor.on(state as 'suspend', () => {
+      mainWindow?.webContents.send('power-state', state.replace('-screen', ''))
+    })
+  }
 
   // Cold start via the protocol (Windows/Linux pass the URL in argv).
   handleDeepLink(process.argv.find((a) => a.startsWith(`${PROTOCOL}://`)))

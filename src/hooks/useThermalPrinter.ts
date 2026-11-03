@@ -33,6 +33,8 @@ declare global {
       openExternal?: (url: string) => Promise<void>
       onOAuthCallback?: (cb: (data: { token?: string; state?: string; error?: string }) => void) => void
       consumePendingOAuth?: () => Promise<{ token?: string; state?: string; error?: string } | null>
+      /** Computer locked / unlocked / asleep / awake. Returns the unsubscribe. */
+      onPowerState?: (cb: (state: 'lock' | 'unlock' | 'suspend' | 'resume') => void) => () => void
     }
   }
 }

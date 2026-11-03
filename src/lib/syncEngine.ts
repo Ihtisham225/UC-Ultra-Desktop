@@ -10,6 +10,8 @@
 
 import { syncPush, syncPull, getToken, type PushOp } from './apiClient'
 import { onServerWrite } from './serverWrites'
+import { onQueued } from './queueSignal'
+import { ACTIVE_MS, IDLE_AFTER_MS, QUIET_AFTER_MS, nextSyncDelay } from './syncSchedule'
 import { mustWipe, rememberResetAt, storedResetAt } from './resetMarker'
 import {
   purgeLocalChildren,
@@ -159,6 +161,18 @@ export async function pushAll() {
 
 // ─── Full sync ───────────────────────────────────────────────────────────────
 
+const synced = new Set<() => void>()
+
+/**
+ * Called after every successful sync. Other server reads that should stay
+ * current (the shop's settings) ride on it, so they reach the database only
+ * when the sync already has — never on a timer of their own.
+ */
+export function onSynced(fn: () => void): () => void {
+  synced.add(fn)
+  return () => { synced.delete(fn) }
+}
+
 /** The sync currently in flight, so callers can wait on it instead of racing. */
 let current: Promise<void> | null = null
 
@@ -167,6 +181,9 @@ function startSync(): Promise<void> {
     try {
       await pushAll()
       await pullAll()
+      for (const fn of synced) {
+        try { fn() } catch { /* a listener must never break the sync */ }
+      }
     } catch (e) {
       console.warn('[sync] syncAll failed:', e)
     }
@@ -190,7 +207,7 @@ export async function syncAll(): Promise<void> {
  * everything queued up to this moment.
  *
  * Anything whose next step depends on the server having its rows must use this
- * and not syncAll(). syncAll() returns instantly while the 30s background loop
+ * and not syncAll(). syncAll() returns instantly while the background loop
  * is mid-sync, so the caller would carry on against rows that had never been
  * pushed — which is how a till asking for its server-issued order number got
  * told the sale did not exist, and kept the provisional code on the slip.
@@ -206,6 +223,8 @@ export async function syncNow(): Promise<void> {
 // ─── Sync right after a server write ────────────────────────────────────────
 
 let requested: ReturnType<typeof setTimeout> | null = null
+/** When the pending request fires — a sooner request replaces a later one. */
+let requestedFor = 0
 
 /**
  * Pull as soon as possible after the server changed something. Calls within a
@@ -215,7 +234,10 @@ let requested: ReturnType<typeof setTimeout> | null = null
  * this write landed.
  */
 export function requestSync(delayMs = 150): void {
-  if (requested) return
+  const due = Date.now() + delayMs
+  if (requested && requestedFor <= due) return
+  if (requested) clearTimeout(requested)
+  requestedFor = due
   requested = setTimeout(() => {
     requested = null
     void syncNow().catch(() => {})
@@ -224,15 +246,84 @@ export function requestSync(delayMs = 150): void {
 
 // ─── Background sync loop ───────────────────────────────────────────────────
 
-let intervalId: ReturnType<typeof setInterval> | null = null
+/** A till's own write is sent this soon after it is queued (a burst sends once). */
+const QUEUED_WRITE_DELAY_MS = 2_000
 
-export function startSyncLoop(getShopId: () => string | null, intervalMs = 30_000) {
-  if (intervalId) return
+let loopRunning = false
+
+/**
+ * Keeps this till in step with the server and the other tills. The PACE follows
+ * whether anyone is using it (see syncSchedule.ts — fast while in use, slow
+ * when quiet, stopped when idle, minimised, locked or asleep), because every
+ * pull keeps the shared Neon database awake. Its own writes don't wait for the
+ * pace: they go out within seconds of being made.
+ */
+export function startSyncLoop(getShopId: () => string | null, activeMs = ACTIVE_MS) {
+  if (loopRunning) return
+  loopRunning = true
+
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let lastRun = 0
+  let lastActivity = Date.now()
+  let away = false
 
   const run = () => {
+    lastRun = Date.now()
     // Only sync when signed in (device token present) with an active shop.
     if (getShopId() && getToken()) syncAll().catch(() => {})
   }
+
+  const delay = () => nextSyncDelay({
+    now: Date.now(),
+    lastActivity,
+    hidden: document.visibilityState === 'hidden',
+    away,
+    activeMs,
+  })
+
+  // Wake for the next sync, or at the moment the till goes quiet or idle,
+  // whichever is first — so a change of pace takes effect on time rather than
+  // after one more sync at the old pace.
+  const schedule = () => {
+    if (timer) clearTimeout(timer)
+    timer = null
+    const d = delay()
+    if (d === null) return // paused until someone comes back
+    const now = Date.now()
+    const candidates = [Math.max(lastRun + d, now)]
+    for (const edge of [lastActivity + QUIET_AFTER_MS, lastActivity + IDLE_AFTER_MS]) {
+      if (edge > now) candidates.push(edge)
+    }
+    timer = setTimeout(tick, Math.min(...candidates) - now)
+  }
+
+  const tick = () => {
+    timer = null
+    const d = delay()
+    if (d === null) return
+    if (Date.now() >= lastRun + d) run()
+    schedule()
+  }
+
+  // Back from quiet or paused: catch up now (unless a sync just ran), then
+  // carry on at the active pace.
+  const wake = () => {
+    if (Date.now() - lastRun >= activeMs) run()
+    schedule()
+  }
+
+  const onActivity = () => {
+    const wasSlow = delay() !== activeMs
+    lastActivity = Date.now()
+    if (wasSlow) wake()
+  }
+
+  const onVisibility = () => {
+    if (document.visibilityState === 'visible') onActivity()
+    else schedule() // minimised / hidden to the tray: pause
+  }
+
+  const onOnline = () => { run(); schedule() }
 
   // ⚠️ The background tick alone left a save made through the server (a
   // purchase, a return, a cheque) invisible in the offline store for up to half
@@ -240,22 +331,36 @@ export function startSyncLoop(getShopId: () => string | null, intervalMs = 30_00
   const stopWrites = onServerWrite(() => {
     if (getShopId() && getToken()) requestSync()
   })
-  // Coming back to the window: someone may have changed things on the web or
-  // on another till in the meantime.
-  const onVisible = () => { if (document.visibilityState === 'visible') run() }
+  // This till's own bills, payments and edits: sent within seconds, not on the
+  // next background sync (which may now be 15 minutes away, or paused).
+  const stopQueued = onQueued(() => {
+    if (getShopId() && getToken()) requestSync(QUEUED_WRITE_DELAY_MS)
+  })
+  // The computer locking or going to sleep pauses; unlocking or waking catches up.
+  const stopPower = window.electronAPI?.onPowerState?.((state) => {
+    away = state === 'lock' || state === 'suspend'
+    if (away) schedule()
+    else onActivity()
+  })
 
-  window.addEventListener('online', run)
-  window.addEventListener('focus', run)
-  document.addEventListener('visibilitychange', onVisible)
-  intervalId = setInterval(run, intervalMs)
+  const ACTIVITY = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const
+  for (const ev of ACTIVITY) window.addEventListener(ev, onActivity, { capture: true, passive: true })
+  window.addEventListener('focus', onActivity)
+  window.addEventListener('online', onOnline)
+  document.addEventListener('visibilitychange', onVisibility)
   run()
+  schedule()
 
   return () => {
-    if (intervalId) clearInterval(intervalId)
-    intervalId = null
+    if (timer) clearTimeout(timer)
+    timer = null
+    loopRunning = false
     stopWrites()
-    window.removeEventListener('online', run)
-    window.removeEventListener('focus', run)
-    document.removeEventListener('visibilitychange', onVisible)
+    stopQueued()
+    stopPower?.()
+    for (const ev of ACTIVITY) window.removeEventListener(ev, onActivity, { capture: true })
+    window.removeEventListener('focus', onActivity)
+    window.removeEventListener('online', onOnline)
+    document.removeEventListener('visibilitychange', onVisibility)
   }
 }
