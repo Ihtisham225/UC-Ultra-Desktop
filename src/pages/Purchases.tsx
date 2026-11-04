@@ -45,7 +45,7 @@ import { AccountPicker } from "@/components/AccountPicker";
 import { PartySelect } from "@/components/PartySelect";
 import { useAddNew } from "@/hooks/useAddNew";
 import { DateInput } from "@/components/DateInput";
-import { quantityForLineTotal } from "@/lib/purchase-line";
+import { lineGoodsTotal, quantityForLineTotal } from "@/lib/purchase-line";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 interface Supplier { id: string; name: string; phone: string | null; }
@@ -82,22 +82,27 @@ interface Line {
   expense_amount: number | null;
   /** Services (lab tests, labour) are a flat charge — no quantity. */
   is_service?: boolean;
+  /** The goods total typed into Line total (expenses excluded), kept exactly
+   *  instead of being re-worked from the rounded quantity. Cleared when the
+   *  unit cost or quantity is typed by hand. */
+  goods_total?: number | null;
 }
 
 /**
  * A line's total as an input: typing it works the quantity out (see
  * quantityForLineTotal). The typed text is kept while the box has focus, so
- * "75" on the way to "750" isn't rewritten to what 0.33 units would cost;
- * leaving the box shows the total the rounded quantity actually makes.
+ * "75" on the way to "750" isn't rewritten to what 0.33 units would cost.
+ * The typed figure is kept as the line's goods total, so Rs 740 stays Rs 740
+ * even though its quantity rounds to 3.22 (which × 230 would be 740.60).
  * Services have no quantity, so theirs stays a plain figure.
  */
-function LineTotalInput({ line, className, onQuantity }: {
+function LineTotalInput({ line, className, onTotal }: {
   line: Line;
   className?: string;
-  onQuantity: (quantity: number | null) => void;
+  onTotal: (patch: { quantity: number | null; goods_total: number | null }) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
-  const total = (line.unit_cost ?? 0) * (line.quantity ?? 0) + (line.expense_amount ?? 0);
+  const total = goodsOfLine(line) + (line.expense_amount ?? 0);
   const shown = line.quantity == null && !line.expense_amount ? "" : total.toFixed(2);
   return (
     <Input type="number" inputMode="decimal" step="0.01" placeholder="0.00"
@@ -110,9 +115,16 @@ function LineTotalInput({ line, className, onQuantity }: {
       onChange={(e) => {
         const v = e.target.value;
         setDraft(v);
-        onQuantity(v === "" ? null : quantityForLineTotal(parseFloat(v), line.unit_cost, line.expense_amount));
+        const typed = parseFloat(v);
+        const quantity = v === "" ? null : quantityForLineTotal(typed, line.unit_cost, line.expense_amount);
+        onTotal({ quantity, goods_total: quantity == null ? null : typed - (line.expense_amount ?? 0) });
       }} />
   );
+}
+
+/** A line's goods value: the typed total when it still fits, else cost × qty. */
+function goodsOfLine(l: Line): number {
+  return lineGoodsTotal(l.unit_cost ?? 0, l.quantity ?? 0, l.goods_total);
 }
 
 /** A Date's local calendar day as yyyy-MM-dd. */
@@ -376,6 +388,7 @@ export default function Purchases() {
       unit_cost: Number(it.unit_cost),
       quantity: Number(it.quantity),
       expense_amount: Number(it.expense_amount ?? 0) || null,
+      goods_total: Number(it.line_total),
     })));
     setDetails(null);
     setOpen(true);
@@ -425,7 +438,7 @@ export default function Purchases() {
 
   useEffect(() => { load(); }, [load]);
 
-  const subtotal = useMemo(() => lines.reduce((a, l) => a + (l.unit_cost ?? 0) * (l.quantity ?? 0), 0), [lines]);
+  const subtotal = useMemo(() => lines.reduce((a, l) => a + goodsOfLine(l), 0), [lines]);
   const expensesTotal = useMemo(() => lines.reduce((a, l) => a + (l.expense_amount ?? 0), 0), [lines]);
   const purchaseTotal = subtotal + expensesTotal;
   // Blank means paid in full, so nothing is owed.
@@ -445,7 +458,7 @@ export default function Purchases() {
   const distributeShared = () => {
     const amount = parseFloat(sharedExpense) || 0;
     if (amount <= 0 || lines.length === 0) return;
-    const values = lines.map((l) => (l.unit_cost ?? 0) * (l.quantity ?? 0));
+    const values = lines.map(goodsOfLine);
     const totalValue = values.reduce((a, v) => a + v, 0);
     const shares = lines.map((_, i) =>
       totalValue > 0 ? (values[i] / totalValue) * amount : amount / lines.length,
@@ -608,7 +621,9 @@ export default function Purchases() {
   };
 
   const updateLine = (key: string, patch: Partial<Line>) => {
-    setLines((prev) => prev.map((l) => l.key === key ? { ...l, ...patch } : l));
+    // Typing the cost or quantity by hand means the arithmetic decides again.
+    const typedByHand = ("unit_cost" in patch || "quantity" in patch) && !("goods_total" in patch);
+    setLines((prev) => prev.map((l) => l.key === key ? { ...l, ...patch, ...(typedByHand ? { goods_total: null } : {}) } : l));
   };
 
   const removeLine = (key: string) => setLines((prev) => prev.filter((l) => l.key !== key));
@@ -690,6 +705,7 @@ export default function Purchases() {
         unit_cost: l.unit_cost ?? 0,
         quantity: l.quantity as number,
         expense_amount: l.expense_amount ?? 0,
+        line_total: l.goods_total ?? null,
       })),
     };
     // Editing rebuilds stock, the supplier's khata and any investor holding
@@ -718,7 +734,9 @@ export default function Purchases() {
         const purchaseId = uuid();
         createdId = purchaseId;
         const now = new Date().toISOString();
-        const goods = input.items.reduce((a, l) => a + l.unit_cost * (l.quantity ?? 0), 0);
+        // Same rule as the server: a typed line total is kept while it fits.
+        const goodsOf = (l: (typeof input.items)[number]) => lineGoodsTotal(l.unit_cost, l.quantity ?? 0, l.line_total);
+        const goods = input.items.reduce((a, l) => a + goodsOf(l), 0);
         const expenses = input.items.reduce((a, l) => a + (l.expense_amount ?? 0), 0);
         const grand = goods + expenses;
         const paidNow = input.amount_paid == null ? grand : Math.min(Math.max(input.amount_paid, 0), grand);
@@ -755,7 +773,7 @@ export default function Purchases() {
             unit_cost: l.unit_cost,
             quantity: l.quantity,
             expense_amount: l.expense_amount ?? 0,
-            line_total: l.unit_cost * (l.quantity ?? 0),
+            line_total: goodsOf(l),
             created_at: now,
           }, true);
         }
@@ -1296,7 +1314,7 @@ export default function Purchases() {
                             <TableCell className="p-2 text-end tabular-nums">
                               {l.is_service ? formatMoney((l.unit_cost ?? 0) * (l.quantity ?? 0) + (l.expense_amount ?? 0), cur) : (
                                 <LineTotalInput line={l} className="h-9 px-2 text-sm tabular-nums text-end"
-                                  onQuantity={(quantity) => updateLine(l.key, { quantity })} />
+                                  onTotal={(patch) => updateLine(l.key, patch)} />
                               )}
                             </TableCell>
                             <TableCell>
@@ -1362,7 +1380,7 @@ export default function Purchases() {
                             <span className="font-semibold tabular-nums">{formatMoney((l.unit_cost ?? 0) * (l.quantity ?? 0) + (l.expense_amount ?? 0), cur)}</span>
                           ) : (
                             <LineTotalInput line={l} className="h-11 text-base tabular-nums text-end max-w-[10rem]"
-                              onQuantity={(quantity) => updateLine(l.key, { quantity })} />
+                              onTotal={(patch) => updateLine(l.key, patch)} />
                           )}
                         </div>
                       </div>

@@ -27,6 +27,7 @@
  */
 
 import { expandMadeToOrder, soldFromIngredients, type RecipeBook } from "./recipe";
+import { storedLineGoods } from "./purchase-line";
 
 type Num = number | string | null | undefined;
 const n = (v: Num) => {
@@ -42,6 +43,7 @@ export interface PnlInput {
   /** Returns taken in the period, with what came back. */
   returns: { total_refund: Num; items: Line[] }[];
   /** EVERY purchase line of the shop — the average cost is over all of them. */
+  /** line_total, when given, is the goods cost (a typed bill total); see storedLineGoods. */
   purchaseItems: (Line & { unit_cost: Num; expense_amount?: Num })[];
   expenses: number;
   expensesByCategory?: { name: string; total: number }[];
@@ -105,7 +107,7 @@ export function averageCosts(purchaseItems: PnlInput["purchaseItems"]): Map<stri
     if (!k) continue;
     const t = totals.get(k) ?? { qty: 0, cost: 0 };
     t.qty += n(p.quantity);
-    t.cost += n(p.quantity) * n(p.unit_cost) + n(p.expense_amount);
+    t.cost += storedLineGoods(p) + n(p.expense_amount);
     totals.set(k, t);
   }
   const avg = new Map<string, number>();
