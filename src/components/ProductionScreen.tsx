@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { DateInput } from "@/components/DateInput";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useShop } from "@/contexts/ShopContext";
@@ -20,6 +22,9 @@ import type { BatchProductDto, ProductionApi, ProductionIngredientDto, Productio
 /**
  * Production (cafe shops): batches made ahead — mix milk, kheer, cake. Making
  * one takes the ingredients off stock and adds the batch to the product's.
+ * A product with no recipe (a no-recipe cafe's "prepared ahead") is costed at
+ * a typed cost per item — or, when the batch lists what went into it (2 kg cow
+ * + 5 kg buffalo for 7 kg mix milk), from those, which also come off stock.
  *
  * ⚠️ COPIED verbatim to the desktop; each app passes its own `api`.
  */
@@ -109,15 +114,29 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
   const changeQty = (raw: string) => {
     setQty(raw);
     const n = parseFloat(raw);
-    if (product && n > 0) setLines(prefill(product, n));
+    // Only a recipe rescales; lines typed for a no-recipe batch are the kitchen's own.
+    if (product && n > 0 && product.recipe_lines.length > 0) setLines(prefill(product, n));
   };
 
   const made = parseFloat(qty) || 0;
-  // No recipe: nothing to take off the shelf — the batch is costed per item.
+  // No recipe: the batch is costed per item — unless it lists what went into
+  // it, in which case those come off stock and price it, exactly like a recipe.
   const noRecipe = !!product && product.recipe_lines.length === 0;
-  const cost = noRecipe
+  const byUnitCost = noRecipe && lines.length === 0;
+  const cost = byUnitCost
     ? made * (parseFloat(unitCost) || 0)
     : lines.reduce((a, l) => a + (parseFloat(l.quantity) || 0) * (ingById.get(l.product_id)?.cost ?? 0), 0);
+
+  // ---- add an item used (any stocked product the batch isn't already using)
+  const [addOpen, setAddOpen] = useState(false);
+  const addable = useMemo(
+    () => (form?.ingredients ?? []).filter((i) => i.is_active && i.id !== productId && !lines.some((l) => l.product_id === i.id)),
+    [form, productId, lines],
+  );
+  const addLine = (id: string) => {
+    setLines((prev) => [...prev, { product_id: id, quantity: "" }]);
+    setAddOpen(false);
+  };
 
   const save = async () => {
     if (!product) return toast.error("Pick what you made.");
@@ -126,14 +145,14 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
       .map((l) => ({ product_id: l.product_id, quantity: parseFloat(l.quantity) }))
       .filter((l) => l.product_id && l.quantity > 0);
     const perItem = parseFloat(unitCost);
-    if (noRecipe && !(perItem > 0)) return toast.error("Enter what one costs to make.");
-    if (!noRecipe && !items.length) return toast.error("A batch needs at least one ingredient.");
+    if (byUnitCost && !(perItem > 0)) return toast.error("Enter what one costs to make, or add what went into it.");
+    if (!byUnitCost && !items.length) return toast.error("Enter how much of each item went into it.");
     setBusy(true);
     try {
       const res = await api.create({
         product_id: product.id, quantity: made, run_date: runDate, notes: notes.trim() || null,
-        items: noRecipe ? [] : items,
-        ...(noRecipe ? { unit_cost: perItem } : {}),
+        items: byUnitCost ? [] : items,
+        ...(byUnitCost ? { unit_cost: perItem } : {}),
       });
       if (!res.ok) return toast.error(res.error ?? "Couldn't save the batch");
       toast.success(`Made ${formatQty(made)} ${unitLabel(product.unit)} of ${product.name}`);
@@ -267,7 +286,7 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
                     </span>
                   </div>
 
-                  {noRecipe ? (
+                  {byUnitCost && (
                     <div className="space-y-1.5 sm:max-w-xs">
                       <Label>Cost per {unitLabel(product.unit) || "item"}</Label>
                       <Input type="number" min="0" step="0.01" inputMode="decimal"
@@ -276,11 +295,14 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
                         From the product; change it if this batch cost more or less. Nothing else comes off stock.
                       </p>
                     </div>
-                  ) : (
+                  )}
+                  {!byUnitCost && (
                   <div className="space-y-2">
-                    <Label>Ingredients used</Label>
+                    <Label>{noRecipe ? "What went into it" : "Ingredients used"}</Label>
                     <p className="text-xs text-muted-foreground -mt-1">
-                      Filled in from the recipe — change any line to what was actually used.
+                      {noRecipe
+                        ? "These come off stock, and the batch is costed from what you paid for them."
+                        : "Filled in from the recipe — change any line to what was actually used."}
                     </p>
                     {lines.map((l, i) => {
                       const ing = ingById.get(l.product_id);
@@ -308,13 +330,50 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
                       );
                     })}
                   </div>
-
                   )}
 
+                  <div className="space-y-1">
+                    <Popover open={addOpen} onOpenChange={setAddOpen} modal>
+                      <PopoverTrigger asChild>
+                        <Button type="button" variant="outline" size="sm" disabled={addable.length === 0}>
+                          <Plus className="size-4 me-1.5" />
+                          {noRecipe && !lines.length ? "Add what went into it" : "Add another item"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-0" align="start">
+                        {/* Name-only matching — the ids in the item values would match too. */}
+                        <Command filter={(_v, search, keywords) => {
+                          const hay = (keywords ?? []).join(" ").toLowerCase();
+                          return search.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w)) ? 1 : 0;
+                        }}>
+                          <CommandInput placeholder="Search stocked products…" />
+                          <CommandList>
+                            <CommandEmpty>No match.</CommandEmpty>
+                            <CommandGroup>
+                              {addable.map((i) => (
+                                <CommandItem key={i.id} value={`${i.name} ${i.id}`} keywords={[i.name]} onSelect={() => addLine(i.id)}>
+                                  <span className="truncate">{i.name}</span>
+                                  <span className="ms-auto text-[11px] text-muted-foreground shrink-0">
+                                    {formatQty(i.stock)} {unitLabel(i.unit)}
+                                  </span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    {noRecipe && !lines.length && (
+                      <p className="text-xs text-muted-foreground">
+                        Made it from stock you bought — say cow and buffalo milk for mix milk? Add them here instead of typing a cost.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="rounded-md bg-muted/40 p-2 text-xs">
-                    {noRecipe ? "Batch cost" : "Ingredient cost"}: <b>{money(cost)}</b>
+                    {byUnitCost ? "Batch cost" : "Ingredient cost"}: <b>{money(cost)}</b>
                     {made > 0 && <> · {money(cost / made)} per {unitLabel(product.unit) || "unit"}</>}
-                    {!noRecipe && lines.some((l) => !(ingById.get(l.product_id)?.cost)) && (
+                    {!byUnitCost && lines.some((l) => !(ingById.get(l.product_id)?.cost)) && (
                       <span className="text-muted-foreground"> · ingredients never bought through a purchase count as 0</span>
                     )}
                   </div>
