@@ -10,10 +10,14 @@
  * store; the web feeds it from productPurchaseCostsAction).
  */
 
+import { storedLineGoods } from "./purchase-line";
+
 export interface CostLine {
   quantity: number | string;
   unit_cost: number | string;
   expense_amount?: number | string | null;
+  /** The stored goods total; preferred over unit cost × qty (see storedLineGoods). */
+  line_total?: number | string | null;
   /** When the purchase was made (purchases.created_at). */
   at: string | Date;
 }
@@ -29,7 +33,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 export function landedUnitCost(l: CostLine): number | null {
   const q = Number(l.quantity);
   if (!Number.isFinite(q) || q <= 0) return null;
-  const goods = Number(l.unit_cost) * q;
+  const goods = storedLineGoods(l);
   const extra = Number(l.expense_amount ?? 0) || 0;
   return round2((goods + extra) / q);
 }

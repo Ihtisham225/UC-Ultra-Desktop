@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quantityForLineTotal } from "@/lib/purchase-line";
+import { lineGoodsTotal, quantityForLineTotal, storedLineGoods } from "@/lib/purchase-line";
 
 describe("quantityForLineTotal", () => {
   it("divides the total by the unit cost", () => {
@@ -16,5 +16,27 @@ describe("quantityForLineTotal", () => {
     expect(quantityForLineTotal(500, null, 0)).toBeNull();
     expect(quantityForLineTotal(50, 230, 64)).toBeNull();
     expect(quantityForLineTotal(Number.NaN, 230, 0)).toBeNull();
+  });
+});
+
+describe("lineGoodsTotal", () => {
+  it("keeps the typed total when the rounded quantity can make it", () => {
+    // 740 / 230 = 3.2174 → 3.22, which × 230 is 740.60.
+    expect(lineGoodsTotal(230, 3.22, 740)).toBe(740);
+  });
+  it("falls back to cost × quantity with no typed total", () => {
+    expect(lineGoodsTotal(230, 3.22, null)).toBe(740.6);
+  });
+  it("ignores a typed total that no longer fits (cost or quantity changed)", () => {
+    expect(lineGoodsTotal(230, 4, 740)).toBe(920);
+  });
+});
+
+describe("storedLineGoods", () => {
+  it("prefers the stored line total", () => {
+    expect(storedLineGoods({ quantity: "3.22", unit_cost: "230", line_total: "740" })).toBe(740);
+  });
+  it("uses cost × quantity when the row has none", () => {
+    expect(storedLineGoods({ quantity: 2, unit_cost: 50 })).toBe(100);
   });
 });
