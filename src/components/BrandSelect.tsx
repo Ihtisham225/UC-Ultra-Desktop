@@ -10,9 +10,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { SearchSelect } from "@/components/SearchSelect";
 import { rpc } from "@/lib/apiClient";
 
 export interface BrandDto {
@@ -23,8 +21,6 @@ export interface BrandDto {
   /** Hidden from this picker; products keep it. */
   is_archived?: boolean;
 }
-
-const NONE = "__none__";
 
 export function BrandSelect({
   value,
@@ -72,25 +68,17 @@ export function BrandSelect({
 
   return (
     <div className="flex gap-2">
-      <Select
-        value={value ?? NONE}
-        onValueChange={(v) => {
-          if (v === NONE) return onChange(null, null);
-          onChange(v, options.find((b) => b.id === v)?.name ?? null);
-        }}
-        disabled={disabled}
-      >
-        <SelectTrigger className="flex-1">
-          <SelectValue placeholder="No brand" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NONE}>No brand</SelectItem>
-          {/* Archived brands stay selectable only on a product that already has one. */}
-          {options.filter((b) => !b.is_archived || b.id === value).map((b) => (
-            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className="flex-1 min-w-0">
+        <SearchSelect
+          value={value}
+          onChange={(id) => onChange(id, id ? options.find((b) => b.id === id)?.name ?? null : null)}
+          disabled={disabled}
+          noneLabel="No brand"
+          searchPlaceholder="Search brands…"
+          // Archived brands stay selectable only on a product that already has one.
+          options={options.filter((b) => !b.is_archived || b.id === value).map((b) => ({ id: b.id, label: b.name }))}
+        />
+      </div>
 
       <Button
         type="button"

@@ -106,7 +106,7 @@ export function StockAdjustmentDialog({ open, onOpenChange, initialProductId, on
             {/* Searchable: a shop carries hundreds of lines (one oil shop has
                 405), and scrolling a plain dropdown to find one is unusable.
                 Same pattern as the variant picker below. */}
-            <Popover open={productOpen} onOpenChange={setProductOpen}>
+            <Popover open={productOpen} onOpenChange={setProductOpen} modal>
               <PopoverTrigger asChild>
                 <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
                   <span className={`truncate ${selectedProduct ? "" : "text-muted-foreground"}`}>
@@ -148,7 +148,7 @@ export function StockAdjustmentDialog({ open, onOpenChange, initialProductId, on
               <Label>Variant</Label>
               {/* Searchable: a pharmacy can carry dozens of batches of one
                   medicine, and scrolling a plain dropdown to find one is slow. */}
-              <Popover open={variantOpen} onOpenChange={setVariantOpen}>
+              <Popover open={variantOpen} onOpenChange={setVariantOpen} modal>
                 <PopoverTrigger asChild>
                   <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
                     <span className={selectedVariant ? "" : "text-muted-foreground"}>

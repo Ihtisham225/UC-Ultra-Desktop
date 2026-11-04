@@ -1,4 +1,4 @@
-import { productionCostLinesOf } from "@/lib/production";
+import { productionCostLinesOf, typedCostLinesOf } from "@/lib/production";
 import { bookFromRows } from "@/lib/recipe";
 import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
@@ -162,7 +162,7 @@ export default function Dashboard() {
         .filter((s: any) => todaySaleIds.has(s.id))
         .map((s: any) => ({ subtotal: s.subtotal, tax: s.tax, total: s.total, items: itemsBySale.get(s.id) ?? [] })),
       returns: todayReturns.map((r: any) => ({ total_refund: r.total_refund, items: itemsByReturn.get(r.id) ?? [] })),
-      purchaseItems: [...allPurchaseItems, ...productionCostLinesOf(allProductionRuns)],
+      purchaseItems: [...allPurchaseItems, ...productionCostLinesOf(allProductionRuns), ...typedCostLinesOf(allProducts)],
       recipes: bookFromRows(allProducts, allRecipeLines),
       expenses: 0,
     });

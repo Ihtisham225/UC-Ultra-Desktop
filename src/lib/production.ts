@@ -20,7 +20,10 @@ export interface BatchProductDto {
   unit: string | null;
   stock: number;
   recipe_yield: number;
+  /** Empty for a no-recipe cafe's "prepared ahead" item: the batch is costed at current_cost instead. */
   recipe_lines: { ingredient_id: string; quantity: number; unit: string }[];
+  /** What one costs to make, typed on the product (products.current_cost). */
+  current_cost?: number | null;
 }
 
 export interface ProductionRunDto {
@@ -47,7 +50,9 @@ export interface ProductionApi {
     quantity: number;
     run_date: string;
     notes?: string | null;
+    /** Empty when the product has no recipe — then `unit_cost` prices the batch. */
     items: { product_id: string; quantity: number }[];
+    unit_cost?: number | null;
   }) => Promise<{ ok: boolean; id?: string; error?: string }>;
   remove: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }
@@ -70,4 +75,18 @@ export function productionCostLinesOf(
       unit_cost: Number(r.total_cost) / Number(r.quantity),
       expense_amount: 0,
     }));
+}
+
+/**
+ * A service with a typed cost (a no-recipe cafe's "made on the spot" item:
+ * one cup of tea costs 35) as a single cost line, so the P&L costs every cup
+ * sold at that figure instead of counting the whole price as profit. Services
+ * without a cost (lab tests, labour) give nothing and stay costless, as before.
+ */
+export function typedCostLinesOf(
+  products: { id: string; is_service?: boolean | null; current_cost?: number | string | null }[],
+): { product_id: string; variant_id: null; quantity: number; unit_cost: number; expense_amount: number }[] {
+  return products
+    .filter((p) => p.is_service && Number(p.current_cost) > 0)
+    .map((p) => ({ product_id: p.id, variant_id: null, quantity: 1, unit_cost: Number(p.current_cost), expense_amount: 0 }));
 }

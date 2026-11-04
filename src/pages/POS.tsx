@@ -1091,7 +1091,7 @@ export default function POS() {
                           !p.is_service && totalStock <= 0 ? "text-amber-600 font-medium" : "text-muted-foreground"
                         }`}
                       >
-                        {p.is_service ? "Service" : `${t("common.stock")}: ${formatQty(totalStock)}`}
+                        {p.is_service ? (cafeShop ? "Made fresh" : "Service") : `${t("common.stock")}: ${formatQty(totalStock)}`}
                       </div>
                     )}
                     {/* Only present when the shop has switched it on. */}
@@ -1153,7 +1153,7 @@ export default function POS() {
                       <span className="text-sm font-semibold tabular-nums text-foreground">{formatMoney(p.price, cur)}</span>
                       {!isLabTest(p) && (
                         <span className={`tabular-nums ${!p.is_service && totalStock <= 0 ? "text-amber-600 font-medium" : ""}`}>
-                          {p.is_service ? "Service" : `${formatQty(totalStock)}${p.unit ? ` ${p.unit}` : ""} in stock`}
+                          {p.is_service ? (cafeShop ? "Made fresh" : "Service") : `${formatQty(totalStock)}${p.unit ? ` ${p.unit}` : ""} in stock`}
                         </span>
                       )}
                       {p.shelf_location && <span>📍 {p.shelf_location}</span>}

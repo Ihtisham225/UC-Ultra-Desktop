@@ -2,7 +2,7 @@
 // Cash & bank / Customers & Ledger / Cheques / Tax.
 // Each report has a date range, KPI cards, a sortable table, CSV export, and print-to-PDF.
 import { writeOffTotals } from "@/lib/write-offs";
-import { productionCostLinesOf } from "@/lib/production";
+import { productionCostLinesOf, typedCostLinesOf } from "@/lib/production";
 import { bookFromRows } from "@/lib/recipe";
 import { printCurrentPageA4 } from "@/lib/printA4";
 import { toast } from "sonner";
@@ -517,7 +517,7 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
       setData(computePnl({
         sales: sales.map((sl) => ({ subtotal: sl.subtotal, tax: sl.tax, total: sl.total, items: itemsBySale.get(sl.id) ?? [] })),
         returns: returns.map((r) => ({ total_refund: r.total_refund, items: itemsByReturn.get(r.id) ?? [] })),
-        purchaseItems: [...(pi as any[]), ...productionCostLinesOf(runs)],
+        purchaseItems: [...(pi as any[]), ...productionCostLinesOf(runs), ...typedCostLinesOf(allProducts)],
         recipes: bookFromRows(allProducts, recipeLines),
         expenses: exps.reduce((a, x) => a + Number(x.amount), 0),
         expensesByCategory: Array.from(byCat.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total),

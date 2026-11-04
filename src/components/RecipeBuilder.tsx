@@ -41,6 +41,9 @@ export interface RecipeIngredient {
 /** The draft as the server wants it, or an error to show before saving. */
 export function recipeForSave(d: RecipeDraft): { mode: RecipeMode | null; yield: number; lines: { ingredient_id: string; quantity: number; unit: string }[] } | { error: string } {
   if (!d.mode) return { mode: null, yield: 1, lines: [] };
+  // A cafe that doesn't use recipes marks a "prepared ahead" product as a batch
+  // with no ingredients: Production adds it to stock at the cost typed there.
+  if (d.mode === "batch" && !d.lines.some((l) => l.ingredient_id)) return { mode: "batch", yield: 1, lines: [] };
   const y = parseFloat(d.yield);
   if (!(y > 0)) return { error: "Enter how many one recipe makes — more than 0." };
   const lines = d.lines

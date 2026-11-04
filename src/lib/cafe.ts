@@ -14,3 +14,36 @@
 export function isCafe(shop?: { store_type?: string | null } | null): boolean {
   return shop?.store_type === "cafe";
 }
+
+/**
+ * Settings → Shop: does this cafe build its products from recipes? Many don't —
+ * ingredient prices move and keeping recipes in step needs someone on it. Off,
+ * a product is one of three simple kinds (see CafeProductKind). Missing (older
+ * payloads) means yes, the original behaviour.
+ */
+export function usesRecipes(shop?: { store_type?: string | null; cafe_recipes?: boolean | null } | null): boolean {
+  return isCafe(shop) && shop?.cafe_recipes !== false;
+}
+
+/**
+ * A cafe product when the shop doesn't use recipes:
+ *  - "bought"   — bought and sold as it is (milk, eggs, oil); stock tracked.
+ *  - "on_spot"  — made on the spot (tea, fries, noodles); a typed cost, no
+ *                 stock, sells without limit. Stored as a service.
+ *  - "prepared" — prepared ahead (cake, kheer); a typed cost, stock added when
+ *                 a batch is made (Production) and taken off as it sells.
+ *                 Stored as a batch recipe with no ingredients.
+ */
+export type CafeProductKind = "bought" | "on_spot" | "prepared";
+
+export function cafeKindOf(p: { is_service?: boolean | null; recipe_mode?: string | null }): CafeProductKind {
+  if (p.is_service) return "on_spot";
+  if (p.recipe_mode === "batch") return "prepared";
+  return "bought";
+}
+
+export const CAFE_KINDS: { value: CafeProductKind; label: string; hint: string }[] = [
+  { value: "bought", label: "Bought and sold", hint: "Cow milk, organic eggs, oil — bought in and sold as it is. Stock is tracked." },
+  { value: "on_spot", label: "Made on the spot", hint: "Tea, fries, samosa, noodles — set what one costs you and sell it. No stock to keep." },
+  { value: "prepared", label: "Prepared ahead", hint: "Cake, kheer — set what one costs you. Add to stock from Production when you make a batch; selling takes it off." },
+];

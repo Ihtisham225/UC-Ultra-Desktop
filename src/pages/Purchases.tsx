@@ -1210,7 +1210,7 @@ export default function Purchases() {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <Label>{t("purchases.items")}</Label>
                     <div className="flex gap-2 w-full sm:w-auto">
-                    <Popover>
+                    <Popover modal>
                       <PopoverTrigger asChild>
                         <Button type="button" variant="outline" size="sm" className="flex-1 sm:w-60 justify-start">
                           <Plus className="size-4 mr-2" /> {t("purchases.addProductPlaceholder")}

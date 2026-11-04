@@ -14,7 +14,7 @@ import { SaleUnitsBuilder, type SaleUnitDraft } from "@/components/SaleUnitsBuil
 import { generateSku } from "@/lib/sku";
 import { isLabEnabled } from "@/lib/lab";
 import { isOil, OIL_UNIT_SUGGESTIONS } from "@/lib/oil";
-import { isCafe } from "@/lib/cafe";
+import { CAFE_KINDS, cafeKindOf, isCafe, usesRecipes, type CafeProductKind } from "@/lib/cafe";
 import { RecipeBuilder, emptyRecipe, type RecipeDraft, type RecipeIngredient } from "@/components/RecipeBuilder";
 import { LocationSelect } from "@/components/LocationSelect";
 import type { LocationRow } from "@/lib/storage-locations";
@@ -124,6 +124,11 @@ export function ProductFormFields<T extends ProductFormValue>({
   const isOilShop = isOil(currentShop);
   // Cafes buy raw materials they never sell and make what they do sell.
   const isCafeShop = isCafe(currentShop);
+  // A cafe that doesn't keep recipes picks one of three kinds instead (lib/cafe).
+  // A product that already has a recipe keeps its builder, so nothing is lost.
+  const hasRecipeLines = (value.recipe?.lines ?? []).some((l) => l.ingredient_id);
+  const simpleCafe = isCafeShop && !usesRecipes(currentShop) && !hasRecipeLines;
+  const cafeKind = cafeKindOf({ is_service: value.is_service, recipe_mode: value.recipe?.mode ?? null });
   // The Service toggle (and lab test factors) only exist once the shop says it
   // runs a lab — other store types keep services for repair labour etc.
   const labEnabled = isLabEnabled(currentShop);
@@ -134,6 +139,13 @@ export function ProductFormFields<T extends ProductFormValue>({
   const isLabTest = !!value.is_lab_test;
 
   const set = (patch: Partial<ProductFormValue>) => onChange({ ...value, ...patch } as T);
+
+  /** No-recipe cafes: a kind is a service, a batch with no ingredients, or neither. */
+  const setCafeKind = (kind: CafeProductKind) => {
+    if (kind === "on_spot") set({ is_service: true, is_lab_test: false, hasVariants: false, variants: [], recipe: emptyRecipe() });
+    else if (kind === "prepared") set({ is_service: false, recipe: { mode: "batch", yield: "1", lines: [] } });
+    else set({ is_service: false, recipe: emptyRecipe() });
+  };
 
   // Settings → Shop → "Price by markup %": selling price = current cost +
   // the markup. Services are never bought.
@@ -467,7 +479,48 @@ export function ProductFormFields<T extends ProductFormValue>({
         </div>
       )}
 
-      {isCafeShop && !isService && recipeIngredients && (
+      {simpleCafe && (
+        <div className="rounded-lg border bg-card p-3 space-y-3">
+          <div>
+            <Label>What kind of item is it?</Label>
+            <p className="text-xs text-muted-foreground mt-1">Decides whether stock is kept for it.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="Kind of item">
+            {CAFE_KINDS.map((k) => (
+              <button
+                key={k.value}
+                type="button"
+                role="radio"
+                aria-checked={cafeKind === k.value}
+                onClick={() => setCafeKind(k.value)}
+                className={`text-start rounded-lg border p-2.5 transition-colors ${cafeKind === k.value ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50"}`}
+              >
+                <div className="text-sm font-medium">{k.label}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">{k.hint}</div>
+              </button>
+            ))}
+          </div>
+          {cafeKind !== "bought" && !byMarkup && (
+            <div className="space-y-1.5 sm:max-w-xs">
+              <Label>Cost per item</Label>
+              <Input
+                type="number" step="0.01" min="0" inputMode="decimal"
+                value={value.current_cost ?? ""}
+                placeholder="What one costs you to make"
+                onChange={(e) => {
+                  const c = e.target.value === "" ? null : parseFloat(e.target.value);
+                  set({ current_cost: c != null && Number.isFinite(c) ? c : null });
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Used for the profit on every one sold{cafeKind === "prepared" ? ", and filled in when you add a batch to stock" : ""}.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isCafeShop && !simpleCafe && !isService && recipeIngredients && (
         <RecipeBuilder
           value={value.recipe ?? emptyRecipe()}
           onChange={(recipe) => set({ recipe })}
@@ -479,7 +532,7 @@ export function ProductFormFields<T extends ProductFormValue>({
         />
       )}
 
-      {canBeService && (
+      {canBeService && !simpleCafe && (
       <div className="rounded-lg border bg-card p-3">
         <div className="flex items-center justify-between gap-3">
           <div>
