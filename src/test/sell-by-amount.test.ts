@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lineTotalOf, qtyForAmount } from "@/lib/sell-by-amount";
+import { lineTotalOf, priceForAmount, qtyForAmount } from "@/lib/sell-by-amount";
 
 describe("qtyForAmount — Rs 100 of the Rs 250/kg one", () => {
   it("works the quantity out from the amount", () => {
@@ -27,5 +27,24 @@ describe("lineTotalOf", () => {
   it("drops a stale amount once the quantity or price no longer fits it", () => {
     expect(lineTotalOf(240, 1, 100)).toBe(240);
     expect(lineTotalOf(300, 0.42, 100)).toBe(126);
+  });
+});
+
+describe("priceForAmount — 24 kheer for Rs 1000", () => {
+  it("keeps the quantity and works the price out", () => {
+    expect(priceForAmount(1000, 24)).toBe(41.67);
+  });
+  it("and the line still totals what was typed", () => {
+    // 41.67 × 24 = 1000.08 — within the price's rounding, so 1000 stands.
+    expect(lineTotalOf(41.67, 24, 1000)).toBe(1000);
+  });
+  it("holds for a big quantity at a small price", () => {
+    // 1000 ÷ 300 = 3.333… → 3.33; 3.33 × 300 = 999 — off by a whole rupee.
+    expect(priceForAmount(1000, 300)).toBe(3.33);
+    expect(lineTotalOf(3.33, 300, 1000)).toBe(1000);
+  });
+  it("gives no price without a quantity or an amount", () => {
+    expect(priceForAmount(1000, 0)).toBeNull();
+    expect(priceForAmount(0, 24)).toBeNull();
   });
 });

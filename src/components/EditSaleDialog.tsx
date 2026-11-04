@@ -1,4 +1,4 @@
-import { lineTotalOf } from "@/lib/sell-by-amount";
+import { lineTotalOf, priceForAmount } from "@/lib/sell-by-amount";
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -233,6 +233,23 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
   const patch = (key: string, p: Partial<Line>) =>
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...p } : l)));
 
+  /**
+   * The Amount box's in-flight text per line, so "10" on the way to "1000"
+   * isn't rewritten as the rate it works out to. Dropped when the box is left.
+   */
+  const [amountDraft, setAmountDraft] = useState<Record<string, string>>({});
+
+  /** Typing the amount keeps the quantity and works the rate out, as at the till. */
+  const setLineAmount = (key: string, raw: string) => {
+    setAmountDraft((d) => ({ ...d, [key]: raw }));
+    const amount = parseFloat(raw);
+    setLines((prev) => prev.map((l) => {
+      if (l.key !== key) return l;
+      const price = priceForAmount(amount, num(l.quantity));
+      return price === null ? l : { ...l, unit_price: String(price), amount };
+    }));
+  };
+
   /** Re-price a line when its unit changes, exactly as the till does. */
   const setLineUnit = (key: string, unitId: string) => {
     setLines((prev) =>
@@ -346,7 +363,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
                     <Input
                       type="number" step="0.01" min="0" inputMode="decimal" className="h-8"
                       value={l.quantity}
-                      onChange={(e) => patch(l.key, { quantity: e.target.value })}
+                      onChange={(e) => patch(l.key, { quantity: e.target.value, amount: undefined })}
                     />
                   </div>
                   <div className="space-y-1">
@@ -379,14 +396,21 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
                     <Input
                       type="number" step="0.01" min="0" inputMode="decimal" className="h-8"
                       value={l.unit_price}
-                      onChange={(e) => patch(l.key, { unit_price: e.target.value })}
+                      onChange={(e) => patch(l.key, { unit_price: e.target.value, amount: undefined })}
                     />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[11px]">Amount</Label>
-                    <div className="h-8 flex items-center justify-end text-sm font-semibold tabular-nums">
-                      {formatMoney(round2(num(l.quantity) * num(l.unit_price)), cur)}
-                    </div>
+                    <Input
+                      type="number" step="0.01" min="0" inputMode="decimal"
+                      className="h-8 text-end font-semibold tabular-nums"
+                      title="Type what the customer paid for this quantity — the rate is worked out"
+                      aria-label={`Amount for ${l.product_name}`}
+                      value={amountDraft[l.key] ?? String(lineTotalOf(num(l.unit_price), num(l.quantity), l.amount))}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onChange={(e) => setLineAmount(l.key, e.target.value)}
+                      onBlur={() => setAmountDraft((d) => { const n = { ...d }; delete n[l.key]; return n; })}
+                    />
                   </div>
                 </div>
                 {l.unit_factor > 1 && (

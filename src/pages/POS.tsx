@@ -1,6 +1,6 @@
 import { ORDER_TYPES, type OrderType } from "@/lib/cafe-order";
 import { isCafe } from "@/lib/cafe";
-import { lineTotalOf, qtyForAmount } from "@/lib/sell-by-amount";
+import { lineTotalOf, priceForAmount } from "@/lib/sell-by-amount";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatQty } from "@/lib/format";
 import { useTranslation } from "react-i18next";
@@ -131,9 +131,9 @@ interface CartItem {
   /** Price of one BASE unit, so changing unit can re-price the line. */
   base_price: number;
   /**
-   * Sold by amount: what the customer is paying for this line ("Rs 100 of
-   * it"). The quantity was worked out from it; it's dropped the moment the
-   * quantity, price or unit is changed by hand. See lib/sell-by-amount.
+   * Sold by amount: what the customer is paying for this line ("24 for
+   * Rs 1000"). The price per item was worked out from it; it's dropped the
+   * moment the quantity, price or unit is changed by hand. See lib/sell-by-amount.
    */
   amount?: number;
 }
@@ -375,12 +375,14 @@ export default function POS() {
       return next;
     });
 
-  /** "Rs 100 of it": the quantity follows from the amount at the line's price. */
+  /** "24 for Rs 1000": the price per item follows from the amount; the quantity stays. */
   const setLineAmount = (key: string, amount: number) => {
     setCart((prev) => prev.map((c) => {
       if (c.key !== key) return c;
-      const q = qtyForAmount(amount, c.unit_price);
-      return q === null ? c : { ...c, quantity: q, amount };
+      // The quantity typed is what's leaving the shelf: it stays, and the
+      // price per item follows from the amount (lib/sell-by-amount).
+      const price = priceForAmount(amount, c.quantity);
+      return price === null ? c : { ...c, unit_price: price, amount };
     }));
   };
 
@@ -1186,13 +1188,13 @@ export default function POS() {
                       <div className="font-medium text-sm truncate">{c.product_name}</div>
                     </div>
                     {/* The line's amount, editable: type what the customer wants to
-                        spend ("Rs 100 of it") and the quantity is worked out. */}
+                        spend for this quantity and the price per item is worked out. */}
                     <Input
                       type="number"
                       step="any"
                       min="0"
                       inputMode="decimal"
-                      title="Amount — type what the customer is paying and the quantity is worked out"
+                      title="Amount — type what the customer is paying for this quantity and the price per item is worked out"
                       aria-label={`Amount for ${c.product_name}`}
                       value={amountDraft[c.key] ?? String(lineTotalOf(c.unit_price, c.quantity, c.amount))}
                       onChange={(e) => {

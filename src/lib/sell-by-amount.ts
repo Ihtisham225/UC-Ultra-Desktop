@@ -1,14 +1,18 @@
 /**
- * Selling by amount: "Rs 100 of the Rs 250/kg one". The counter types what the
- * customer wants to spend and the quantity is worked out (0.4 kg), or types the
- * quantity and the amount follows (1 kg → Rs 250).
+ * Typing a till line's amount. The quantity the counter entered is what left
+ * the shelf, so it stays put and the PRICE per item follows: 24 kheer for
+ * Rs 1000 is 24 at Rs 41.67, not 25 at Rs 40 (priceForAmount). Typing the
+ * quantity keeps the price and the amount follows, as before.
  *
- * ⚠️ `sale_items.quantity` is stored to 2 places, so Rs 100 of a Rs 240/kg item
- * (0.41666… kg) is saved as 0.42 kg — and 0.42 × 240 is Rs 100.80, not the
- * Rs 100 the customer handed over. The typed amount therefore travels with the
- * line as its total, and is believed only while it agrees with price × quantity
- * to within that rounding; anything further off is a stale amount (the price or
- * quantity was changed after it was typed) and price × quantity wins.
+ * ⚠️ `sale_items.unit_price` is stored to 2 places, so 1000 ÷ 24 (41.666…) is
+ * saved as 41.67 — and 41.67 × 24 is Rs 1000.08, not the Rs 1000 the customer
+ * handed over. The typed amount therefore travels with the line as its total,
+ * and is believed only while it agrees with price × quantity to within that
+ * rounding; anything further off is a stale amount (the price or quantity was
+ * changed after it was typed) and price × quantity wins.
+ *
+ * qtyForAmount is the older direction (quantity from the amount) and is kept
+ * for callers that still sell that way.
  *
  * Pure and COPIED verbatim to the desktop (pinned by src/test/sell-by-amount.test.ts).
  */
@@ -22,12 +26,21 @@ export function qtyForAmount(amount: number, unitPrice: number): number | null {
   return q > 0 ? q : null;
 }
 
+/** The price per item that makes `quantity` cost `amount`, to the 2 places a sale line stores. Null when it can't be worked out. */
+export function priceForAmount(amount: number, quantity: number): number | null {
+  if (!(amount > 0) || !(quantity > 0)) return null;
+  const p = round2(amount / quantity);
+  return p > 0 ? p : null;
+}
+
 /** A line's total: the typed amount when it still fits price × quantity, else price × quantity. */
 export function lineTotalOf(unitPrice: number, quantity: number, amount?: number | null): number {
   const computed = round2(unitPrice * quantity);
   if (amount == null || !(amount > 0)) return computed;
-  // Quantity is rounded to the nearest 0.01, so price × quantity can be off
-  // the real amount by up to half a hundredth of the price.
-  const slack = unitPrice * 0.005 + 0.005;
+  // Price and quantity are each rounded to the nearest 0.01, so price ×
+  // quantity can be off the real amount by up to half a hundredth of the other
+  // one: of the quantity when the price was worked out (24 at 41.67), of the
+  // price when the quantity was.
+  const slack = (unitPrice + quantity) * 0.005 + 0.005;
   return Math.abs(amount - unitPrice * quantity) <= slack ? round2(amount) : computed;
 }
