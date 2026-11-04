@@ -45,6 +45,7 @@ import { AccountPicker } from "@/components/AccountPicker";
 import { PartySelect } from "@/components/PartySelect";
 import { useAddNew } from "@/hooks/useAddNew";
 import { DateInput } from "@/components/DateInput";
+import { quantityForLineTotal } from "@/lib/purchase-line";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 interface Supplier { id: string; name: string; phone: string | null; }
@@ -81,6 +82,37 @@ interface Line {
   expense_amount: number | null;
   /** Services (lab tests, labour) are a flat charge — no quantity. */
   is_service?: boolean;
+}
+
+/**
+ * A line's total as an input: typing it works the quantity out (see
+ * quantityForLineTotal). The typed text is kept while the box has focus, so
+ * "75" on the way to "750" isn't rewritten to what 0.33 units would cost;
+ * leaving the box shows the total the rounded quantity actually makes.
+ * Services have no quantity, so theirs stays a plain figure.
+ */
+function LineTotalInput({ line, className, onQuantity }: {
+  line: Line;
+  className?: string;
+  onQuantity: (quantity: number | null) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const total = (line.unit_cost ?? 0) * (line.quantity ?? 0) + (line.expense_amount ?? 0);
+  const shown = line.quantity == null && !line.expense_amount ? "" : total.toFixed(2);
+  return (
+    <Input type="number" inputMode="decimal" step="0.01" placeholder="0.00"
+      className={className}
+      value={draft ?? shown}
+      disabled={!line.unit_cost}
+      title={line.unit_cost ? undefined : "Enter the unit cost first"}
+      onFocus={() => setDraft(shown)}
+      onBlur={() => setDraft(null)}
+      onChange={(e) => {
+        const v = e.target.value;
+        setDraft(v);
+        onQuantity(v === "" ? null : quantityForLineTotal(parseFloat(v), line.unit_cost, line.expense_amount));
+      }} />
+  );
 }
 
 /** A Date's local calendar day as yyyy-MM-dd. */
@@ -1245,7 +1277,7 @@ export default function Purchases() {
                               {l.is_service ? (
                                 <span className="text-xs text-muted-foreground">—</span>
                               ) : (
-                                <Input type="number" inputMode="numeric" step="1" placeholder="Qty" value={l.quantity ?? ""}
+                                <Input type="number" inputMode="decimal" step="any" placeholder="Qty" value={l.quantity ?? ""}
                                   className="h-9 px-2 text-sm tabular-nums"
                                   onChange={(e) => {
                                     const v = e.target.value;
@@ -1261,7 +1293,12 @@ export default function Purchases() {
                                   updateLine(l.key, { expense_amount: v === "" ? null : (parseFloat(v) || 0) });
                                 }} />
                             </TableCell>
-                            <TableCell className="text-end tabular-nums">{formatMoney((l.unit_cost ?? 0) * (l.quantity ?? 0) + (l.expense_amount ?? 0), cur)}</TableCell>
+                            <TableCell className="p-2 text-end tabular-nums">
+                              {l.is_service ? formatMoney((l.unit_cost ?? 0) * (l.quantity ?? 0) + (l.expense_amount ?? 0), cur) : (
+                                <LineTotalInput line={l} className="h-9 px-2 text-sm tabular-nums text-end"
+                                  onQuantity={(quantity) => updateLine(l.key, { quantity })} />
+                              )}
+                            </TableCell>
                             <TableCell>
                               <Button variant="ghost" size="icon" onClick={() => removeLine(l.key)}><X className="size-4" /></Button>
                             </TableCell>
@@ -1319,9 +1356,14 @@ export default function Purchases() {
                               }} />
                           </div>
                         </div>
-                        <div className="flex justify-between text-sm pt-1 border-t">
+                        <div className="flex items-center justify-between gap-3 text-sm pt-1 border-t">
                           <span className="text-muted-foreground">{t("purchases.lineTotal")}</span>
-                          <span className="font-semibold tabular-nums">{formatMoney((l.unit_cost ?? 0) * (l.quantity ?? 0) + (l.expense_amount ?? 0), cur)}</span>
+                          {l.is_service ? (
+                            <span className="font-semibold tabular-nums">{formatMoney((l.unit_cost ?? 0) * (l.quantity ?? 0) + (l.expense_amount ?? 0), cur)}</span>
+                          ) : (
+                            <LineTotalInput line={l} className="h-11 text-base tabular-nums text-end max-w-[10rem]"
+                              onQuantity={(quantity) => updateLine(l.key, { quantity })} />
+                          )}
                         </div>
                       </div>
                     ))}
