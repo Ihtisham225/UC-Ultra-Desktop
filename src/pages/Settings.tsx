@@ -89,6 +89,7 @@ export default function Settings() {
   const [allowNegative, setAllowNegative] = useState(false);
   /** Cafe shops: the tables offered for dine-in, one per line while typed. */
   const [cafeTables, setCafeTables] = useState("");
+  const [cafeRecipes, setCafeRecipes] = useState(true);
   const [chequesOn, setChequesOn] = useState(false);
   const [chequeDays, setChequeDays] = useState("10");
   const [daybookOn, setDaybookOn] = useState(false);
@@ -150,6 +151,7 @@ export default function Settings() {
       setLabTests(!!currentShop.lab_tests_enabled);
       setAllowNegative(!!currentShop.allow_negative_stock);
       setCafeTables((currentShop.cafe_tables ?? []).join("\n"));
+      setCafeRecipes(currentShop.cafe_recipes !== false);
       setChequesOn(!!currentShop.cheques_enabled);
       setChequeDays(String(currentShop.cheque_reminder_days ?? 10));
       setDaybookOn(!!currentShop.daybook_enabled);
@@ -238,7 +240,7 @@ export default function Settings() {
         store_type: storeType,
         lab_tests_enabled: labTests,
         allow_negative_stock: allowNegative,
-        ...(storeType === "cafe" ? { cafe_tables: normalizeTables(cafeTables) } : {}),
+        ...(storeType === "cafe" ? { cafe_tables: normalizeTables(cafeTables), cafe_recipes: cafeRecipes } : {}),
         show_cost_in_pos: showCostInPos,
         receipt_prefix: receiptPrefix.trim() || null,
         receipt_next_number: receiptNext.trim() === "" ? null : (parseInt(receiptNext, 10) || null),
@@ -640,11 +642,32 @@ export default function Settings() {
                       shop-use items (milk, almonds, cups, shopping bags) so they are bought and stocked
                       but never offered at the POS. You can still sell a raw material by leaving it on.
                     </p>
-                    <p>
-                      A product can also have a <b>recipe</b>: <i>made to order</i> items (fried samosa,
-                      chai) use up their ingredients when sold; <i>made in batches</i> items (mix milk,
-                      kheer, cake) are made ahead and add to their own stock.
-                    </p>
+                    {cafeRecipes ? (
+                      <p>
+                        A product can also have a <b>recipe</b>: <i>made to order</i> items (fried samosa,
+                        chai) use up their ingredients when sold; <i>made in batches</i> items (mix milk,
+                        kheer, cake) are made ahead and add to their own stock.
+                      </p>
+                    ) : (
+                      <p>
+                        Without recipes, each product is <b>bought and sold</b> (milk, eggs — stock tracked),
+                        <b> made on the spot</b> (tea, fries — a cost you set, no stock), or <b>prepared ahead</b>
+                        {" "}(cake, kheer — a cost you set; add to stock from Production when you make a batch).
+                      </p>
+                    )}
+                  </div>
+                )}
+                {storeType === "cafe" && (
+                  <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                    <div>
+                      <Label htmlFor="cafeRecipes">Use recipes</Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        On: products are made from ingredients, which come off stock as they are used.
+                        Off: no ingredients to keep up to date — set what each item costs you instead.
+                        Products that already have a recipe keep it either way.
+                      </p>
+                    </div>
+                    <Switch id="cafeRecipes" checked={cafeRecipes} onCheckedChange={setCafeRecipes} disabled={!canEditShop} />
                   </div>
                 )}
                 {storeType === "cafe" && (

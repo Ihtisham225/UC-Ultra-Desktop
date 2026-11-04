@@ -340,7 +340,7 @@ export function PurchaseOrdersScreen({
 
               <div className="space-y-2">
                 <Label>Products</Label>
-                <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                <Popover open={pickerOpen} onOpenChange={setPickerOpen} modal>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-start text-muted-foreground font-normal">
                       <Search className="size-4 mr-2" /> Add a product…

@@ -65,6 +65,8 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
   const [runDate, setRunDate] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([]);
+  /** Cost per item for a product with no recipe (a no-recipe cafe's "prepared ahead"). */
+  const [unitCost, setUnitCost] = useState("");
   const [busy, setBusy] = useState(false);
 
   const ingById = useMemo(() => new Map((form?.ingredients ?? []).map((i) => [i.id, i])), [form]);
@@ -95,6 +97,7 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
   const pick = (p: BatchProductDto, data = form) => {
     setProductId(p.id);
     setQty(String(p.recipe_yield));
+    setUnitCost(p.current_cost != null ? String(p.current_cost) : "");
     if (!data) return;
     const info = new Map<string, IngredientInfo>(data.ingredients.map((i) => [i.id, { name: i.name, unit: i.unit }]));
     setLines(recipeUsage(p.recipe_lines, info, p.recipe_yield, p.recipe_yield).uses.map((u) => ({
@@ -109,8 +112,12 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
     if (product && n > 0) setLines(prefill(product, n));
   };
 
-  const cost = lines.reduce((a, l) => a + (parseFloat(l.quantity) || 0) * (ingById.get(l.product_id)?.cost ?? 0), 0);
   const made = parseFloat(qty) || 0;
+  // No recipe: nothing to take off the shelf — the batch is costed per item.
+  const noRecipe = !!product && product.recipe_lines.length === 0;
+  const cost = noRecipe
+    ? made * (parseFloat(unitCost) || 0)
+    : lines.reduce((a, l) => a + (parseFloat(l.quantity) || 0) * (ingById.get(l.product_id)?.cost ?? 0), 0);
 
   const save = async () => {
     if (!product) return toast.error("Pick what you made.");
@@ -118,10 +125,16 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
     const items = lines
       .map((l) => ({ product_id: l.product_id, quantity: parseFloat(l.quantity) }))
       .filter((l) => l.product_id && l.quantity > 0);
-    if (!items.length) return toast.error("A batch needs at least one ingredient.");
+    const perItem = parseFloat(unitCost);
+    if (noRecipe && !(perItem > 0)) return toast.error("Enter what one costs to make.");
+    if (!noRecipe && !items.length) return toast.error("A batch needs at least one ingredient.");
     setBusy(true);
     try {
-      const res = await api.create({ product_id: product.id, quantity: made, run_date: runDate, notes: notes.trim() || null, items });
+      const res = await api.create({
+        product_id: product.id, quantity: made, run_date: runDate, notes: notes.trim() || null,
+        items: noRecipe ? [] : items,
+        ...(noRecipe ? { unit_cost: perItem } : {}),
+      });
       if (!res.ok) return toast.error(res.error ?? "Couldn't save the batch");
       toast.success(`Made ${formatQty(made)} ${unitLabel(product.unit)} of ${product.name}`);
       setOpen(false);
@@ -172,7 +185,7 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
         {/* After mount only: money formats in the browser's locale, which the server can't know. */}
         {from && (
           <div className="ms-auto text-sm text-muted-foreground">
-            {runs.length} batch{runs.length === 1 ? "" : "es"} · ingredients worth <b className="text-foreground">{money(totalCost)}</b>
+            {runs.length} batch{runs.length === 1 ? "" : "es"} · costing <b className="text-foreground">{money(totalCost)}</b>
           </div>
         )}
       </div>
@@ -182,7 +195,7 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
           <div className="p-8 text-center text-muted-foreground">Loading…</div>
         ) : runs.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted-foreground">
-            No batches in these dates. Products made in batches are set up on the product form (Recipe → Made in batches).
+            No batches in these dates. Products made in batches are set up on the product form (Recipe → Made in batches, or Prepared ahead).
           </div>
         ) : (
           <ul className="divide-y">
@@ -193,7 +206,9 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
                     {formatQty(r.quantity)} {unitLabel(r.unit)} {r.product_name}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {fmtDate(r.run_date)} · used {r.items.map((i) => `${formatQty(i.quantity)} ${unitLabel(i.unit)} ${i.product_name}`).join(", ")}
+                    {fmtDate(r.run_date)} · {r.items.length
+                      ? `used ${r.items.map((i) => `${formatQty(i.quantity)} ${unitLabel(i.unit)} ${i.product_name}`).join(", ")}`
+                      : "added to stock"}
                   </div>
                   {r.notes && <div className="text-xs text-muted-foreground mt-0.5">{r.notes}</div>}
                 </div>
@@ -219,8 +234,8 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
             <div className="p-6 text-center text-muted-foreground">Loading…</div>
           ) : form.products.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Nothing is set up as made in batches yet. Open a product, and under <b>Recipe</b> choose
-              <b> Made in batches</b> and add its ingredients.
+              Nothing is set up as made in batches yet. Open a product and choose <b>Prepared ahead</b>
+              (or, with recipes, <b>Made in batches</b> and its ingredients).
             </p>
           ) : (
             <div className="space-y-4">
@@ -252,6 +267,16 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
                     </span>
                   </div>
 
+                  {noRecipe ? (
+                    <div className="space-y-1.5 sm:max-w-xs">
+                      <Label>Cost per {unitLabel(product.unit) || "item"}</Label>
+                      <Input type="number" min="0" step="0.01" inputMode="decimal"
+                        value={unitCost} onChange={(e) => setUnitCost(e.target.value)} placeholder="What one costs to make" />
+                      <p className="text-xs text-muted-foreground">
+                        From the product; change it if this batch cost more or less. Nothing else comes off stock.
+                      </p>
+                    </div>
+                  ) : (
                   <div className="space-y-2">
                     <Label>Ingredients used</Label>
                     <p className="text-xs text-muted-foreground -mt-1">
@@ -284,10 +309,12 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
                     })}
                   </div>
 
+                  )}
+
                   <div className="rounded-md bg-muted/40 p-2 text-xs">
-                    Ingredient cost: <b>{money(cost)}</b>
+                    {noRecipe ? "Batch cost" : "Ingredient cost"}: <b>{money(cost)}</b>
                     {made > 0 && <> · {money(cost / made)} per {unitLabel(product.unit) || "unit"}</>}
-                    {lines.some((l) => !(ingById.get(l.product_id)?.cost)) && (
+                    {!noRecipe && lines.some((l) => !(ingById.get(l.product_id)?.cost)) && (
                       <span className="text-muted-foreground"> · ingredients never bought through a purchase count as 0</span>
                     )}
                   </div>

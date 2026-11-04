@@ -1,5 +1,5 @@
 import { writeOffTotals } from "@/lib/write-offs";
-import { productionCostLinesOf } from "@/lib/production";
+import { productionCostLinesOf, typedCostLinesOf } from "@/lib/production";
 import { bookFromRows, type RecipeBook } from "@/lib/recipe";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -79,7 +79,7 @@ export default function Analytics() {
         returns: allReturns
           .filter((r) => r.created_at >= since)
           .map((r) => ({ total_refund: r.total_refund, items: itemsByReturn.get(r.id) ?? [] })),
-        purchaseItems: [...allPurchaseItems, ...productionCostLinesOf(runs)],
+        purchaseItems: [...allPurchaseItems, ...productionCostLinesOf(runs), ...typedCostLinesOf(allProducts)],
         serviceIds: new Set(allProducts.filter((p) => p.is_service).map((p) => p.id)),
         recipes: bookFromRows(allProducts, recipeLines),
         // write-offs carry a plain day, so compare with the window's LOCAL first day —
@@ -125,7 +125,7 @@ export default function Analytics() {
       // P&L's own basis (lib/pnl), so batch-made and made-to-order items are
       // costed too.
       setAvgCost(averageCostsWithRecipes(
-        [...allPurchaseItems, ...productionCostLinesOf(runs)],
+        [...allPurchaseItems, ...productionCostLinesOf(runs), ...typedCostLinesOf(allProducts)],
         bookFromRows(allProducts, recipeLines),
       ));
 

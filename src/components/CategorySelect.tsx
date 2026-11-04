@@ -14,6 +14,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { SearchSelect } from "@/components/SearchSelect";
 import { rpc } from "@/lib/apiClient";
 
 export interface CategoryDto {
@@ -111,24 +112,19 @@ export function CategorySelect({
 
   return (
     <div className="flex gap-2">
-      <Select
-        value={value ?? NONE}
-        onValueChange={(v) => pick(v === NONE ? null : v)}
-        disabled={disabled}
-      >
-        <SelectTrigger className="flex-1">
-          <SelectValue placeholder="No category" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NONE}>No category</SelectItem>
-          {/* Archived categories stay selectable only on a product that already has one. */}
-          {options.filter((c) => !c.is_archived || c.id === value).map((c) => (
-            <SelectItem key={c.id} value={c.id}>
-              {`${"   ".repeat(c.depth)}${c.depth > 0 ? "↳ " : ""}${c.name}`}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className="flex-1 min-w-0">
+        <SearchSelect
+          value={value}
+          onChange={pick}
+          disabled={disabled}
+          noneLabel="No category"
+          searchPlaceholder="Search categories…"
+          // Archived categories stay selectable only on a product that already has one.
+          options={options
+            .filter((c) => !c.is_archived || c.id === value)
+            .map((c) => ({ id: c.id, label: c.name, depth: c.depth }))}
+        />
+      </div>
 
       <Button
         type="button"

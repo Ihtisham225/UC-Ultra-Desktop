@@ -40,9 +40,9 @@ import { BrandSelect, type BrandDto } from "@/components/BrandSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { rpc } from "@/lib/apiClient";
 import { isOil } from "@/lib/oil";
-import { isCafe } from "@/lib/cafe";
+import { cafeKindOf, isCafe, usesRecipes } from "@/lib/cafe";
 import { averageCostsWithRecipes } from "@/lib/pnl";
-import { productionCostLinesOf } from "@/lib/production";
+import { productionCostLinesOf, typedCostLinesOf } from "@/lib/production";
 import { bookFromRows, recipeModeOf } from "@/lib/recipe";
 import { emptyRecipe, recipeForSave, type RecipeDraft, type RecipeIngredient } from "@/components/RecipeBuilder";
 import { v4 as uuid } from "uuid";
@@ -301,11 +301,13 @@ export default function Products() {
   const cafe = isCafe(currentShop);
   const { data: productionRuns } = useLocalStore<{ id: string; product_id: string; quantity: number | string; total_cost: number | string }>("production_runs", currentShop?.id);
   const { data: recipeLineRows } = useLocalStore<LocalRecipeLine>("product_recipe_lines", currentShop?.id);
+  /** Products with at least one recipe line — a batch without any is "Prepared ahead". */
+  const productsWithRecipe = useMemo(() => new Set(recipeLineRows.map((l) => l.product_id)), [recipeLineRows]);
   const recipeIngredients = useMemo<RecipeIngredient[] | undefined>(() => {
     if (!cafe) return undefined;
     // Purchases, batches and recipes — the P&L's own cost basis (lib/pnl).
     const avg = averageCostsWithRecipes(
-      [...costLines.map((l) => ({ ...l, variant_id: null })), ...productionCostLinesOf(productionRuns)],
+      [...costLines.map((l) => ({ ...l, variant_id: null })), ...productionCostLinesOf(productionRuns), ...typedCostLinesOf(items)],
       bookFromRows(items, recipeLineRows),
     );
     return items
@@ -321,8 +323,11 @@ export default function Products() {
       // The synced row carries the Decimal as text.
       markup_percent: p.markup_percent == null ? null : Number(p.markup_percent),
       // The Current cost box starts untouched and shows the saved cost
-      // (savedCost below) — see costBaseFor.
-      current_cost: undefined,
+      // (savedCost below) — see costBaseFor. A no-recipe cafe's typed cost
+      // is shown in its own box, so that one starts from the saved figure.
+      current_cost: isCafe(currentShop) && !usesRecipes(currentShop)
+        ? (p.current_cost == null ? null : Number(p.current_cost))
+        : undefined,
       hasVariants: variants.length > 0,
       variants,
     });
@@ -397,9 +402,16 @@ export default function Products() {
 
     // Cafe shops save the recipe after the product; check it first so a bad
     // recipe doesn't leave a half-saved product behind.
-    const recipe = cafe && !(editing as { is_service?: boolean }).is_service
-      ? recipeForSave(editing.recipe ?? emptyRecipe())
+    // A service never has a recipe — a product switched to "made on the spot"
+    // drops the batch it may have been.
+    const recipe = cafe
+      ? ((editing as { is_service?: boolean }).is_service
+        ? { mode: null, yield: 1, lines: [] }
+        : recipeForSave(editing.recipe ?? emptyRecipe()))
       : undefined;
+    // No-recipe cafes type what a made item costs; it's saved as current_cost.
+    const typedCost = cafe && !usesRecipes(currentShop)
+      && cafeKindOf({ is_service: (editing as { is_service?: boolean }).is_service, recipe_mode: editing.recipe?.mode ?? null }) !== "bought";
     if (recipe && "error" in recipe) return toast.error(recipe.error);
 
     const sku = (editing.sku?.trim()) || generateSku(name);
@@ -427,6 +439,9 @@ export default function Products() {
       price: Number(editing.price) || 0,
       // "Sold at the till" — a plain column, so it rides the product row offline.
       ...(cafe ? { is_sellable: editing.is_sellable !== false } : {}),
+      ...(typedCost && !currentShop.price_by_markup
+        ? { current_cost: editing.current_cost == null || Number.isNaN(Number(editing.current_cost)) ? null : Number(editing.current_cost) }
+        : {}),
       // Only markup shops write it, so nobody else's saved % is touched.
       ...(currentShop.price_by_markup
         ? {
@@ -978,9 +993,11 @@ export default function Products() {
                           {cafe && p.is_sellable === false && (
                             <span className="text-[10px] uppercase tracking-wide border rounded px-1.5 py-0.5 text-muted-foreground" title="Not offered at the till">Not sold</span>
                           )}
-                          {cafe && recipeModeOf(p.recipe_mode) && (
+                          {cafe && (recipeModeOf(p.recipe_mode) || (p.is_service && !usesRecipes(currentShop))) && (
                             <span className="text-[10px] uppercase tracking-wide bg-primary/10 text-primary rounded px-1.5 py-0.5 font-semibold">
-                              {p.recipe_mode === "batch" ? "Batch recipe" : p.recipe_mode === "deal" ? "Deal" : "Made to order"}
+                              {p.is_service ? "Made on the spot"
+                                : p.recipe_mode === "batch" ? (productsWithRecipe.has(p.id) ? "Batch recipe" : "Prepared ahead")
+                                : p.recipe_mode === "deal" ? "Deal" : "Made to order"}
                             </span>
                           )}
                           {variantsCount > 0 && (
