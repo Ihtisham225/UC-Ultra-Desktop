@@ -83,6 +83,25 @@ interface Line {
   is_service?: boolean;
 }
 
+/** A Date's local calendar day as yyyy-MM-dd. */
+function localDay(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * The instant to store for a purchase dated `day` (same rule as the web form).
+ * An unchanged date keeps the saved instant; otherwise the day is taken at the
+ * time of day of the saved purchase (or now), in local time, so it can't slip
+ * a day across timezones.
+ */
+function purchaseInstant(day: string, savedAt: string | null): string {
+  const base = savedAt ? new Date(savedAt) : new Date();
+  if (savedAt && localDay(base) === day) return savedAt;
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d, base.getHours(), base.getMinutes(), base.getSeconds()).toISOString();
+}
+
 function InvoiceImage({ value }: { value: string }) {
   // Invoice images are now stored as public URLs (Vercel Blob) — render directly.
   return (
@@ -176,6 +195,10 @@ export default function Purchases() {
    */
   const [amountPaid, setAmountPaid] = useState<string>("");
   const [notes, setNotes] = useState("");
+  // The purchase date as a local yyyy-MM-dd; "" until the form opens. When
+  // editing, `savedAt` keeps the original instant so an untouched date isn't moved.
+  const [purchaseDay, setPurchaseDay] = useState("");
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [invoiceImageUrl, setInvoiceImageUrl] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -303,6 +326,8 @@ export default function Purchases() {
         : "",
     );
     setNotes((data as any).notes ?? "");
+    setSavedAt((data as any).created_at ?? null);
+    setPurchaseDay((data as any).created_at ? localDay(new Date((data as any).created_at)) : localDay(new Date()));
     setInvestorId((data as any).investor_id ?? "");
     setInvoiceImageUrl((data as any).invoice_image_url ?? null);
     setSourceType((data as any).seller_name ? "walkin" : "supplier");
@@ -561,6 +586,8 @@ export default function Purchases() {
     setSupplierId(""); setInvestorId(""); setReference(generateReference()); setPaymentMethod("cash"); setNotes(""); setLines([]);
     setAmountPaid("");
     setSharedExpense("");
+    setSavedAt(null);
+    setPurchaseDay(localDay(new Date()));
     setInvoiceImageUrl(null);
     setSourceType("supplier");
     setSellerName(""); setSellerPhone(""); setSellerCnic("");
@@ -602,6 +629,7 @@ export default function Purchases() {
     if (!user || !currentShop) return;
     if (sourceType === "walkin" && !sellerName.trim()) return toast.error("Seller name is required for walk-in purchases");
     if (lines.length === 0) return toast.error(t("purchases.addAtLeastOne"));
+    if (!purchaseDay) return toast.error("Enter the purchase date");
     if (lines.some((l) => l.quantity == null || l.quantity <= 0 || l.unit_cost == null || l.unit_cost < 0)) return toast.error(t("purchases.invalidLine"));
     /** The new purchase's id, for linking a Roznamcha line to it. */
     let createdId: string | undefined;
@@ -615,6 +643,7 @@ export default function Purchases() {
       payment_method: paymentMethod,
       amount_paid: amountPaid.trim() === "" ? null : (parseFloat(amountPaid) || 0),
       account_id: purchaseAccountId,
+      purchased_at: purchaseInstant(purchaseDay, savedAt),
       notes: notes || null,
       invoice_image_url: invoiceImageUrl,
       seller_name: walkin ? sellerName.trim() : null,
@@ -681,7 +710,8 @@ export default function Purchases() {
           seller_name: input.seller_name,
           seller_phone: input.seller_phone,
           seller_cnic: input.seller_cnic,
-          created_at: now,
+          // The purchase date; the push route keeps it (purchases sync on updated_at).
+          created_at: input.purchased_at,
         }, true);
         for (const l of input.items) {
           await upsertLocal("purchase_items", {
@@ -798,6 +828,9 @@ export default function Purchases() {
     if (!o) { reset(); daybook.abandon(); setFromPo(null); }
     else if (!editingId) {
       if (!reference) setReference(generateReference());
+      // Today, read when the form opens — a till left open overnight would
+      // otherwise date the purchase yesterday.
+      setPurchaseDay(localDay(new Date()));
       // Pool mode: new purchases draw from the shared pool by default.
       if (investorsEnabled && pool && pool.cash > 0) setInvestorId(pool.id);
     }
@@ -1000,7 +1033,7 @@ export default function Purchases() {
                 )}
               </DialogHeader>
               <div className="space-y-4 py-2 overflow-y-auto flex-1 -mx-4 sm:-mx-6 px-4 sm:px-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1.5">
                     <Label>Purchase from</Label>
                     <Select value={sourceType} onValueChange={(v) => setSourceType(v as "supplier" | "walkin")}>
@@ -1014,6 +1047,10 @@ export default function Purchases() {
                   <div className="space-y-1.5">
                     <Label>{t("purchases.reference")}</Label>
                     <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("purchases.referencePlaceholder")} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{t("purchases.date", { defaultValue: "Purchase date" })}</Label>
+                    <DateInput value={purchaseDay} onChange={(e) => setPurchaseDay(e.target.value)} />
                   </div>
                 </div>
 
