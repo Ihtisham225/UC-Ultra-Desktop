@@ -16,7 +16,7 @@ import { useShop } from "@/contexts/ShopContext";
 import { formatMoney, formatQty } from "@/lib/format";
 import { fmtDate } from "@/lib/date-format";
 import { recipeUsage, type IngredientInfo } from "@/lib/recipe";
-import { unitLabel } from "@/lib/units";
+import { convertQty, unitLabel } from "@/lib/units";
 import type { BatchProductDto, ProductionApi, ProductionIngredientDto, ProductionRunDto } from "@/lib/production";
 
 /**
@@ -137,6 +137,29 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
     setLines((prev) => [...prev, { product_id: id, quantity: "" }]);
     setAddOpen(false);
   };
+
+  /**
+   * Change what went in, and let "Made" follow: when every item is measured in
+   * something the product's unit converts to (2 kg cow + 5 kg buffalo → 7 kg
+   * mix milk), the batch is their total. Otherwise (milk in litres making
+   * cups of kheer) the count is the kitchen's, and Made is left alone.
+   */
+  const updateLines = (next: LineDraft[]) => {
+    setLines(next);
+    if (!product || next.length === 0) return;
+    let total = 0;
+    for (const l of next) {
+      const inUnit = convertQty(parseFloat(l.quantity) || 0, ingById.get(l.product_id)?.unit, product.unit);
+      if (inUnit === null) return;
+      total += inUnit;
+    }
+    if (total > 0) setQty(String(Math.round(total * 1000) / 1000));
+  };
+  /** Everything of an item that's on the shelf — "use all the buffalo milk". */
+  const stockOf = (id: string) => Math.max(0, ingById.get(id)?.stock ?? 0);
+  const useAll = (i: number) =>
+    updateLines(lines.map((x, k) => (k === i ? { ...x, quantity: String(stockOf(x.product_id)) } : x)));
+  const useAllOfEach = () => updateLines(lines.map((x) => ({ ...x, quantity: String(stockOf(x.product_id)) })));
 
   const save = async () => {
     if (!product) return toast.error("Pick what you made.");
@@ -304,26 +327,38 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
                         ? "These come off stock, and the batch is costed from what you paid for them."
                         : "Filled in from the recipe — change any line to what was actually used."}
                     </p>
+                    {lines.length > 1 && (
+                      <Button type="button" variant="outline" size="sm" className="h-7" onClick={useAllOfEach}
+                        title="Put everything on the shelf of each item into this batch">
+                        Use all of each
+                      </Button>
+                    )}
                     {lines.map((l, i) => {
                       const ing = ingById.get(l.product_id);
                       const q = parseFloat(l.quantity) || 0;
                       const short = ing && q > ing.stock;
                       return (
-                        <div key={l.product_id} className="grid grid-cols-[1fr_7rem_auto] items-center gap-2">
+                        <div key={l.product_id} className="grid grid-cols-[1fr_auto_7rem_auto] items-center gap-2">
                           <div className="min-w-0">
                             <div className="text-sm truncate">{ing?.name ?? "—"}</div>
                             <div className={`text-[11px] ${short ? "text-destructive" : "text-muted-foreground"}`}>
                               {formatQty(ing?.stock ?? 0)} {unitLabel(ing?.unit)} in stock
                             </div>
                           </div>
+                          <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs"
+                            disabled={!ing || ing.stock <= 0}
+                            title={`Use all ${formatQty(ing?.stock ?? 0)} ${unitLabel(ing?.unit)}`}
+                            onClick={() => useAll(i)}>
+                            Use all
+                          </Button>
                           <div className="flex items-center gap-1">
                             <Input type="number" min="0" step="any" inputMode="decimal" className="h-9"
                               value={l.quantity}
-                              onChange={(e) => setLines((prev) => prev.map((x, k) => (k === i ? { ...x, quantity: e.target.value } : x)))} />
+                              onChange={(e) => updateLines(lines.map((x, k) => (k === i ? { ...x, quantity: e.target.value } : x)))} />
                             <span className="text-xs text-muted-foreground w-8">{unitLabel(ing?.unit)}</span>
                           </div>
                           <Button type="button" variant="ghost" size="icon" aria-label="Remove ingredient"
-                            onClick={() => setLines((prev) => prev.filter((_, k) => k !== i))}>
+                            onClick={() => updateLines(lines.filter((_, k) => k !== i))}>
                             <Trash2 className="size-4 text-destructive" />
                           </Button>
                         </div>
