@@ -4,7 +4,7 @@ import {
   BadgeDollarSign, BarChart3, BookOpenCheck, Boxes, Car, ClipboardCheck, Factory, FileBarChart, FlaskConical,
   FolderTree, HandCoins, HeartPulse, Landmark, LayoutDashboard, LifeBuoy, Package, PackageOpen, Receipt,
   FileCheck2, ScanBarcode, Scissors, ScrollText, Settings, ShieldCheck, Tag, TrendingUp, Truck, Undo2, UserPlus, Users,
-  Wallet, FileText, Banknote, SlidersHorizontal, KeyRound, MapPin, Building2, HandHeart, ChefHat, PackageMinus,
+  Wallet, FileText, Banknote, SlidersHorizontal, KeyRound, MapPin, Building2, HandHeart, ChefHat, PackageMinus, Wheat,
 } from "lucide-react";
 
 /**
@@ -58,6 +58,8 @@ export interface NavContext {
   oil: boolean;
   /** Cafe shops: batches made ahead (lib/cafe). Optional so older callers still type. */
   cafe?: boolean;
+  /** Cafe shops with raw materials switched on (lib/cafe usesRawMaterials). */
+  rawMaterials?: boolean;
   lab: boolean;
   role: string | null | undefined;
   hasPerm: (module: string, action: string) => boolean;
@@ -96,6 +98,7 @@ export function navPages(ctx: NavContext): NavPage[] {
     // Where goods are kept. Not for handicraft shops: they hold no catalogue.
     // Cafes make mix milk, kheer, cake ahead of selling them.
     { to: "/production", label: "Production", icon: ChefHat, section: "Stock", show: !!ctx.cafe && ownerOrManager(ctx), keywords: ["batch", "make", "kitchen", "recipe"] },
+    { to: "/raw-materials", label: "Raw materials", icon: Wheat, section: "Stock", show: !!ctx.rawMaterials && ownerOrManager(ctx), keywords: ["ingredients", "raw", "materials", "sugar", "spices", "not tracked"] },
     { to: "/write-offs", label: "Used & wasted", icon: PackageMinus, section: "Stock", show: !!ctx.cafe && ownerOrManager(ctx), keywords: ["wastage", "waste", "spilt", "expired", "used in shop", "write off"] },
     { to: "/shelves", label: "Shelves & racks", icon: MapPin, section: "Stock", show: !craft && perms.canManageProducts, keywords: ["shelf", "rack", "location", "godown", "count"] },
     { to: "/lab", label: "Lab", icon: FlaskConical, section: "Lab", show: labView, keywords: ["tests"] },

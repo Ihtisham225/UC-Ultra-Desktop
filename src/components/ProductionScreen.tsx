@@ -157,9 +157,9 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
   };
   /** Everything of an item that's on the shelf — "use all the buffalo milk". */
   const stockOf = (id: string) => Math.max(0, ingById.get(id)?.stock ?? 0);
-  const useAll = (i: number) =>
+  const takeAll = (i: number) =>
     updateLines(lines.map((x, k) => (k === i ? { ...x, quantity: String(stockOf(x.product_id)) } : x)));
-  const useAllOfEach = () => updateLines(lines.map((x) => ({ ...x, quantity: String(stockOf(x.product_id)) })));
+  const takeAllOfEach = () => updateLines(lines.map((x) => ({ ...x, quantity: String(stockOf(x.product_id)) })));
 
   const save = async () => {
     if (!product) return toast.error("Pick what you made.");
@@ -328,7 +328,7 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
                         : "Filled in from the recipe — change any line to what was actually used."}
                     </p>
                     {lines.length > 1 && (
-                      <Button type="button" variant="outline" size="sm" className="h-7" onClick={useAllOfEach}
+                      <Button type="button" variant="outline" size="sm" className="h-7" onClick={takeAllOfEach}
                         title="Put everything on the shelf of each item into this batch">
                         Use all of each
                       </Button>
@@ -348,7 +348,7 @@ export function ProductionScreen({ api, canEdit }: { api: ProductionApi; canEdit
                           <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs"
                             disabled={!ing || ing.stock <= 0}
                             title={`Use all ${formatQty(ing?.stock ?? 0)} ${unitLabel(ing?.unit)}`}
-                            onClick={() => useAll(i)}>
+                            onClick={() => takeAll(i)}>
                             Use all
                           </Button>
                           <div className="flex items-center gap-1">

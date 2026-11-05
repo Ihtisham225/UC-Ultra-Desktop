@@ -1,4 +1,4 @@
-import { isCafe } from "@/lib/cafe";
+import { isCafe, usesRawMaterials } from "@/lib/cafe";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
@@ -24,6 +24,7 @@ export function useAppNav() {
       craft: isHandicraft(currentShop),
       oil: isOil(currentShop),
       cafe: isCafe(currentShop),
+      rawMaterials: usesRawMaterials(currentShop),
       lab: isLabEnabled(currentShop),
       role,
       hasPerm,

@@ -411,7 +411,7 @@ export default function Products() {
       : undefined;
     // No-recipe cafes type what a made item costs; it's saved as current_cost.
     const typedCost = cafe && !usesRecipes(currentShop)
-      && cafeKindOf({ is_service: (editing as { is_service?: boolean }).is_service, recipe_mode: editing.recipe?.mode ?? null }) !== "bought";
+      && ["on_spot", "prepared"].includes(cafeKindOf({ is_service: (editing as { is_service?: boolean }).is_service, recipe_mode: editing.recipe?.mode ?? null, is_sellable: editing.is_sellable }));
     if (recipe && "error" in recipe) return toast.error(recipe.error);
 
     const sku = (editing.sku?.trim()) || generateSku(name);
@@ -995,7 +995,7 @@ export default function Products() {
                           )}
                           {cafe && (recipeModeOf(p.recipe_mode) || (p.is_service && !usesRecipes(currentShop))) && (
                             <span className="text-[10px] uppercase tracking-wide bg-primary/10 text-primary rounded px-1.5 py-0.5 font-semibold">
-                              {p.is_service ? "Made on the spot"
+                              {p.is_service ? (p.is_sellable === false ? "Not tracked" : "Made on the spot")
                                 : p.recipe_mode === "batch" ? (productsWithRecipe.has(p.id) ? "Batch recipe" : "Prepared ahead")
                                 : p.recipe_mode === "deal" ? "Deal" : "Made to order"}
                             </span>

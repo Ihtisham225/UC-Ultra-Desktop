@@ -1,4 +1,5 @@
 import { writeOffTotals } from "@/lib/write-offs";
+import { untrackedMaterialsCost } from "@/lib/raw-materials";
 import { productionCostLinesOf, typedCostLinesOf } from "@/lib/production";
 import { bookFromRows, type RecipeBook } from "@/lib/recipe";
 import { useEffect, useMemo, useState } from "react";
@@ -39,7 +40,7 @@ export default function Analytics() {
   /** Weighted average cost per product_id or variant_id, derived from all purchase_items. */
   const [avgCost, setAvgCost] = useState<Map<string, number>>(new Map());
   const [customerCount, setCustomerCount] = useState(0);
-  const [pnlExtra, setPnlExtra] = useState<{ returns: any[]; purchaseItems: any[]; serviceIds: Set<string>; recipes?: RecipeBook; writeOffs?: { shopUse: number; wastage: number } }>({
+  const [pnlExtra, setPnlExtra] = useState<{ returns: any[]; purchaseItems: any[]; serviceIds: Set<string>; recipes?: RecipeBook; writeOffs?: { shopUse: number; wastage: number }; rawMaterials?: number }>({
     returns: [], purchaseItems: [], serviceIds: new Set(),
   });
 
@@ -52,7 +53,7 @@ export default function Analytics() {
       const since = startOfDay(subDays(new Date(), range)).toISOString();
       const shopId = currentShop.id;
       // Read from the local sync store — offline-capable, all these tables sync.
-      const [allSales, allSaleItems, allProducts, allExpenses, allCustomers, allPurchaseItems, allReturns, allReturnItems, runs, recipeLines, writeOffRows] = await Promise.all([
+      const [allSales, allSaleItems, allProducts, allExpenses, allCustomers, allPurchaseItems, allReturns, allReturnItems, runs, recipeLines, writeOffRows, allPurchases] = await Promise.all([
         getAll<any>("sales", shopId),
         getAll<any>("sale_items", shopId),
         getAll<any>("products", shopId),
@@ -66,6 +67,8 @@ export default function Analytics() {
         getAll<any>("product_recipe_lines", shopId),
         // Used in the shop / wasted — their own P&L lines.
         getAll<any>("stock_write_offs", shopId),
+        // Untracked raw materials count as used when bought (lib/raw-materials).
+        getAll<any>("purchases", shopId),
       ]);
       // Returns in the range take their refund off sales and their goods' cost
       // off COGS (lib/pnl).
@@ -89,6 +92,7 @@ export default function Analytics() {
           const firstDay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
           return String(w.date).slice(0, 10) >= firstDay;
         })),
+        rawMaterials: untrackedMaterialsCost(allProducts, allPurchases, allPurchaseItems, since, new Date()),
       });
       const itemsBySale = new Map<string, any[]>();
       for (const it of allSaleItems) {
@@ -150,6 +154,7 @@ export default function Analytics() {
     recipes: pnlExtra.recipes,
     shopUse: pnlExtra.writeOffs?.shopUse ?? 0,
     wastage: pnlExtra.writeOffs?.wastage ?? 0,
+    rawMaterials: pnlExtra.rawMaterials ?? 0,
   }), [sales, expenses, payroll, assetEffects, pnlExtra]);
 
   const stats = useMemo(() => {

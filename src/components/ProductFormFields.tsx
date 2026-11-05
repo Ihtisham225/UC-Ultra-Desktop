@@ -14,7 +14,7 @@ import { SaleUnitsBuilder, type SaleUnitDraft } from "@/components/SaleUnitsBuil
 import { generateSku } from "@/lib/sku";
 import { isLabEnabled } from "@/lib/lab";
 import { isOil, OIL_UNIT_SUGGESTIONS } from "@/lib/oil";
-import { CAFE_KINDS, cafeKindOf, isCafe, usesRecipes, type CafeProductKind } from "@/lib/cafe";
+import { CAFE_KINDS, cafeKindOf, isCafe, usesRawMaterials, usesRecipes, type CafeProductKind } from "@/lib/cafe";
 import { RecipeBuilder, emptyRecipe, type RecipeDraft, type RecipeIngredient } from "@/components/RecipeBuilder";
 import { LocationSelect } from "@/components/LocationSelect";
 import type { LocationRow } from "@/lib/storage-locations";
@@ -128,7 +128,7 @@ export function ProductFormFields<T extends ProductFormValue>({
   // A product that already has a recipe keeps its builder, so nothing is lost.
   const hasRecipeLines = (value.recipe?.lines ?? []).some((l) => l.ingredient_id);
   const simpleCafe = isCafeShop && !usesRecipes(currentShop) && !hasRecipeLines;
-  const cafeKind = cafeKindOf({ is_service: value.is_service, recipe_mode: value.recipe?.mode ?? null });
+  const cafeKind = cafeKindOf({ is_service: value.is_service, recipe_mode: value.recipe?.mode ?? null, is_sellable: value.is_sellable });
   // The Service toggle (and lab test factors) only exist once the shop says it
   // runs a lab — other store types keep services for repair labour etc.
   const labEnabled = isLabEnabled(currentShop);
@@ -142,9 +142,11 @@ export function ProductFormFields<T extends ProductFormValue>({
 
   /** No-recipe cafes: a kind is a service, a batch with no ingredients, or neither. */
   const setCafeKind = (kind: CafeProductKind) => {
-    if (kind === "on_spot") set({ is_service: true, is_lab_test: false, hasVariants: false, variants: [], recipe: emptyRecipe() });
-    else if (kind === "prepared") set({ is_service: false, recipe: { mode: "batch", yield: "1", lines: [] } });
-    else set({ is_service: false, recipe: emptyRecipe() });
+    if (kind === "on_spot") set({ is_service: true, is_sellable: true, is_lab_test: false, hasVariants: false, variants: [], recipe: emptyRecipe() });
+    else if (kind === "prepared") set({ is_service: false, is_sellable: true, recipe: { mode: "batch", yield: "1", lines: [] } });
+    // A raw material starts counted; "Keep count of it" below switches it.
+    else if (kind === "raw") set({ is_service: false, is_sellable: false, recipe: emptyRecipe() });
+    else set({ is_service: false, is_sellable: true, recipe: emptyRecipe() });
   };
 
   // Settings → Shop → "Price by markup %": selling price = current cost +
@@ -457,7 +459,7 @@ export function ProductFormFields<T extends ProductFormValue>({
         </div>
       )}
 
-      {isCafeShop && (
+      {isCafeShop && !simpleCafe && (
         <div className="rounded-lg border bg-card p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -485,8 +487,8 @@ export function ProductFormFields<T extends ProductFormValue>({
             <Label>What kind of item is it?</Label>
             <p className="text-xs text-muted-foreground mt-1">Decides whether stock is kept for it.</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="Kind of item">
-            {CAFE_KINDS.map((k) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Kind of item">
+            {CAFE_KINDS.filter((k) => k.value !== "raw" || usesRawMaterials(currentShop) || cafeKind === "raw").map((k) => (
               <button
                 key={k.value}
                 type="button"
@@ -500,7 +502,24 @@ export function ProductFormFields<T extends ProductFormValue>({
               </button>
             ))}
           </div>
-          {cafeKind !== "bought" && !byMarkup && (
+          {cafeKind === "raw" && (
+            <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+              <div>
+                <Label htmlFor="rawTracked" className="cursor-pointer">Keep count of it</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isService
+                    ? "No stock is kept — what you pay for it counts as used straight away (salt, spices, tissue)."
+                    : "Stock goes up when you buy it and down when you use it (Production, Used & wasted)."}
+                </p>
+              </div>
+              <Switch
+                id="rawTracked"
+                checked={!isService}
+                onCheckedChange={(checked) => set(checked ? { is_service: false } : { is_service: true, hasVariants: false, variants: [] })}
+              />
+            </div>
+          )}
+          {(cafeKind === "on_spot" || cafeKind === "prepared") && !byMarkup && (
             <div className="space-y-1.5 sm:max-w-xs">
               <Label>Cost per item</Label>
               <Input

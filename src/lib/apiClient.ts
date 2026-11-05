@@ -104,6 +104,8 @@ export interface DeviceShop {
   cafe_tables?: string[];
   /** Cafe shops: products built from recipes (lib/cafe usesRecipes). Missing = yes. */
   cafe_recipes?: boolean;
+  /** Cafe shops: raw materials switched on (lib/cafe usesRawMaterials). Missing = yes. */
+  raw_materials_enabled?: boolean;
   /** Product form: selling price = latest purchase cost + markup %. */
   price_by_markup?: boolean;
   /** What the return slip prints (Settings → Receipt → Return receipt). */

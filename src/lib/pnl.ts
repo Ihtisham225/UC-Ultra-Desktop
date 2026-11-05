@@ -55,6 +55,12 @@ export interface PnlInput {
   shopUse?: number;
   /** Stock wasted in the period (spilt, expired, burnt), at cost. */
   wastage?: number;
+  /**
+   * Raw materials whose quantity isn't tracked (a cafe's salt, spices, tissue):
+   * there's no stock for them to be "used" from, so what was paid for them in
+   * the period is its cost (lib/raw-materials untrackedMaterialsCost).
+   */
+  rawMaterials?: number;
   /** Services (lab tests, labour) cost nothing by design — never "uncosted". */
   serviceIds?: ReadonlySet<string>;
   /**
@@ -88,7 +94,8 @@ export interface Pnl {
   assetGain: number;
   shopUse: number;
   wastage: number;
-  /** Expenses + salaries + depreciation + stock used in the shop + wastage. */
+  rawMaterials: number;
+  /** Expenses + salaries + depreciation + stock used in the shop + wastage + untracked raw materials. */
   overheads: number;
   netProfit: number;
   /** Lines sold whose product was never bought through the app: their cost
@@ -181,7 +188,8 @@ export function computePnl(input: PnlInput): Pnl {
   const assetGain = input.assetGain ?? 0;
   const shopUse = input.shopUse ?? 0;
   const wastage = input.wastage ?? 0;
-  const overheads = input.expenses + payroll + depreciation + shopUse + wastage;
+  const rawMaterials = input.rawMaterials ?? 0;
+  const overheads = input.expenses + payroll + depreciation + shopUse + wastage + rawMaterials;
   return {
     salesBeforeDiscount: r2(salesBeforeDiscount),
     discounts: r2(discounts),
@@ -201,6 +209,7 @@ export function computePnl(input: PnlInput): Pnl {
     assetGain: r2(assetGain),
     shopUse: r2(shopUse),
     wastage: r2(wastage),
+    rawMaterials: r2(rawMaterials),
     overheads: r2(overheads),
     netProfit: r2(grossProfit - overheads + assetGain),
     uncosted: { lines: uncosted.lines, salesValue: r2(uncosted.salesValue) },
@@ -226,6 +235,7 @@ export function pnlStatement(p: Pnl): { label: string; value: number; strong?: b
     ...(p.depreciation ? [{ label: "Depreciation of assets", value: -p.depreciation }] : []),
     ...(p.shopUse ? [{ label: "Stock used in the shop", value: -p.shopUse }] : []),
     ...(p.wastage ? [{ label: "Wastage", value: -p.wastage }] : []),
+    ...(p.rawMaterials ? [{ label: "Raw materials (not tracked)", value: -p.rawMaterials }] : []),
     ...(p.assetGain ? [{ label: p.assetGain > 0 ? "Gain on assets sold" : "Loss on assets sold / written off", value: p.assetGain }] : []),
     { label: "Net profit", value: p.netProfit, strong: true },
   ];
