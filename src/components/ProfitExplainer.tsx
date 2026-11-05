@@ -56,8 +56,8 @@ export function ProfitExplainer({ pnl, format, defaultOpen = false }: {
     },
     {
       term: "Expenses & salaries",
-      what: "The cost of running the shop in this period: the expenses you recorded, salaries and wages paid, and the part of your fixed assets (fridge, computer…) used up.",
-      sum: `${m(pnl.expenses)} expenses + ${m(pnl.payroll)} salaries + ${m(pnl.depreciation)} depreciation${pnl.shopUse ? ` + ${m(pnl.shopUse)} used in the shop` : ""}${pnl.wastage ? ` + ${m(pnl.wastage)} wastage` : ""} = ${m(pnl.overheads)}`,
+      what: "The cost of running the shop in this period: the expenses you recorded, salaries and wages paid, the part of your fixed assets (fridge, computer…) used up, and raw materials you don't keep count of (bought = used).",
+      sum: `${m(pnl.expenses)} expenses + ${m(pnl.payroll)} salaries + ${m(pnl.depreciation)} depreciation${pnl.shopUse ? ` + ${m(pnl.shopUse)} used in the shop` : ""}${pnl.wastage ? ` + ${m(pnl.wastage)} wastage` : ""}${pnl.rawMaterials ? ` + ${m(pnl.rawMaterials)} raw materials not tracked` : ""} = ${m(pnl.overheads)}`,
     },
     {
       term: "Net profit",

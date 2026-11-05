@@ -2,6 +2,7 @@
 // Cash & bank / Customers & Ledger / Cheques / Tax.
 // Each report has a date range, KPI cards, a sortable table, CSV export, and print-to-PDF.
 import { writeOffTotals } from "@/lib/write-offs";
+import { untrackedMaterialsCost } from "@/lib/raw-materials";
 import { productionCostLinesOf, typedCostLinesOf } from "@/lib/production";
 import { bookFromRows } from "@/lib/recipe";
 import { printCurrentPageA4 } from "@/lib/printA4";
@@ -480,7 +481,7 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
 
   useEffect(() => {
     (async () => {
-      const [allSales, allSaleItems, allExpenses, pi, cats, extras, allReturns, allReturnItems, allProducts, runs, recipeLines, writeOffRows] = await Promise.all([
+      const [allSales, allSaleItems, allExpenses, pi, cats, extras, allReturns, allReturnItems, allProducts, runs, recipeLines, writeOffRows, allPurchases] = await Promise.all([
         getAll<any>("sales", shopId),
         getAll<any>("sale_items", shopId),
         getAll<any>("expenses", shopId),
@@ -497,6 +498,8 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
         getAll<any>("product_recipe_lines", shopId),
         // Used in the shop / wasted — their own P&L lines.
         getAll<any>("stock_write_offs", shopId),
+        // Untracked raw materials count as used when bought (lib/raw-materials).
+        getAll<any>("purchases", shopId),
       ]);
       const writeOffs = writeOffTotals(writeOffRows.filter((w) => String(w.date).slice(0, 10) >= fromDate && String(w.date).slice(0, 10) <= toDate));
       const itemsBySale = new Map<string, any[]>();
@@ -526,6 +529,7 @@ function PnlReport({ shopId, range, formatMoney, cur }: ReportProps) {
         assetGain: extras.asset_gain ?? 0,
         shopUse: writeOffs.shopUse,
         wastage: writeOffs.wastage,
+        rawMaterials: untrackedMaterialsCost(allProducts, allPurchases, pi as any[], fromISO, toISO),
         serviceIds: new Set(allProducts.filter((p) => p.is_service).map((p) => p.id)),
       }));
     })();

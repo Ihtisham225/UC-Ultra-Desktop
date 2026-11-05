@@ -90,6 +90,7 @@ export default function Settings() {
   /** Cafe shops: the tables offered for dine-in, one per line while typed. */
   const [cafeTables, setCafeTables] = useState("");
   const [cafeRecipes, setCafeRecipes] = useState(true);
+  const [rawMaterials, setRawMaterials] = useState(true);
   const [chequesOn, setChequesOn] = useState(false);
   const [chequeDays, setChequeDays] = useState("10");
   const [daybookOn, setDaybookOn] = useState(false);
@@ -152,6 +153,7 @@ export default function Settings() {
       setAllowNegative(!!currentShop.allow_negative_stock);
       setCafeTables((currentShop.cafe_tables ?? []).join("\n"));
       setCafeRecipes(currentShop.cafe_recipes !== false);
+      setRawMaterials(currentShop.raw_materials_enabled !== false);
       setChequesOn(!!currentShop.cheques_enabled);
       setChequeDays(String(currentShop.cheque_reminder_days ?? 10));
       setDaybookOn(!!currentShop.daybook_enabled);
@@ -240,7 +242,7 @@ export default function Settings() {
         store_type: storeType,
         lab_tests_enabled: labTests,
         allow_negative_stock: allowNegative,
-        ...(storeType === "cafe" ? { cafe_tables: normalizeTables(cafeTables), cafe_recipes: cafeRecipes } : {}),
+        ...(storeType === "cafe" ? { cafe_tables: normalizeTables(cafeTables), cafe_recipes: cafeRecipes, raw_materials_enabled: rawMaterials } : {}),
         show_cost_in_pos: showCostInPos,
         receipt_prefix: receiptPrefix.trim() || null,
         receipt_next_number: receiptNext.trim() === "" ? null : (parseInt(receiptNext, 10) || null),
@@ -668,6 +670,19 @@ export default function Settings() {
                       </p>
                     </div>
                     <Switch id="cafeRecipes" checked={cafeRecipes} onCheckedChange={setCafeRecipes} disabled={!canEditShop} />
+                  </div>
+                )}
+                {storeType === "cafe" && (
+                  <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                    <div>
+                      <Label htmlFor="rawMaterials">Raw materials</Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        What you buy and never sell — sugar, spices, cups. Adds the Raw materials page, an
+                        &quot;Add material&quot; picker on purchases, and a Raw material kind on products. Each can be
+                        counted or not; uncounted ones go into the profit report when bought.
+                      </p>
+                    </div>
+                    <Switch id="rawMaterials" checked={rawMaterials} onCheckedChange={setRawMaterials} disabled={!canEditShop} />
                   </div>
                 )}
                 {storeType === "cafe" && (

@@ -20,7 +20,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, X, PackageOpen, Truck, Eye, Edit2, Trash2, Search, Check, Undo2, Printer } from "lucide-react";
+import { Plus, X, PackageOpen, Truck, Eye, Edit2, Trash2, Search, Check, Undo2, Printer, Wheat } from "lucide-react";
 import { SupplierReturnDialog } from "@/components/SupplierReturnDialog";
 import { PurchaseReceiptDialog } from "@/components/PurchaseReceiptDialog";
 import { PageTip } from "@/components/PageTip";
@@ -45,6 +45,8 @@ import { AccountPicker } from "@/components/AccountPicker";
 import { PartySelect } from "@/components/PartySelect";
 import { useAddNew } from "@/hooks/useAddNew";
 import { DateInput } from "@/components/DateInput";
+import { NewRawMaterialDialog, type NewRawMaterial } from "@/components/NewRawMaterialDialog";
+import { usesRawMaterials } from "@/lib/cafe";
 import { lineGoodsTotal, quantityForLineTotal } from "@/lib/purchase-line";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
@@ -56,7 +58,12 @@ interface Variant {
   sku: string | null; barcode: string | null;
   price_override: number | null; stock: number;
 }
-interface Product { id: string; name: string; price: number; variants?: Variant[]; }
+interface Product {
+  id: string; name: string; price: number; variants?: Variant[];
+  is_service?: boolean;
+  /** False for a raw material (cafes): listed under "Add material", not "Add product". */
+  is_sellable?: boolean;
+}
 interface Purchase {
   id: string;
   reference_number: string | null;
@@ -177,7 +184,7 @@ export default function Purchases() {
   // Product picker feeds from the local offline store, not the server — a
   // just-added product must appear instantly, before background sync runs.
   const { data: localProducts } = useProductsWithVariants<{
-    id: string; name: string; price: number | string; is_active?: boolean;
+    id: string; name: string; price: number | string; is_active?: boolean; is_service?: boolean; is_sellable?: boolean;
   }>(currentShop?.id);
   const products: Product[] = useMemo(
     () =>
@@ -187,6 +194,8 @@ export default function Purchases() {
           id: p.id,
           name: p.name,
           price: Number(p.price),
+          is_service: !!p.is_service,
+          is_sellable: p.is_sellable,
           variants: p.product_variants
             .filter((v) => v.is_active !== false)
             .map((v) => ({
@@ -495,6 +504,60 @@ export default function Purchases() {
       is_service: (p as { is_service?: boolean }).is_service,
     }]);
   };
+
+  // Cafes with raw materials on (lib/cafe) pick them from their own list —
+  // a menu of milk, sugar and cups beside the cakes and teas is hard to scan.
+  const rawOn = usesRawMaterials(currentShop);
+  const pickerProducts = rawOn ? products.filter((p) => p.is_sellable !== false) : products;
+  const pickerMaterials = products.filter((p) => p.is_sellable === false);
+  const [materialOpen, setMaterialOpen] = useState(false);
+  /** A raw material made from the purchase form goes onto the purchase at once; the product row arrives with the sync. */
+  const onMaterialCreated = (m: NewRawMaterial) => {
+    pushLine({ id: m.id, name: m.name, price: 0, is_service: !m.tracked, is_sellable: false, variants: [] }, null);
+  };
+  const renderPicker = (list: Product[], label: string, searchLabel: string) => (
+                    <Popover modal>
+                      <PopoverTrigger asChild>
+                        <Button type="button" variant="outline" size="sm" className="flex-1 sm:w-60 justify-start">
+                          <Plus className="size-4 mr-2" /> {label}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-0" align="end">
+                        <Command>
+                          <CommandInput placeholder={searchLabel} autoFocus />
+                          <CommandList>
+                            <CommandEmpty>{t("purchases.noProducts")}</CommandEmpty>
+                            <CommandGroup>
+                              {list.map((p) => {
+                                const hasVariants = (p.variants?.length ?? 0) > 0;
+                                const added = hasVariants
+                                  ? lines.some((l) => l.product_id === p.id)
+                                  : lines.some((l) => l.key === p.id);
+                                return (
+                                  <CommandItem
+                                    key={p.id}
+                                    value={`${p.name}`}
+                                    onSelect={() => addLine(p.id)}
+                                    disabled={!hasVariants && added}
+                                  >
+                                    {added ? (
+                                      <Check className="size-4 mr-2 text-primary" />
+                                    ) : (
+                                      <Plus className="size-4 mr-2 text-muted-foreground" />
+                                    )}
+                                    <span className="truncate">{p.name}</span>
+                                    {hasVariants && (
+                                      <span className="ml-auto text-xs text-muted-foreground">({p.variants!.length})</span>
+                                    )}
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+  );
 
   /**
    * Create a product without leaving the purchase form, then drop it straight
@@ -990,6 +1053,13 @@ export default function Purchases() {
             </DialogContent>
           </Dialog>
           {/* Stock a brand-new batch of an existing medicine without leaving the form. */}
+          {materialOpen && (
+            <NewRawMaterialDialog
+              create={(input) => rpc("createRawMaterialAction", input)}
+              onClose={() => setMaterialOpen(false)}
+              onCreated={onMaterialCreated}
+            />
+          )}
           <Dialog open={!!batchFor} onOpenChange={(o) => !o && setBatchFor(null)}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader><DialogTitle>New batch — {batchFor?.name}</DialogTitle></DialogHeader>
@@ -1210,47 +1280,8 @@ export default function Purchases() {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <Label>{t("purchases.items")}</Label>
                     <div className="flex gap-2 w-full sm:w-auto">
-                    <Popover modal>
-                      <PopoverTrigger asChild>
-                        <Button type="button" variant="outline" size="sm" className="flex-1 sm:w-60 justify-start">
-                          <Plus className="size-4 mr-2" /> {t("purchases.addProductPlaceholder")}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-72 p-0" align="end">
-                        <Command>
-                          <CommandInput placeholder={t("purchases.searchProducts")} autoFocus />
-                          <CommandList>
-                            <CommandEmpty>{t("purchases.noProducts")}</CommandEmpty>
-                            <CommandGroup>
-                              {products.map((p) => {
-                                const hasVariants = (p.variants?.length ?? 0) > 0;
-                                const added = hasVariants
-                                  ? lines.some((l) => l.product_id === p.id)
-                                  : lines.some((l) => l.key === p.id);
-                                return (
-                                  <CommandItem
-                                    key={p.id}
-                                    value={`${p.name}`}
-                                    onSelect={() => addLine(p.id)}
-                                    disabled={!hasVariants && added}
-                                  >
-                                    {added ? (
-                                      <Check className="size-4 mr-2 text-primary" />
-                                    ) : (
-                                      <Plus className="size-4 mr-2 text-muted-foreground" />
-                                    )}
-                                    <span className="truncate">{p.name}</span>
-                                    {hasVariants && (
-                                      <span className="ml-auto text-xs text-muted-foreground">({p.variants!.length})</span>
-                                    )}
-                                  </CommandItem>
-                                );
-                              })}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
+                    {renderPicker(pickerProducts, t("purchases.addProductPlaceholder"), t("purchases.searchProducts"))}
+                    {rawOn && renderPicker(pickerMaterials, "Add material", "Search materials…")}
                     <Button
                       type="button"
                       variant="outline"
@@ -1262,6 +1293,19 @@ export default function Purchases() {
                       <PackageOpen className="size-4 sm:mr-1.5" />
                       <span className="hidden sm:inline">New product</span>
                     </Button>
+                    {rawOn && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        title="Add a new raw material"
+                        onClick={() => setMaterialOpen(true)}
+                      >
+                        <Wheat className="size-4 sm:mr-1.5" />
+                        <span className="hidden sm:inline">New material</span>
+                      </Button>
+                    )}
                     </div>
                   </div>
                   {/* Desktop table */}

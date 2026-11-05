@@ -26,6 +26,15 @@ export function usesRecipes(shop?: { store_type?: string | null; cafe_recipes?: 
 }
 
 /**
+ * Settings → Shop: raw materials (lib/raw-materials) — the Raw materials page,
+ * "Add material" on purchases and the "Raw material" product kind. Cafes only;
+ * missing (older payloads) means on.
+ */
+export function usesRawMaterials(shop?: { store_type?: string | null; raw_materials_enabled?: boolean | null } | null): boolean {
+  return isCafe(shop) && shop?.raw_materials_enabled !== false;
+}
+
+/**
  * A cafe product when the shop doesn't use recipes:
  *  - "bought"   — bought and sold as it is (milk, eggs, oil); stock tracked.
  *  - "on_spot"  — made on the spot (tea, fries, noodles); a typed cost, no
@@ -33,10 +42,14 @@ export function usesRecipes(shop?: { store_type?: string | null; cafe_recipes?: 
  *  - "prepared" — prepared ahead (cake, kheer); a typed cost, stock added when
  *                 a batch is made (Production) and taken off as it sells.
  *                 Stored as a batch recipe with no ingredients.
+ *  - "raw"      — a raw material (sugar, spices, cups): bought, never sold.
+ *                 Stored with "Sold at the till" off; counted or not
+ *                 (lib/raw-materials).
  */
-export type CafeProductKind = "bought" | "on_spot" | "prepared";
+export type CafeProductKind = "bought" | "on_spot" | "prepared" | "raw";
 
-export function cafeKindOf(p: { is_service?: boolean | null; recipe_mode?: string | null }): CafeProductKind {
+export function cafeKindOf(p: { is_service?: boolean | null; recipe_mode?: string | null; is_sellable?: boolean | null }): CafeProductKind {
+  if (p.is_sellable === false) return "raw";
   if (p.is_service) return "on_spot";
   if (p.recipe_mode === "batch") return "prepared";
   return "bought";
@@ -46,4 +59,5 @@ export const CAFE_KINDS: { value: CafeProductKind; label: string; hint: string }
   { value: "bought", label: "Bought and sold", hint: "Cow milk, organic eggs, oil — bought in and sold as it is. Stock is tracked." },
   { value: "on_spot", label: "Made on the spot", hint: "Tea, fries, samosa, noodles — set what one costs you and sell it. No stock to keep." },
   { value: "prepared", label: "Prepared ahead", hint: "Cake, kheer — set what one costs you. Add to stock from Production when you make a batch; selling takes it off." },
+  { value: "raw", label: "Raw material", hint: "Sugar, spices, cups — bought, never sold. Keep count of it, or not." },
 ];

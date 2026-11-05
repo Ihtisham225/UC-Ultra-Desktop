@@ -101,7 +101,19 @@ export default function Daybook() {
 
   const [parties, setParties] = useState<PartyOption[]>([]);
   const [entries, setEntries] = useState<DaybookEntryDto[]>([]);
-  const [hints, setHints] = useState<{ units: string[]; descriptions: string[] }>({ units: [], descriptions: [] });
+  const [hints, setHints] = useState<{ units: string[]; descriptions: string[]; products?: { name: string; unit: string | null }[] }>({ units: [], descriptions: [] });
+  // Suggestions for the Material box: the shop's own products first, then what
+  // has been written before. Still a free box — anything can be typed over it.
+  const materialOptions = useMemo(
+    () => [...new Set([...(hints.products ?? []).map((p) => p.name), ...hints.descriptions])],
+    [hints],
+  );
+  const unitOfProduct = useMemo(
+    () => new Map((hints.products ?? []).map((p) => [p.name.toLowerCase(), p.unit ?? ""])),
+    [hints],
+  );
+  // A handicraft register writes yarn and shawls; everyone else gets an example from their own catalogue.
+  const materialPlaceholder = isHandicraft(currentShop) ? "2/72 shawl" : hints.products?.[0]?.name ?? "What it was";
   const [loading, setLoading] = useState(true);
 
   // The book opens on today. Read after mount — a date in a useState
@@ -247,11 +259,18 @@ export default function Daybook() {
     if (!result) return;
     if (!result.ok) return toast.error(result.error ?? "That didn't save.");
     toast.success(draft.id ? "Entry updated" : `Entry #${result.number} written`);
-    // A daybook is filled in a run of entries, so keep the day, the direction
-    // and the kind and clear only what changes from line to line.
+    // A daybook is filled in a run of entries, so keep the day, the direction,
+    // the kind and the person — several materials from one person are several
+    // lines — and clear only what changes from line to line.
     setDraft(
       andAnother
-        ? { ...emptyDraft(draft.date), direction: draft.direction, kind: draft.kind }
+        ? {
+            ...emptyDraft(draft.date),
+            direction: draft.direction,
+            kind: draft.kind,
+            party_id: draft.party_id,
+            party_name: draft.party_name,
+          }
         : null,
     );
     load();
@@ -636,12 +655,17 @@ export default function Daybook() {
                     <Input
                       list="daybook-descriptions"
                       autoFocus
-                      placeholder="2/72 shawl"
+                      placeholder={materialPlaceholder}
                       value={draft.description}
-                      onChange={(ev) => setDraft({ ...draft, description: ev.target.value })}
+                      onChange={(ev) => {
+                        const description = ev.target.value;
+                        // Picking one of the shop's products brings its unit along, unless one is already written.
+                        const unit = unitOfProduct.get(description.trim().toLowerCase());
+                        setDraft({ ...draft, description, ...(unit && !draft.unit.trim() ? { unit } : {}) });
+                      }}
                     />
                     <datalist id="daybook-descriptions">
-                      {hints.descriptions.map((d) => <option key={d} value={d} />)}
+                      {materialOptions.map((d) => <option key={d} value={d} />)}
                     </datalist>
                   </div>
                   <div>
