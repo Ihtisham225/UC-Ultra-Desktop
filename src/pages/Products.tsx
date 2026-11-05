@@ -615,25 +615,32 @@ export default function Products() {
     return [...used];
   };
 
-  /** Delete refused — offer Archive instead. Returns true when it handled the ids. */
+  /**
+   * Delete refused — offer Archive instead. Returns true when it handled the ids.
+   * An ARCHIVED product is let through: deleting it from the archive is the
+   * deliberate second step, and the server deletes it too (bills keep the name).
+   */
   const refuseIfUsed = async (ids: string[]): Promise<boolean> => {
-    const used = await withHistory(ids);
+    const used = await withHistory(ids.filter((id) => items.find((p) => p.id === id)?.is_active !== false));
     if (!used.length) return false;
     const names = used.map((id) => items.find((p) => p.id === id)?.name ?? "").filter(Boolean);
     const shown = names.slice(0, 3).join(", ") + (names.length > 3 ? ` and ${names.length - 3} more` : "");
     const ok = await confirm({
       title: "Archive instead?",
-      description: `Can't delete ${shown}: ${names.length === 1 ? "it is" : "they are"} on past records. Archive instead — hidden, but history stays intact.`,
+      description: `Can't delete ${shown}: ${names.length === 1 ? "it is" : "they are"} on past records. Archive instead — hidden, but history stays intact. To remove ${names.length === 1 ? "it" : "them"} for good, delete ${names.length === 1 ? "it" : "them"} again from the archive.`,
       confirmLabel: "Archive",
     });
     if (ok) await setArchived(used, true);
     return true;
   };
 
+  /** Deleting from the archive is for good — say so, since it can't be restored. */
+  const ARCHIVED_DELETE = "It will be removed for good and can't be restored. Past bills, purchases and returns keep its name.";
   const remove = async (id: string) => {
+    const archived = items.find((p) => p.id === id)?.is_active === false;
     const ok = await confirm({
-      title: t("products.title"),
-      description: t("products.deleteConfirm"),
+      title: archived ? "Delete permanently?" : t("products.title"),
+      description: archived ? ARCHIVED_DELETE : t("products.deleteConfirm"),
       variant: "destructive",
     });
     if (!ok) return;
@@ -739,9 +746,12 @@ export default function Products() {
 
   const bulkDelete = async () => {
     if (sel.count === 0) return;
+    const allArchived = sel.ids.every((id) => items.find((p) => p.id === id)?.is_active === false);
     const ok = await confirm({
-      title: t("bulk.deleteTitle"),
-      description: t("bulk.deleteConfirm", { count: sel.count }),
+      title: allArchived ? "Delete permanently?" : t("bulk.deleteTitle"),
+      description: allArchived
+        ? `${sel.count} archived product${sel.count === 1 ? "" : "s"}: ${ARCHIVED_DELETE.replace("It", sel.count === 1 ? "It" : "They").replace("its name", sel.count === 1 ? "its name" : "their names")}`
+        : t("bulk.deleteConfirm", { count: sel.count }),
       variant: "destructive",
     });
     if (!ok) return;
