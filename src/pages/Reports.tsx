@@ -83,6 +83,7 @@ export default function Reports() {
             <label className="text-xs text-muted-foreground flex flex-col gap-1">To<DateInput value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} className="h-9 w-[170px] min-w-[170px] shrink-0" /></label>
           </div>
           <div className="flex gap-1 p-1 bg-muted rounded-lg">
+            <Button size="sm" variant="ghost" onClick={() => setQuick(1)} className="h-7 px-2 text-xs">Today</Button>
             {[7, 30, 90, 365].map((d) => (
               <Button key={d} size="sm" variant="ghost" onClick={() => setQuick(d)} className="h-7 px-2 text-xs">{d}d</Button>
             ))}

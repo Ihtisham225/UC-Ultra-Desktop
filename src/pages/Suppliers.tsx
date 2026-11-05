@@ -1,7 +1,7 @@
 import { PartyFieldInputs, partyFieldRows } from "@/components/PartyFieldInputs";
 import { fieldsFor, type PartyFieldValues } from "@/lib/party-fields";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { rpc } from "@/lib/apiClient";
 import { syncNow } from "@/lib/syncEngine";
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Truck, Trash2, Search, Eye, Edit2, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Truck, Trash2, Search, Eye, Edit2, Archive, ArchiveRestore, HandCoins } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -75,6 +75,9 @@ export default function Suppliers() {
 
   const canManage = perms.canManageSuppliers;
   const craft = isHandicraft(currentShop);
+  const navigate = useNavigate();
+  // A handicraft register keeps its own party khata instead.
+  const canLedger = perms.canManageExpenses && !craft;
   const currency = currentShop?.currency ?? "PKR";
 
   useEffect(() => { document.title = "UCU"; }, []);
@@ -378,6 +381,11 @@ export default function Suppliers() {
                     </div>
                   )}
                   <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(s)}><Eye className="size-4" /></Button>
+                  {canLedger && (
+                    <Button variant="ghost" size="icon" title="Ledger" onClick={() => navigate(`/debts?party=${s.id}&name=${encodeURIComponent(s.name)}&role=supplier`)}>
+                      <HandCoins className="size-4" />
+                    </Button>
+                  )}
                   {canManage && (
                     <Button variant="ghost" size="icon" title={t("common.edit")} onClick={() => setEditing(s)}><Edit2 className="size-4" /></Button>
                   )}

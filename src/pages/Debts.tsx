@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { printDocumentA4 } from "@/lib/printA4";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { derivePaidAmount } from "@/lib/ledger";
@@ -194,6 +196,8 @@ export default function Debts() {
   const [tab, setTab] = useState<"all" | "open" | "settled">("open");
   const [filter, setFilter] = useState<"all" | Direction>("all");
   const [search, setSearch] = useState("");
+  /** Accounts with an entry or a payment in these days; both empty = everything. */
+  const [range, setRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Debt | null>(null);
@@ -316,6 +320,17 @@ export default function Debts() {
     return groups.filter((g) => {
       if (tab !== "all" && g.status !== tab) return false;
       if (filter !== "all" && g.direction !== filter) return false;
+      // A row is touched when it's written (created_at) and again whenever a
+      // payment lands on it (updated_at) — either in the range keeps the account.
+      if (range.from || range.to) {
+        const inRange = (iso: string | null | undefined) => {
+          if (!iso) return false;
+          const d = new Date(iso);
+          const dayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          return (!range.from || dayStr >= range.from) && (!range.to || dayStr <= range.to);
+        };
+        if (!g.debts.some((d) => inRange(d.created_at) || inRange((d as { updated_at?: string | null }).updated_at))) return false;
+      }
       if (search) {
         const s = search.toLowerCase();
         const hit =
@@ -333,7 +348,7 @@ export default function Debts() {
       }
       return true;
     });
-  }, [groups, tab, filter, search, billNo]);
+  }, [groups, tab, filter, search, billNo, range]);
 
   // The tiles follow the list: the tab, the receive/pay filter and the search
   // all narrow them, so searching one person shows what THAT person owes.
@@ -353,7 +368,7 @@ export default function Debts() {
 
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(filtered, {
     key: "debts",
-    resetDeps: [tab, filter, search],
+    resetDeps: [tab, filter, search, range],
   });
 
   const selectedRemaining = selectedGroup?.remaining ?? 0;
@@ -440,6 +455,43 @@ export default function Debts() {
     openPaymentsDialog(group);
     setPaymentForm({ ...emptyPayment, amount: e.amount ? String(Math.min(Number(e.amount), group.remaining)) : "", notes: lineText(e) });
   };
+
+  // ── From a customer's or supplier's page: "Ledger" opens their account ───
+  // `#/debts?party=<id>&name=<name>&role=customer|supplier`. With an account,
+  // its payments dialog opens; with none, a new entry for them. Read once the
+  // local store has loaded, then cleared through the router — ⚠️ on this
+  // HashRouter, history.replaceState would drop the hash (see useDaybookHandoff).
+  const [partyParams, setPartyParams] = useSearchParams();
+  const partyHandoff = useRef(false);
+  useEffect(() => {
+    if (partyHandoff.current || debtsLoading) return;
+    const partyId = partyParams.get("party");
+    if (!partyId) return;
+    partyHandoff.current = true;
+    const name = partyParams.get("name") ?? "";
+    const role = partyParams.get("role") === "supplier" ? "supplier" : "customer";
+    setPartyParams((p) => { const n = new URLSearchParams(p); for (const k of ["party", "name", "role"]) n.delete(k); return n; }, { replace: true });
+
+    const theirs = groups.filter((g) => g.party_id === partyId);
+    if (name) setSearch(name);
+    // Their open account first; the one facing the way their role usually runs breaks a tie.
+    const usual: Direction = role === "supplier" ? "i_owe" : "owed_to_me";
+    const pick = [...theirs].sort((a, b) =>
+      Number(b.remaining > 0) - Number(a.remaining > 0) || Number(b.direction === usual) - Number(a.direction === usual),
+    )[0];
+    if (pick) {
+      setTab("all");
+      openPaymentsDialog(pick);
+      return;
+    }
+    startCreate();
+    setForm({ ...empty, direction: usual, person_name: name });
+    setPerson({
+      id: partyId, name, phone: null, source: "party", role_label: role === "supplier" ? "Supplier" : "Customer",
+      is_customer: role === "customer", is_supplier: role === "supplier", is_maker: false, is_processor: false,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debtsLoading, partyParams]);
 
   const daybook = useDaybookHandoff({
     ledger_entry: openEntryFromLine,
@@ -973,6 +1025,14 @@ export default function Debts() {
               onChange={(e) => setSearch(e.target.value)}
               className="h-9 w-56"
             />
+          </div>
+          <div className="w-full">
+            <DateRangeFilter from={range.from} to={range.to} onChange={setRange} />
+            {(range.from || range.to) && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Showing accounts with an entry or a payment in these dates. Balances are the full balance.
+              </p>
+            )}
           </div>
         </div>
 
