@@ -1,7 +1,8 @@
 import { PartyFieldInputs, partyFieldRows } from "@/components/PartyFieldInputs";
 import { fieldsFor, type PartyFieldValues } from "@/lib/party-fields";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useTranslation } from "react-i18next";
 import { rpc } from "@/lib/apiClient";
 import { syncNow } from "@/lib/syncEngine";
@@ -11,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Users as UsersIcon, Trash2, Search, Eye, Edit2, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Users as UsersIcon, Trash2, Search, Eye, Edit2, Archive, ArchiveRestore, HandCoins } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { DetailsDialog } from "@/components/DetailsDialog";
@@ -33,6 +34,8 @@ interface Customer { id: string; name: string; phone: string | null; email: stri
 export default function Customers() {
   usePageMeta({ title: "Customers — UCU", description: "Manage customer profiles, contact details and purchase history.", path: "/customers" });
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const canLedger = usePermissions().canManageExpenses;
   const { currentShop, role } = useShop();
   /** A bill reopened from the customer's history, for a reprint. */
   const [openSale, setOpenSale] = useState<Record<string, unknown> | null>(null);
@@ -288,6 +291,12 @@ export default function Customers() {
                     <div className="text-xs text-muted-foreground">{c.phone || c.email || "—"}</div>
                   </button>
                   <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(c)}><Eye className="size-4" /></Button>
+                  {/* Their khata — take a payment, add credit, print a statement — on the Ledger page. */}
+                  {canLedger && (
+                    <Button variant="ghost" size="icon" title="Ledger" onClick={() => navigate(`/debts?party=${c.id}&name=${encodeURIComponent(c.name)}&role=customer`)}>
+                      <HandCoins className="size-4" />
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" title={t("common.edit")} onClick={() => setEditing(c)}><Edit2 className="size-4" /></Button>
                   {canDelete && (
                     <Button variant="ghost" size="icon" title={c.is_archived ? "Restore" : "Archive"} onClick={() => setArchived([c.id], !c.is_archived)}>
