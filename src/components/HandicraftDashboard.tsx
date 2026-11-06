@@ -5,6 +5,7 @@ import { BookOpen, Factory, Plus, Truck, Clock } from "lucide-react";
 import { useShop } from "@/contexts/ShopContext";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import type { CraftDashboard } from "@/lib/handicraftTypes";
+import TodayClock from "@/components/TodayClock";
 
 /**
  * The overview a shawl maker actually needs: what's owed to whom, and how many
@@ -25,7 +26,8 @@ export default function HandicraftDashboard({ stats }: { stats: CraftDashboard }
             What you owe, and what's still lying at the factories.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <TodayClock />
           <Button variant="outline" asChild>
             <Link to="/job-work"><Factory className="size-4 mr-2" /> Job work</Link>
           </Button>
