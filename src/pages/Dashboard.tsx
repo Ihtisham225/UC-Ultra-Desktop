@@ -26,6 +26,7 @@ import HandicraftDashboard from "@/components/HandicraftDashboard";
 import type { CraftDashboard } from "@/lib/handicraftTypes";
 import { DueChequesCard } from "@/components/DueChequesCard";
 import type { ChequeDto } from "@/lib/cheques";
+import TodayClock from "@/components/TodayClock";
 
 export default function Dashboard() {
   usePageMeta({ title: "Dashboard — UCU", description: "Real-time overview of your shop sales, top products, low-stock alerts and revenue trends." });
@@ -240,9 +241,12 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold">{t("dashboard.welcome")}{currentShop ? ` — ${currentShop.name}` : ""}</h1>
           <p className="text-muted-foreground mt-1">{t("dashboard.growTipBody").split(".")[0]}.</p>
         </div>
-        <Button asChild size="lg" className="bg-gradient-primary hover:opacity-90 text-primary-foreground shadow-glow">
-          <Link to="/pos"><ScanBarcode className="size-4 me-2" /> {t("nav.pos")}</Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <TodayClock />
+          <Button asChild size="lg" className="bg-gradient-primary hover:opacity-90 text-primary-foreground shadow-glow">
+            <Link to="/pos"><ScanBarcode className="size-4 me-2" /> {t("nav.pos")}</Link>
+          </Button>
+        </div>
       </header>
 
       <DueChequesCard
