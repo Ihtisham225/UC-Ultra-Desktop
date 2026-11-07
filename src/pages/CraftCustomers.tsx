@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { RowActions } from "@/components/RowActions";
 import { Plus, Users, Search, Printer, Trash2, HandCoins, FileText, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -502,21 +503,13 @@ export default function CraftCustomers() {
                     <TableCell className="text-xs">{c.due_date ?? "—"}</TableCell>
                     <TableCell className="text-end tabular-nums">{formatMoney(c.amount, cur)}</TableCell>
                     <TableCell className="text-end">
-                      <div className="flex justify-end gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => setPrinting(c)} title="Print">
-                          <Printer className="size-4" />
-                        </Button>
-                        {canManage && (
-                          <>
-                            <Button size="icon" variant="ghost" onClick={() => openChallan(c)} title="Edit">
-                              <Edit2 className="size-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => void removeChallan(c)} title="Delete">
-                              <Trash2 className="size-4 text-destructive" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
+                      <RowActions
+                        actions={[
+                          { label: "Print", icon: Printer, onClick: () => setPrinting(c) },
+                          { label: "Edit", icon: Edit2, onClick: () => openChallan(c), hidden: !canManage },
+                          { label: "Delete", icon: Trash2, onClick: () => void removeChallan(c), destructive: true, hidden: !canManage },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -554,16 +547,12 @@ export default function CraftCustomers() {
                     </TableCell>
                     <TableCell className="text-end tabular-nums">{formatMoney(p.amount, cur)}</TableCell>
                     <TableCell className="text-end">
-                      {canManage && (
-                        <div className="flex justify-end gap-1">
-                          <Button size="icon" variant="ghost" onClick={() => openPayment(p)} title="Edit">
-                            <Edit2 className="size-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => void removePayment(p)} title="Delete">
-                            <Trash2 className="size-4 text-destructive" />
-                          </Button>
-                        </div>
-                      )}
+                      <RowActions
+                        actions={[
+                          { label: "Edit", icon: Edit2, onClick: () => openPayment(p), hidden: !canManage },
+                          { label: "Delete", icon: Trash2, onClick: () => void removePayment(p), destructive: true, hidden: !canManage },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

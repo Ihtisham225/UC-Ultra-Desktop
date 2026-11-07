@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { RowActions } from "@/components/RowActions";
 import { FolderTree, Plus, Pencil, Trash2, CornerDownRight, WifiOff, Search, Archive, ArchiveRestore } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -195,7 +196,7 @@ export default function Categories() {
         ) : (
           <div className="divide-y">
             {visibleItems.map((c) => (
-              <div key={c.id} className={`flex items-center gap-2 px-4 py-2.5 ${c.is_archived ? "opacity-60" : ""}`}>
+              <div key={c.id} className={`flex items-center gap-2 px-4 py-2.5 even:bg-muted/25 hover:bg-muted/50 ${c.is_archived ? "opacity-60" : ""}`}>
                 <button
                   type="button"
                   className="flex items-center gap-1.5 min-w-0 flex-1 text-start hover:underline underline-offset-2"
@@ -210,24 +211,15 @@ export default function Categories() {
                   </span>
                 </button>
                 {canEdit && (
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <Button variant="ghost" size="icon" title="Add sub-category" aria-label="Add sub-category"
-                      onClick={() => setEditing({ name: "", parent_id: c.id })}>
-                      <Plus className="size-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" title="Edit" aria-label="Edit"
-                      onClick={() => setEditing({ id: c.id, name: c.name, parent_id: c.parent_id })}>
-                      <Pencil className="size-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" title={c.is_archived ? "Restore" : "Archive"} aria-label={c.is_archived ? "Restore" : "Archive"}
-                      onClick={() => toggleArchived(c)}>
-                      {c.is_archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
-                    </Button>
-                    <Button variant="ghost" size="icon" title="Delete" aria-label="Delete"
-                      className="text-destructive hover:text-destructive" onClick={() => remove(c)}>
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
+                  <RowActions
+                    className="shrink-0"
+                    actions={[
+                      { label: "Edit", icon: Pencil, onClick: () => setEditing({ id: c.id, name: c.name, parent_id: c.parent_id }) },
+                      { label: "Add sub-category", icon: Plus, onClick: () => setEditing({ name: "", parent_id: c.id }) },
+                      { label: c.is_archived ? "Restore" : "Archive", icon: c.is_archived ? ArchiveRestore : Archive, onClick: () => toggleArchived(c) },
+                      { label: "Delete", icon: Trash2, onClick: () => remove(c), destructive: true },
+                    ]}
+                  />
                 )}
               </div>
             ))}

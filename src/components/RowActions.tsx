@@ -52,9 +52,11 @@ export function RowActions({
   const shown = actions.filter((a) => !a.hidden);
   const head = shown.slice(0, inline);
   const rest = shown.slice(inline);
-  // A menu holding a single item is just a slower button.
-  const buttons = rest.length === 1 ? shown : head;
-  const menu = rest.length === 1 ? [] : rest;
+  // A menu holding a single item is just a slower button — unless that item
+  // is Delete, which stays tucked away so it's never a stray click from the row.
+  const lone = rest.length === 1 && !rest[0].destructive;
+  const buttons = lone ? shown : head;
+  const menu = lone ? [] : rest;
   const plain = menu.filter((a) => !a.destructive);
   const danger = menu.filter((a) => a.destructive);
 

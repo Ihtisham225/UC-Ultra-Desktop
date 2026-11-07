@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { RowActions } from "@/components/RowActions";
 import { TrendingUp, Plus, Pencil, Trash2, ArrowDownToLine, ArrowUpFromLine, History, Users, HandCoins } from "lucide-react";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -508,25 +509,15 @@ export default function Investors() {
                       <TableCell className={`text-end tabular-nums ${m.total_profit < 0 ? "text-destructive" : ""}`}>{formatMoney(m.total_profit, cur)}</TableCell>
                       <TableCell className="text-end tabular-nums font-semibold">{formatMoney(m.capital, cur)}</TableCell>
                       <TableCell>
-                        <div className="flex justify-end">
-                          <Button variant="ghost" size="icon" title="Add money" onClick={() => { setMemberMoney({ member: m, kind: "deposit" }); setAmount(""); setMoneyNotes(""); }}>
-                            <ArrowDownToLine className="size-4 text-primary" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="Take money out" onClick={() => { setMemberMoney({ member: m, kind: "withdrawal" }); setAmount(""); setMoneyNotes(""); }}>
-                            <ArrowUpFromLine className="size-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="History" onClick={() => openMemberLedger(m)}>
-                            <History className="size-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="Edit" onClick={() => setMemberEditing({ id: m.id, name: m.name, phone: m.phone ?? "", notes: m.notes ?? "", initial_amount: "" })}>
-                            <Pencil className="size-4" />
-                          </Button>
-                          {canDelete && (
-                            <Button variant="ghost" size="icon" title="Remove" onClick={() => removeMember(m)}>
-                              <Trash2 className="size-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
+                        <RowActions
+                          actions={[
+                            { label: "Add money", icon: ArrowDownToLine, onClick: () => { setMemberMoney({ member: m, kind: "deposit" }); setAmount(""); setMoneyNotes(""); }, className: "text-primary" },
+                            { label: "History", icon: History, onClick: () => openMemberLedger(m) },
+                            { label: "Take money out", icon: ArrowUpFromLine, onClick: () => { setMemberMoney({ member: m, kind: "withdrawal" }); setAmount(""); setMoneyNotes(""); } },
+                            { label: "Edit", icon: Pencil, onClick: () => setMemberEditing({ id: m.id, name: m.name, phone: m.phone ?? "", notes: m.notes ?? "", initial_amount: "" }) },
+                            { label: "Remove", icon: Trash2, onClick: () => removeMember(m), destructive: true, hidden: !canDelete },
+                          ]}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -628,35 +619,26 @@ export default function Investors() {
                 <TableCell className="text-end tabular-nums">{formatMoney(r.total_earned, cur)}</TableCell>
                 <TableCell className="text-end tabular-nums font-semibold">{formatMoney(r.balance, cur)}</TableCell>
                 <TableCell>
-                  <div className="flex justify-end">
-                    <Button variant="ghost" size="icon" title="Add money" onClick={() => { setMoney({ investor: r, kind: "deposit" }); setAmount(""); setMoneyNotes(""); }}>
-                      <ArrowDownToLine className="size-4 text-primary" />
-                    </Button>
-                    <Button variant="ghost" size="icon" title="Take money out" onClick={() => { setMoney({ investor: r, kind: "withdrawal" }); setAmount(""); setMoneyNotes(""); }}>
-                      <ArrowUpFromLine className="size-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" title="History" onClick={() => openLedger(r)}>
-                      <History className="size-4" />
-                    </Button>
-                    <Button
-                      variant="ghost" size="icon" title="Edit"
-                      onClick={() => setEditing({
-                        id: r.id,
-                        name: r.name,
-                        phone: r.phone ?? "",
-                        notes: r.notes ?? "",
-                        commission_percent: r.commission_percent ? String(r.commission_percent) : "",
-                        initial_amount: "",
-                      })}
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
-                    {canDelete && (
-                      <Button variant="ghost" size="icon" title="Delete" onClick={() => remove(r)}>
-                        <Trash2 className="size-4 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
+                  <RowActions
+                    actions={[
+                      { label: "Add money", icon: ArrowDownToLine, onClick: () => { setMoney({ investor: r, kind: "deposit" }); setAmount(""); setMoneyNotes(""); }, className: "text-primary" },
+                      { label: "History", icon: History, onClick: () => openLedger(r) },
+                      { label: "Take money out", icon: ArrowUpFromLine, onClick: () => { setMoney({ investor: r, kind: "withdrawal" }); setAmount(""); setMoneyNotes(""); } },
+                      {
+                        label: "Edit",
+                        icon: Pencil,
+                        onClick: () => setEditing({
+                          id: r.id,
+                          name: r.name,
+                          phone: r.phone ?? "",
+                          notes: r.notes ?? "",
+                          commission_percent: r.commission_percent ? String(r.commission_percent) : "",
+                          initial_amount: "",
+                        }),
+                      },
+                      { label: "Delete", icon: Trash2, onClick: () => remove(r), destructive: true, hidden: !canDelete },
+                    ]}
+                  />
                 </TableCell>
               </TableRow>
             ))}

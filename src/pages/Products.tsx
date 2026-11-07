@@ -962,7 +962,7 @@ export default function Products() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-cards">
               <thead className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2.5 w-10">
@@ -1042,14 +1042,14 @@ export default function Products() {
                           ) : null;
                         })()}
                       </td>
-                      <td className="px-3 py-2.5 hidden md:table-cell font-mono text-xs text-muted-foreground">
+                      <td data-label={`${t("products.sku")} / ${t("products.barcode")}`} className="px-3 py-2.5 hidden md:table-cell font-mono text-xs text-muted-foreground">
                         {p.sku || "—"} {p.barcode && <span className="ms-2">· {p.barcode}</span>}
                       </td>
-                      <td className="px-3 py-2.5 text-end font-semibold tabular-nums">
+                      <td data-label={t("common.price")} className="px-3 py-2.5 text-end font-semibold tabular-nums">
                         {/* An unpriced raw material reads as blank, not "PKR 0.00". */}
                         {Number(p.price) > 0 ? formatMoney(p.price, cur) : <span className="text-muted-foreground font-normal">—</span>}
                       </td>
-                      <td className={`px-3 py-2.5 text-end font-semibold tabular-nums ${low ? "text-warning" : ""}`}>
+                      <td data-label={t("common.stock")} className={`px-3 py-2.5 text-end font-semibold tabular-nums ${low ? "text-warning" : ""}`}>
                         {p.is_service ? null : <>{formatQty(stock)} <span className="text-xs font-normal text-muted-foreground">{p.unit}</span></>}
                       </td>
                       <td className="px-2 py-1.5 text-end whitespace-nowrap">

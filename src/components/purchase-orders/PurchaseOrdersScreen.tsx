@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { RowActions } from "@/components/RowActions";
 import { ArrowRightLeft, Ban, ClipboardList, Loader2, Pencil, Plus, Printer, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -271,7 +272,7 @@ export function PurchaseOrdersScreen({
         ) : (
           <ul className="divide-y">
             {orders.map((o) => (
-              <li key={o.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <li key={o.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 even:bg-muted/25 hover:bg-muted/50">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm font-semibold">{o.number}</span>
@@ -286,22 +287,21 @@ export function PurchaseOrdersScreen({
                 </div>
                 <div className="text-right tabular-nums font-semibold">{o.total ? formatMoney(o.total, cur) : "—"}</div>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" title="Print / WhatsApp" onClick={() => void showSlip(o)}><Printer className="size-4" /></Button>
+                  {/* The one step that moves an order forward stays a labelled button. */}
                   {o.status === "open" && (
-                    <>
-                      <Button variant="ghost" size="icon" title="Edit" onClick={() => openEdit(o)}><Pencil className="size-4" /></Button>
-                      <Button variant="outline" size="sm" title="The goods arrived — make the purchase" onClick={() => onConvert(o)}>
-                        <ArrowRightLeft className="size-3.5 mr-1.5" /> Convert to purchase
-                      </Button>
-                      <Button variant="ghost" size="icon" title="Cancel order" onClick={() => void setStatus(o, "cancelled")}><Ban className="size-4 text-warning" /></Button>
-                    </>
+                    <Button variant="outline" size="sm" title="The goods arrived — make the purchase" onClick={() => onConvert(o)}>
+                      <ArrowRightLeft className="size-3.5 mr-1.5" /> Convert to purchase
+                    </Button>
                   )}
-                  {o.status === "cancelled" && (
-                    <Button variant="ghost" size="icon" title="Reopen" onClick={() => void setStatus(o, "open")}><RotateCcw className="size-4" /></Button>
-                  )}
-                  {canDelete && (
-                    <Button variant="ghost" size="icon" title="Delete" onClick={() => void remove(o)}><Trash2 className="size-4 text-destructive" /></Button>
-                  )}
+                  <RowActions
+                    actions={[
+                      { label: "Print / WhatsApp", icon: Printer, onClick: () => void showSlip(o) },
+                      { label: "Edit", icon: Pencil, onClick: () => openEdit(o), hidden: o.status !== "open" },
+                      { label: "Cancel order", icon: Ban, onClick: () => void setStatus(o, "cancelled"), hidden: o.status !== "open" },
+                      { label: "Reopen", icon: RotateCcw, onClick: () => void setStatus(o, "open"), hidden: o.status !== "cancelled" },
+                      { label: "Delete", icon: Trash2, onClick: () => void remove(o), destructive: true, hidden: !canDelete },
+                    ]}
+                  />
                 </div>
               </li>
             ))}
