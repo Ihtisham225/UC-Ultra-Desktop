@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
 import { Card } from "@/components/ui/card";
+import { RowActions } from "@/components/RowActions";
 import { Plus, Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2, Pencil, Truck, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -484,8 +485,8 @@ export default function Sales() {
             </div>
             <ul className="divide-y">
               {sales.map((s) => (
-                <li key={s.id}>
-                  <div className={`w-full p-4 hover:bg-muted/40 flex items-center justify-between gap-4 text-start transition-colors ${sel.has(s.id) ? "bg-primary/5" : ""}`}>
+                <li key={s.id} className="even:bg-muted/25">
+                  <div className={`w-full px-4 py-2.5 hover:bg-muted/50 flex items-center justify-between gap-3 text-start transition-colors ${sel.has(s.id) ? "bg-primary/5" : ""}`}>
                     <Checkbox
                       checked={sel.has(s.id)}
                       onCheckedChange={(v) => sel.toggle(s.id, !!v)}
@@ -528,30 +529,16 @@ export default function Sales() {
                     <div className={`text-lg font-bold tabular-nums ${s.returnStatus === "full" ? "line-through text-muted-foreground" : ""}`}>
                       {formatMoney(s.total, cur)}
                     </div>
-                    <Button variant="ghost" size="icon" title="Delivery order — a pass for the truck" onClick={() => setDeliveryFor({ id: s.id, number: s.receipt_number ?? null })}>
-                      <Truck className="size-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" title={t("sales.viewReceipt")} onClick={() => openReceipt(s.id)}>
-                      <Eye className="size-4" />
-                    </Button>
-                    {/* A returned bill can't be edited — the refund was recorded
-                        against these exact lines. Editing needs the server, so
-                        it's hidden while this terminal is offline. */}
-                    {canEdit && s.returnStatus === "none" && (
-                      <Button variant="ghost" size="icon" title="Edit bill" onClick={() => openEdit(s.id)}>
-                        <Pencil className="size-4" />
-                      </Button>
-                    )}
-                    {canReturn && s.returnStatus !== "full" && (
-                      <Button variant="ghost" size="icon" title={t("sales.processReturn")} onClick={() => setReturnSaleId(s.id)}>
-                        <Undo2 className="size-4 text-warning" />
-                      </Button>
-                    )}
-                    {canDelete && (
-                      <Button variant="ghost" size="icon" title={t("sales.deleteSale")} onClick={() => deleteSale(s.id)}>
-                        <Trash2 className="size-4 text-destructive" />
-                      </Button>
-                    )}
+                    <RowActions
+                      actions={[
+                        { label: t("sales.viewReceipt"), icon: Eye, onClick: () => openReceipt(s.id) },
+                        // A returned bill can't be edited — the refund was recorded against these exact lines.
+                        { label: "Edit bill", icon: Pencil, onClick: () => openEdit(s.id), hidden: !(canEdit && s.returnStatus === "none") },
+                        { label: t("sales.processReturn"), icon: Undo2, onClick: () => setReturnSaleId(s.id), hidden: !(canReturn && s.returnStatus !== "full") },
+                        { label: "Delivery order (truck pass)", icon: Truck, onClick: () => setDeliveryFor({ id: s.id, number: s.receipt_number ?? null }) },
+                        { label: t("sales.deleteSale"), icon: Trash2, onClick: () => deleteSale(s.id), destructive: true, hidden: !canDelete },
+                      ]}
+                    />
                     <ChevronRight className="size-4 text-muted-foreground rtl-flip" />
                   </div>
                 </li>

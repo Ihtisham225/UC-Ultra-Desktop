@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { RowActions } from "@/components/RowActions";
 import { ArrowDownLeft, ArrowUpRight, Pencil, Plus, Trash2, Wallet, Eye, TrendingUp, TrendingDown, MessageCircle, Upload, Printer, ReceiptText } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -1079,19 +1080,17 @@ export default function Debts() {
             <TableHeader>
               <TableRow>
                 <TableHead>Person</TableHead>
-                <TableHead>Direction</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Paid</TableHead>
+                <TableHead className="text-right">Total &amp; paid</TableHead>
                 <TableHead className="text-right">Remaining</TableHead>
                 <TableHead>Due</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="w-0"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
               ) : visible.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">No debts to show.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground">No debts to show.</TableCell></TableRow>
               ) : visible.map((g) => {
                 const money = (n: number) => formatMoney(n, g.currency ?? cur);
                 const only = g.debts.length === 1 ? g.debts[0] : null;
@@ -1110,70 +1109,51 @@ export default function Debts() {
                         <div className="text-xs text-muted-foreground">{g.debts.length} bills</div>
                       )}
                     </TableCell>
-                    <TableCell>
-                      {g.direction === "owed_to_me" ? (
-                        <Badge variant="outline" className="text-success border-success/40">
-                          <ArrowDownLeft className="size-3 mr-1" /> To receive
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-destructive border-destructive/40">
-                          <ArrowUpRight className="size-3 mr-1" /> To pay
-                        </Badge>
-                      )}
+                    {/* Total with how much of it is paid as a thin bar, and the
+                        remaining amount coloured by direction — green is money
+                        coming in, red is money going out — instead of a pill. */}
+                    <TableCell className="text-right">
+                      <div className="tabular-nums">{money(g.amount)}</div>
+                      <div className="mt-1 ms-auto h-1 w-24 rounded-full bg-muted overflow-hidden" title={`${money(g.paid)} paid`}>
+                        <div
+                          className={`h-full ${g.direction === "owed_to_me" ? "bg-success" : "bg-destructive"}`}
+                          style={{ width: `${g.amount > 0 ? Math.min(100, (g.paid / g.amount) * 100) : 0}%` }}
+                        />
+                      </div>
+                      <div className="text-[11px] text-muted-foreground tabular-nums mt-0.5">{money(g.paid)} paid</div>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">{money(g.amount)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{money(g.paid)}</TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">{money(g.remaining)}</TableCell>
-                    <TableCell className="text-sm">{g.due_date ?? "—"}</TableCell>
+                    <TableCell className="text-right">
+                      <div
+                        className={`tabular-nums font-semibold ${g.remaining <= 0 ? "text-muted-foreground" : g.direction === "owed_to_me" ? "text-success" : "text-destructive"}`}
+                      >
+                        {money(g.remaining)}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground inline-flex items-center gap-0.5">
+                        {g.direction === "owed_to_me"
+                          ? <><ArrowDownLeft className="size-3" /> to receive</>
+                          : <><ArrowUpRight className="size-3" /> to pay</>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">{g.due_date ? fmtDate(g.due_date) : null}</TableCell>
 
                     <TableCell className="text-right">
                       {canManage && (
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-success"
-                            onClick={() => sendReminder(g)}
-                            title={g.phone ? "Message on WhatsApp" : "Message on WhatsApp — add a phone number first"}
-                          >
-                            <MessageCircle className="size-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setDetailsKey(g.key)} title="Details">
-                            <Eye className="size-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            title="Print statement"
-                            onClick={() => void printStatements(g.debts.map((d) => d.id))}
-                          >
-                            <Printer className="size-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="size-8" onClick={() => openPaymentsDialog(g)} title="Payments">
-                            <Wallet className="size-4" />
-                          </Button>
-                          {/* Same buttons on every row. With several bills one
-                              pencil can't say which, so it opens the bills to pick. */}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            onClick={() => (only ? startEdit(only) : pickBill(g, "edit"))}
-                            title="Edit"
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-destructive"
-                            onClick={() => (only ? setConfirmId(only.id) : pickBill(g, "delete"))}
-                            title="Delete"
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
+                        <RowActions
+                          actions={[
+                            { label: "Payments", icon: Wallet, onClick: () => openPaymentsDialog(g) },
+                            {
+                              label: g.phone ? "Message on WhatsApp" : "Message on WhatsApp (add a phone first)",
+                              icon: MessageCircle,
+                              onClick: () => sendReminder(g),
+                              className: "text-success",
+                            },
+                            { label: "Details", icon: Eye, onClick: () => setDetailsKey(g.key) },
+                            { label: "Print statement", icon: Printer, onClick: () => void printStatements(g.debts.map((d) => d.id)) },
+                            // With several bills one pencil can't say which, so it opens the bills to pick.
+                            { label: "Edit", icon: Pencil, onClick: () => (only ? startEdit(only) : pickBill(g, "edit")) },
+                            { label: "Delete", icon: Trash2, onClick: () => (only ? setConfirmId(only.id) : pickBill(g, "delete")), destructive: true },
+                          ]}
+                        />
                       )}
                     </TableCell>
                   </TableRow>

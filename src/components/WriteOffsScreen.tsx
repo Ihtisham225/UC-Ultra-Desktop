@@ -243,6 +243,26 @@ export function WriteOffsScreen({ api, canEdit }: { api: WriteOffsApi; canEdit: 
               <div className="space-y-1.5">
                 <Label>How much{product ? ` (${unitLabel(product.unit) || "pcs"})` : ""}</Label>
                 <Input type="number" min="0" step="any" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />
+                {/* What's on hand, and one tap to write all of it off — the
+                    usual case for a finished bag of milk or a spoilt batch.
+                    A made-to-order item holds no stock of its own. */}
+                {product && !product.made_to_order && (
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className={product.stock > 0 ? "text-muted-foreground" : "text-destructive"}>
+                      In stock: <b className="tabular-nums">{formatQty(product.stock)} {unitLabel(product.unit) || "pcs"}</b>
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px]"
+                      disabled={!(product.stock > 0)}
+                      onClick={() => setQty(String(product.stock))}
+                    >
+                      {kind === "waste" ? "Waste all" : "Use all"}
+                    </Button>
+                  </div>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label>Date</Label>

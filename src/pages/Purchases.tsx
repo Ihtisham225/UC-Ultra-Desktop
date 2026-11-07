@@ -20,6 +20,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { RowActions } from "@/components/RowActions";
 import { Plus, X, PackageOpen, Truck, Eye, Edit2, Trash2, Search, Check, Undo2, Printer, Wheat } from "lucide-react";
 import { SupplierReturnDialog } from "@/components/SupplierReturnDialog";
 import { PurchaseReceiptDialog } from "@/components/PurchaseReceiptDialog";
@@ -1690,14 +1691,14 @@ export default function Purchases() {
                 <TableCell className="capitalize">{p.payment_method}</TableCell>
                 <TableCell className="text-end tabular-nums font-medium">{formatMoney(Number(p.total), cur)}</TableCell>
                 <TableCell className="text-end whitespace-nowrap">
-                  <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => openDetails(p.id)}><Eye className="size-4" /></Button>
-                  <Button variant="ghost" size="icon" title="Return to supplier" onClick={() => setSupplierReturnFor(p.id)}><Undo2 className="size-4" /></Button>
-                  <Button variant="ghost" size="icon" title={t("common.edit")} onClick={() => startEdit(p.id)}><Edit2 className="size-4" /></Button>
-                  {canDelete && (
-                    <Button variant="ghost" size="icon" title={t("purchases.deletePurchase")} onClick={() => deletePurchase(p.id)}>
-                      <Trash2 className="size-4 text-destructive" />
-                    </Button>
-                  )}
+                  <RowActions
+                    actions={[
+                      { label: t("common.details"), icon: Eye, onClick: () => openDetails(p.id) },
+                      { label: t("common.edit"), icon: Edit2, onClick: () => startEdit(p.id) },
+                      { label: "Return to supplier", icon: Undo2, onClick: () => setSupplierReturnFor(p.id) },
+                      { label: t("purchases.deletePurchase"), icon: Trash2, onClick: () => deletePurchase(p.id), destructive: true, hidden: !canDelete },
+                    ]}
+                  />
                 </TableCell>
               </TableRow>
             ))}
