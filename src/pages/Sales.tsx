@@ -278,6 +278,7 @@ export default function Sales() {
           account_id: p.account_id ?? null,
           amount: Number(p.amount ?? 0),
         })),
+      created_at: (sale as { created_at?: string | null }).created_at ?? null,
       items: sale.sale_items.map((it) => ({
         product_id: (it as { product_id?: string | null }).product_id ?? null,
         variant_id: (it as { variant_id?: string | null }).variant_id ?? null,
