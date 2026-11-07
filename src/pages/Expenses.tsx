@@ -15,6 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { RowActions } from "@/components/RowActions";
 import { Plus, Trash2, Wallet, Eye, Edit2, Tags, Archive, ArchiveRestore } from "lucide-react";
 import { toast } from "sonner";
 import { DetailsDialog } from "@/components/DetailsDialog";
@@ -525,9 +526,13 @@ export default function Expenses() {
                     <TableCell className="max-w-xs truncate text-muted-foreground">{e.description ?? "—"}</TableCell>
                     <TableCell className="text-end tabular-nums font-medium">{formatMoney(Number(e.amount), cur)}</TableCell>
                     <TableCell className="text-end whitespace-nowrap">
-                      <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(e)}><Eye className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" title={t("common.edit")} onClick={() => startEdit(e)}><Edit2 className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" title={t("common.delete")} onClick={() => remove(e.id)}><Trash2 className="size-4 text-destructive" /></Button>
+                      <RowActions
+                        actions={[
+                          { label: t("common.details"), icon: Eye, onClick: () => setDetails(e) },
+                          { label: t("common.edit"), icon: Edit2, onClick: () => startEdit(e) },
+                          { label: t("common.delete"), icon: Trash2, onClick: () => remove(e.id), destructive: true },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 );

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RowActions } from "@/components/RowActions";
 import { Plus, HeartPulse, Trash2, Search, Edit2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
@@ -196,7 +197,7 @@ export default function Patients() {
             </div>
             <ul className="divide-y">
               {visible.map((p) => (
-                <li key={p.id} className={`p-4 flex items-center justify-between gap-2 hover:bg-muted/30 ${sel.has(p.id) ? "bg-primary/5" : ""}`}>
+                <li key={p.id} className={`px-4 py-2.5 flex items-center justify-between gap-2 even:bg-muted/25 hover:bg-muted/50 ${sel.has(p.id) ? "!bg-primary/5" : ""}`}>
                   <Checkbox
                     checked={sel.has(p.id)}
                     onCheckedChange={(v) => sel.toggle(p.id, !!v)}
@@ -208,10 +209,12 @@ export default function Patients() {
                       {[p.phone, [p.age, p.gender].filter(Boolean).join(" / ")].filter(Boolean).join(" · ") || "—"}
                     </div>
                   </button>
-                  <Button variant="ghost" size="icon" title="Edit" onClick={() => setEditing(p)}><Edit2 className="size-4" /></Button>
-                  {canDelete && (
-                    <Button variant="ghost" size="icon" onClick={() => remove(p.id)}><Trash2 className="size-4 text-destructive" /></Button>
-                  )}
+                  <RowActions
+                    actions={[
+                      { label: "Edit", icon: Edit2, onClick: () => setEditing(p) },
+                      { label: "Delete", icon: Trash2, onClick: () => remove(p.id), destructive: true, hidden: !canDelete },
+                    ]}
+                  />
                 </li>
               ))}
             </ul>

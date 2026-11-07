@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { RowActions } from "@/components/RowActions";
 import { Tag, Plus, Pencil, Trash2, WifiOff, Search, Archive, ArchiveRestore } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,7 +150,7 @@ export default function Brands() {
         ) : (
           <div className="divide-y">
             {filtered.map((b) => (
-              <div key={b.id} className={`flex items-center gap-2 px-4 py-2.5 ${b.is_archived ? "opacity-60" : ""}`}>
+              <div key={b.id} className={`flex items-center gap-2 px-4 py-2.5 even:bg-muted/25 hover:bg-muted/50 ${b.is_archived ? "opacity-60" : ""}`}>
                 <button
                   type="button"
                   className="flex items-center gap-1.5 min-w-0 flex-1 text-start hover:underline underline-offset-2"
@@ -162,20 +163,14 @@ export default function Brands() {
                   </span>
                 </button>
                 {canEdit && (
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <Button variant="ghost" size="icon" title="Edit" aria-label="Edit"
-                      onClick={() => setEditing({ id: b.id, name: b.name })}>
-                      <Pencil className="size-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" title={b.is_archived ? "Restore" : "Archive"} aria-label={b.is_archived ? "Restore" : "Archive"}
-                      onClick={() => toggleArchived(b)}>
-                      {b.is_archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
-                    </Button>
-                    <Button variant="ghost" size="icon" title="Delete" aria-label="Delete"
-                      className="text-destructive hover:text-destructive" onClick={() => remove(b)}>
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
+                  <RowActions
+                    className="shrink-0"
+                    actions={[
+                      { label: "Edit", icon: Pencil, onClick: () => setEditing({ id: b.id, name: b.name }) },
+                      { label: b.is_archived ? "Restore" : "Archive", icon: b.is_archived ? ArchiveRestore : Archive, onClick: () => toggleArchived(b) },
+                      { label: "Delete", icon: Trash2, onClick: () => remove(b), destructive: true },
+                    ]}
+                  />
                 )}
               </div>
             ))}

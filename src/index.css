@@ -146,6 +146,54 @@
   .text-balance { text-wrap: balance; }
 }
 
+/* --- Tables on a phone: each row becomes a labelled card ---
+   The shared <Table> copies every column's heading onto its cells as
+   data-label (components/ui/table.tsx); here the header row is hidden and each
+   cell prints its label on the left and its value on the right. Screen only,
+   so printed reports keep their table. */
+@media screen and (max-width: 767px) {
+  table.table-cards { min-width: 0 !important; }
+  table.table-cards > thead { display: none; }
+  table.table-cards,
+  table.table-cards > tbody,
+  table.table-cards > tbody > tr,
+  table.table-cards > tbody > tr > td { display: block; width: 100%; }
+  table.table-cards > tbody > tr {
+    margin: 0.5rem 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem;
+    background: hsl(var(--card));
+  }
+  table.table-cards > tbody > tr:last-child { border-bottom-width: 1px; }
+  table.table-cards > tbody > tr > td {
+    padding: 0.2rem 0 !important;
+    text-align: end;
+    white-space: normal;
+  }
+  table.table-cards > tbody > tr > td::after { content: ""; display: table; clear: both; }
+  table.table-cards > tbody > tr > td[data-label]:not([data-label=""])::before {
+    content: attr(data-label);
+    float: inline-start;
+    margin-inline-end: 0.75rem;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    text-align: start;
+  }
+  /* The first cell names the row: full width, no label, a little larger. */
+  table.table-cards > tbody > tr > td:first-child { text-align: start; font-size: 0.95rem; }
+  table.table-cards > tbody > tr > td:first-child::before { content: none !important; }
+  /* Nothing to say (no due date, no notes): no line at all. */
+  table.table-cards > tbody > tr > td:empty { display: none; }
+  /* A row-spanning cell (loading, empty, totals) is just centred text. */
+  table.table-cards > tbody > tr > td[colspan] { text-align: center; }
+  /* Selection checkboxes sit in a tiny first column on desktop; on a card they're just inline. */
+  table.table-cards > tbody > tr > td:has(> [role="checkbox"]):first-child { display: inline-block; width: auto; }
+}
+
 /* --- App chrome: floating sidebar + header ---
  * Modelled on the daily-cup shell, and shaped by each person's Appearance
  * (src/lib/appearance.ts), which sets on <html>:

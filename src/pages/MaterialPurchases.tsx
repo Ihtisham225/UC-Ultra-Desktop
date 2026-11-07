@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { RowActions } from "@/components/RowActions";
 import { BookOpen, Plus, Trash2, Edit2, Download, HandCoins, X, Paperclip, Printer, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -533,23 +534,18 @@ export default function MaterialPurchases() {
                         <TableCell className="text-end">{p.items.length}</TableCell>
                         <TableCell className="text-end font-semibold">{formatMoney(p.total, currency)}</TableCell>
                         <TableCell className="text-end whitespace-nowrap">
-                          <Button variant="ghost" size="icon" title="View details" onClick={() => setViewingPurchase(p)}>
-                            <Eye className="size-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title={photoCounts[p.id] ? `${photoCounts[p.id]} photo(s)` : "Attach the paper bill"}
-                            onClick={() => setViewing({ type: "material_purchase", id: p.id, title: `Purchase #${p.number} — ${p.supplier_name}` })}
-                          >
-                            <Paperclip className={`size-4 ${photoCounts[p.id] ? "text-primary" : "text-muted-foreground/50"}`} />
-                          </Button>
-                          {canManage && (
-                            <>
-                              <Button variant="ghost" size="icon" title="Edit" onClick={() => editPurchase(p)}><Edit2 className="size-4" /></Button>
-                              <Button variant="ghost" size="icon" title="Delete" onClick={() => removePurchase(p)}><Trash2 className="size-4 text-destructive" /></Button>
-                            </>
-                          )}
+                          <RowActions
+                            actions={[
+                              { label: "View details", icon: Eye, onClick: () => setViewingPurchase(p) },
+                              { label: "Edit", icon: Edit2, onClick: () => editPurchase(p), hidden: !canManage },
+                              {
+                                label: photoCounts[p.id] ? `Photos of the bill (${photoCounts[p.id]})` : "Attach the paper bill",
+                                icon: Paperclip,
+                                onClick: () => setViewing({ type: "material_purchase", id: p.id, title: `Purchase #${p.number} — ${p.supplier_name}` }),
+                              },
+                              { label: "Delete", icon: Trash2, onClick: () => removePurchase(p), destructive: true, hidden: !canManage },
+                            ]}
+                          />
                         </TableCell>
                       </TableRow>
                     ))
@@ -597,20 +593,18 @@ export default function MaterialPurchases() {
                         <TableCell className="text-muted-foreground">{p.note ?? ""}</TableCell>
                         <TableCell className="text-end font-semibold text-success">{formatMoney(p.amount, currency)}</TableCell>
                         <TableCell className="text-end whitespace-nowrap">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title={photoCounts[p.id] ? `${photoCounts[p.id]} photo(s)` : "Attach the slip"}
-                            onClick={() => setViewing({ type: "party_payment", id: p.id, title: `Payment — ${p.supplier_name} · ${fmtDate(p.date)}` })}
-                          >
-                            <Paperclip className={`size-4 ${photoCounts[p.id] ? "text-primary" : "text-muted-foreground/50"}`} />
-                          </Button>
-                          {canManage && (
-                            <>
-                              <Button variant="ghost" size="icon" title="Edit" onClick={() => editPayment(p)}><Edit2 className="size-4" /></Button>
-                              <Button variant="ghost" size="icon" title="Delete" onClick={() => removePayment(p)}><Trash2 className="size-4 text-destructive" /></Button>
-                            </>
-                          )}
+                          <RowActions
+                            actions={[
+                              {
+                                label: photoCounts[p.id] ? `Photos of the slip (${photoCounts[p.id]})` : "Attach the slip",
+                                icon: Paperclip,
+                                onClick: () => setViewing({ type: "party_payment", id: p.id, title: `Payment — ${p.supplier_name} · ${fmtDate(p.date)}` }),
+                                className: photoCounts[p.id] ? "text-primary" : "",
+                              },
+                              { label: "Edit", icon: Edit2, onClick: () => editPayment(p), hidden: !canManage },
+                              { label: "Delete", icon: Trash2, onClick: () => removePayment(p), destructive: true, hidden: !canManage },
+                            ]}
+                          />
                         </TableCell>
                       </TableRow>
                     ))

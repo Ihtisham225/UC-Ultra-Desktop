@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { RowActions } from "@/components/RowActions";
 import {
   Truck, Plus, Trash2, Edit2, PackageCheck, X, ChevronDown, ChevronRight, Lock, LockOpen, Paperclip, Printer, Check, Eye, HandCoins,
 } from "lucide-react";
@@ -619,34 +620,27 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                               </span>
                             </TableCell>
                             <TableCell className="text-end whitespace-nowrap">
-                              <Button variant="ghost" size="icon" title="View details" onClick={() => setViewingChallan(c)}>
-                                <Eye className="size-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" title="Print challan" onClick={() => setPrintingChallan(c)}>
-                                <Printer className="size-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title={photoCounts[c.id] ? `${photoCounts[c.id]} photo(s)` : "Attach the paper slip"}
-                                onClick={() => setViewing({ type: "job_work_challan", id: c.id, title: `Challan #${c.number} — ${c.supplier_name}` })}
-                              >
-                                <Paperclip className={`size-4 ${photoCounts[c.id] ? "text-primary" : "text-muted-foreground/50"}`} />
-                              </Button>
-                              {canManage && (
-                                <>
-                                  {(making ? c.status === "open" : c.total_pending > 0) && (
-                                    <Button variant="ghost" size="icon" title="Goods received" onClick={() => { setEditingReceipt(null); setReceiveFor(c.id); }}>
-                                      <PackageCheck className="size-4 text-success" />
-                                    </Button>
-                                  )}
-                                  <Button variant="ghost" size="icon" title={c.status === "open" ? "Close challan" : "Reopen challan"} onClick={() => toggleStatus(c)}>
-                                    {c.status === "open" ? <Lock className="size-4" /> : <LockOpen className="size-4" />}
-                                  </Button>
-                                  <Button variant="ghost" size="icon" title="Edit" onClick={() => editChallan(c)}><Edit2 className="size-4" /></Button>
-                                  <Button variant="ghost" size="icon" title="Delete" onClick={() => removeChallan(c)}><Trash2 className="size-4 text-destructive" /></Button>
-                                </>
-                              )}
+                              <RowActions
+                                actions={[
+                                  {
+                                    label: "Goods received",
+                                    icon: PackageCheck,
+                                    onClick: () => { setEditingReceipt(null); setReceiveFor(c.id); },
+                                    className: "text-success",
+                                    hidden: !(canManage && (making ? c.status === "open" : c.total_pending > 0)),
+                                  },
+                                  { label: "View details", icon: Eye, onClick: () => setViewingChallan(c) },
+                                  { label: "Print challan", icon: Printer, onClick: () => setPrintingChallan(c) },
+                                  {
+                                    label: photoCounts[c.id] ? `Photos of the slip (${photoCounts[c.id]})` : "Attach the paper slip",
+                                    icon: Paperclip,
+                                    onClick: () => setViewing({ type: "job_work_challan", id: c.id, title: `Challan #${c.number} — ${c.supplier_name}` }),
+                                  },
+                                  { label: c.status === "open" ? "Close challan" : "Reopen challan", icon: c.status === "open" ? Lock : LockOpen, onClick: () => toggleStatus(c), hidden: !canManage },
+                                  { label: "Edit", icon: Edit2, onClick: () => editChallan(c), hidden: !canManage },
+                                  { label: "Delete", icon: Trash2, onClick: () => removeChallan(c), destructive: true, hidden: !canManage },
+                                ]}
+                              />
                             </TableCell>
                           </TableRow>
                           {expanded[c.id] && (
@@ -755,26 +749,19 @@ export default function JobWorkScreen({ kind }: { kind: ChallanKindValue }) {
                         <TableCell className="text-end text-destructive">{r.deduction ? formatMoney(r.deduction, currency) : ""}</TableCell>
                         <TableCell className="text-end font-semibold">{formatMoney(r.total, currency)}</TableCell>
                         <TableCell className="text-end whitespace-nowrap">
-                          <Button variant="ghost" size="icon" title="View details" onClick={() => setViewingBill(r)}>
-                            <Eye className="size-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="Print bill" onClick={() => setPrintingBill(r)}>
-                            <Printer className="size-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title={photoCounts[r.id] ? `${photoCounts[r.id]} photo(s)` : "Attach the paper bill"}
-                            onClick={() => setViewing({ type: "job_work_receipt", id: r.id, title: `Bill #${r.number} — ${r.supplier_name}` })}
-                          >
-                            <Paperclip className={`size-4 ${photoCounts[r.id] ? "text-primary" : "text-muted-foreground/50"}`} />
-                          </Button>
-                          {canManage && (
-                            <>
-                              <Button variant="ghost" size="icon" title="Edit" onClick={() => { setEditingReceipt(r); setReceiveFor(r.challan_id); }}><Edit2 className="size-4" /></Button>
-                              <Button variant="ghost" size="icon" title="Delete" onClick={() => removeReceipt(r)}><Trash2 className="size-4 text-destructive" /></Button>
-                            </>
-                          )}
+                          <RowActions
+                            actions={[
+                              { label: "View details", icon: Eye, onClick: () => setViewingBill(r) },
+                              { label: "Print bill", icon: Printer, onClick: () => setPrintingBill(r) },
+                              {
+                                label: photoCounts[r.id] ? `Photos of the bill (${photoCounts[r.id]})` : "Attach the paper bill",
+                                icon: Paperclip,
+                                onClick: () => setViewing({ type: "job_work_receipt", id: r.id, title: `Bill #${r.number} — ${r.supplier_name}` }),
+                              },
+                              { label: "Edit", icon: Edit2, onClick: () => { setEditingReceipt(r); setReceiveFor(r.challan_id); }, hidden: !canManage },
+                              { label: "Delete", icon: Trash2, onClick: () => removeReceipt(r), destructive: true, hidden: !canManage },
+                            ]}
+                          />
                         </TableCell>
                       </TableRow>
                     ))

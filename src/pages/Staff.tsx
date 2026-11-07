@@ -12,6 +12,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RowActions } from "@/components/RowActions";
 import { UserPlus, Trash2, KeyRound, ShieldCheck, Plus, Copy, Ban, CheckCircle2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -264,14 +265,19 @@ export default function Staff() {
                           </td>
                           <td className="px-4 py-3 text-right space-x-1 whitespace-nowrap">
                             {!isOwner && (
-                              <>
-                                <Button variant="ghost" size="icon" onClick={() => setEditStaff({ user_id: m.user_id, full_name: m.display_name ?? "", username: usernames[m.user_id] ?? "" })} title="Edit"><Pencil className="size-4" /></Button>
-                                <Button variant="ghost" size="icon" onClick={() => resetPwd(m)} title="Reset password"><KeyRound className="size-4" /></Button>
-                                <Button variant="ghost" size="icon" onClick={() => toggleBlocked(m)} title={m.disabled ? "Unblock" : "Block"}>
-                                  {m.disabled ? <CheckCircle2 className="size-4 text-emerald-600" /> : <Ban className="size-4 text-amber-600" />}
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={() => removeStaff(m)} className="text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
-                              </>
+                              <RowActions
+                                actions={[
+                                  { label: "Edit", icon: Pencil, onClick: () => setEditStaff({ user_id: m.user_id, full_name: m.display_name ?? "", username: usernames[m.user_id] ?? "" }) },
+                                  { label: "Reset password", icon: KeyRound, onClick: () => resetPwd(m) },
+                                  {
+                                    label: m.disabled ? "Unblock" : "Block",
+                                    icon: m.disabled ? CheckCircle2 : Ban,
+                                    onClick: () => toggleBlocked(m),
+                                    className: m.disabled ? "text-emerald-600" : "text-amber-600",
+                                  },
+                                  { label: "Remove", icon: Trash2, onClick: () => removeStaff(m), destructive: true },
+                                ]}
+                              />
                             )}
                           </td>
                         </tr>

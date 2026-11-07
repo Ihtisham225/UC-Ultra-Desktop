@@ -168,7 +168,7 @@ export function WriteOffsScreen({ api, canEdit }: { api: WriteOffsApi; canEdit: 
         ) : (
           <ul className="divide-y">
             {shown.map((r) => (
-              <li key={r.id} className="p-4 flex items-start gap-3">
+              <li key={r.id} className="px-4 py-2.5 flex items-start gap-3 even:bg-muted/25 hover:bg-muted/50">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium flex items-center gap-2">
                     {formatQty(r.quantity)} {unitLabel(r.unit)} {r.product_name}

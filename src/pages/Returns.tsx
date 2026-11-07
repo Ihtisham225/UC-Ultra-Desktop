@@ -10,6 +10,7 @@ import { DetailsDialog } from "@/components/DetailsDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
 import { SCROLL_BATCH } from "@/hooks/usePagination";
+import { RowActions } from "@/components/RowActions";
 import { Undo2, Eye, Trash2, Truck, Plus, Printer } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ReturnReceiptDialog } from "@/components/ReturnReceiptDialog";
@@ -261,13 +262,13 @@ export default function Returns() {
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
-                      <Button variant="ghost" size="icon" onClick={() => setCustDetails(r)}><Eye className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" title="Receipt" onClick={() => void openReprint(r.id)}><Printer className="size-4" /></Button>
-                      {canDelete && (
-                        <Button variant="ghost" size="icon" title={t("returns.deleteReturn")} onClick={() => deleteCustReturn(r.id)}>
-                          <Trash2 className="size-4 text-destructive" />
-                        </Button>
-                      )}
+                      <RowActions
+                        actions={[
+                          { label: t("common.details"), icon: Eye, onClick: () => setCustDetails(r) },
+                          { label: "Receipt", icon: Printer, onClick: () => void openReprint(r.id) },
+                          { label: t("returns.deleteReturn"), icon: Trash2, onClick: () => deleteCustReturn(r.id), destructive: true, hidden: !canDelete },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -319,12 +320,12 @@ export default function Returns() {
                     <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{r.reason ?? "—"}</TableCell>
                     <TableCell className="text-end tabular-nums font-medium whitespace-nowrap">{formatMoney(Number(r.total_refund), cur)}</TableCell>
                     <TableCell className="whitespace-nowrap">
-                      <Button variant="ghost" size="icon" onClick={() => setSupDetails(r)}><Eye className="size-4" /></Button>
-                      {canDelete && (
-                        <Button variant="ghost" size="icon" title="Delete return" onClick={() => deleteSupReturn(r.id)}>
-                          <Trash2 className="size-4 text-destructive" />
-                        </Button>
-                      )}
+                      <RowActions
+                        actions={[
+                          { label: t("common.details"), icon: Eye, onClick: () => setSupDetails(r) },
+                          { label: "Delete return", icon: Trash2, onClick: () => deleteSupReturn(r.id), destructive: true, hidden: !canDelete },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
