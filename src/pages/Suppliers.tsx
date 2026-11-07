@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { RowActions } from "@/components/RowActions";
 import { Plus, Truck, Trash2, Search, Eye, Edit2, Archive, ArchiveRestore, HandCoins } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -377,7 +378,7 @@ export default function Suppliers() {
             </div>
             <ul className="divide-y">
               {visible.map((s) => (
-                <li key={s.id} className={`p-4 flex items-center justify-between gap-2 hover:bg-muted/30 ${sel.has(s.id) ? "bg-primary/5" : ""}`}>
+                <li key={s.id} className={`px-4 py-2.5 flex items-center justify-between gap-2 even:bg-muted/25 hover:bg-muted/50 ${sel.has(s.id) ? "!bg-primary/5" : ""}`}>
                   <Checkbox
                     checked={sel.has(s.id)}
                     onCheckedChange={(v) => sel.toggle(s.id, !!v)}
@@ -420,24 +421,26 @@ export default function Suppliers() {
                       </div>
                     );
                   })()}
-                  <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(s)}><Eye className="size-4" /></Button>
-                  {canLedger && (
-                    <Button variant="ghost" size="icon" title="Ledger" onClick={() => navigate(`/debts?party=${s.id}&name=${encodeURIComponent(s.name)}&role=supplier`)}>
-                      <HandCoins className="size-4" />
-                    </Button>
-                  )}
-                  {canManage && (
-                    <Button variant="ghost" size="icon" title={t("common.edit")} onClick={() => setEditing(s)}><Edit2 className="size-4" /></Button>
-                  )}
-                  {canManage && (
-                    <Button variant="ghost" size="icon" title={s.is_archived ? "Restore" : "Archive"} onClick={() => setArchived([s.id], !s.is_archived)}>
-                      {s.is_archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
-                    </Button>
-                  )}
-                  {canManage && (
-                    <Button variant="ghost" size="icon" onClick={() => remove(s.id)}><Trash2 className="size-4 text-destructive" /></Button>
-                  )}
-                </li>
+                  <RowActions
+                    actions={[
+                      {
+                        label: "Ledger",
+                        icon: HandCoins,
+                        onClick: () => navigate(`/debts?party=${s.id}&name=${encodeURIComponent(s.name)}&role=supplier`),
+                        hidden: !canLedger,
+                      },
+                      { label: t("common.details"), icon: Eye, onClick: () => setDetails(s) },
+                      { label: t("common.edit"), icon: Edit2, onClick: () => setEditing(s), hidden: !canManage },
+                      {
+                        label: s.is_archived ? "Restore" : "Archive",
+                        icon: s.is_archived ? ArchiveRestore : Archive,
+                        onClick: () => setArchived([s.id], !s.is_archived),
+                        hidden: !canManage,
+                      },
+                      { label: t("common.delete"), icon: Trash2, onClick: () => remove(s.id), destructive: true, hidden: !canManage },
+                    ]}
+                  />
+</li>
               ))}
             </ul>
             <Pagination

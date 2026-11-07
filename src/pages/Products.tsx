@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { RowActions } from "@/components/RowActions";
 import { Plus, Search, Edit2, Trash2, ScanBarcode, Package as PackageIcon, Printer, RefreshCw, Eye, Layers, Upload, ArrowUpDown, MapPin, Archive, ArchiveRestore, BadgeDollarSign } from "lucide-react";
 import { ImportProductsDialog } from "@/components/ImportProductsDialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -962,20 +963,20 @@ export default function Products() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+              <thead className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="p-3 w-10">
+                  <th className="px-3 py-2.5 w-10">
                     <Checkbox
                       checked={sel.allChecked(visibleIds) ? true : sel.someChecked(visibleIds) ? "indeterminate" : false}
                       onCheckedChange={(v) => sel.setAll(visibleIds, !!v)}
                       aria-label="select all"
                     />
                   </th>
-                  <th className="text-start p-3 font-semibold">{t("common.name")}</th>
-                  <th className="text-start p-3 font-semibold hidden md:table-cell">{t("products.sku")} / {t("products.barcode")}</th>
-                  <th className="text-end p-3 font-semibold">{t("common.price")}</th>
-                  <th className="text-end p-3 font-semibold">{t("common.stock")}</th>
-                  <th className="p-3"></th>
+                  <th className="text-start px-3 py-2.5 font-semibold">{t("common.name")}</th>
+                  <th className="text-start px-3 py-2.5 font-semibold hidden md:table-cell">{t("products.sku")} / {t("products.barcode")}</th>
+                  <th className="text-end px-3 py-2.5 font-semibold">{t("common.price")}</th>
+                  <th className="text-end px-3 py-2.5 font-semibold">{t("common.stock")}</th>
+                  <th className="px-3 py-2.5"></th>
                 </tr>
               </thead>
               <tbody>
@@ -986,41 +987,52 @@ export default function Products() {
                   // as "out of stock", which is wrong and alarming.
                   const low = isLowStock(p);
                   return (
-                    <tr key={p.id} className={`border-t hover:bg-muted/30 ${sel.has(p.id) ? "bg-primary/5" : ""}`}>
-                      <td className="p-3">
+                    <tr key={p.id} className={`border-t border-border/60 even:bg-muted/25 hover:bg-muted/50 ${sel.has(p.id) ? "!bg-primary/5" : ""}`}>
+                      <td className="px-3 py-2.5">
                         <Checkbox
                           checked={sel.has(p.id)}
                           onCheckedChange={(v) => sel.toggle(p.id, !!v)}
                           aria-label={`select ${p.name}`}
                         />
                       </td>
-                      <td className="p-3">
-                        <div className="font-medium flex items-center gap-2">
-                          {p.name}
-                          {p.is_active === false && (
-                            <span className="text-[10px] uppercase tracking-wide border rounded px-1.5 py-0.5 text-muted-foreground">Archived</span>
-                          )}
-                          {cafe && p.is_sellable === false && (
-                            <span className="text-[10px] uppercase tracking-wide border rounded px-1.5 py-0.5 text-muted-foreground" title="Not offered at the till">Not sold</span>
-                          )}
-                          {cafe && (recipeModeOf(p.recipe_mode) || (p.is_service && !usesRecipes(currentShop))) && (
-                            <span className="text-[10px] uppercase tracking-wide bg-primary/10 text-primary rounded px-1.5 py-0.5 font-semibold">
-                              {p.is_service ? (p.is_sellable === false ? "Not tracked" : "Made on the spot")
-                                : p.recipe_mode === "batch" ? (productsWithRecipe.has(p.id) ? "Batch recipe" : "Prepared ahead")
-                                : p.recipe_mode === "deal" ? "Deal" : "Made to order"}
-                            </span>
-                          )}
-                          {variantsCount > 0 && (
-                            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide bg-accent/15 text-accent-foreground rounded px-1.5 py-0.5 font-semibold">
-                              <Layers className="size-3" /> {t("products.variantsCount", { count: variantsCount })}
-                            </span>
-                          )}
-                        </div>
-                        {(p.category || p.brand) && (
-                          <div className="text-xs text-muted-foreground">
-                            {[p.category, p.brand].filter(Boolean).join(" · ")}
-                          </div>
-                        )}
+                      <td className="px-3 py-2.5">
+                        {(() => {
+                          // One quiet grey line of facts under the name instead
+                          // of a row of bordered tags. Only what makes a product
+                          // behave differently at the till keeps a colour.
+                          const kindLabel = cafe && (recipeModeOf(p.recipe_mode) || (p.is_service && !usesRecipes(currentShop)))
+                            ? (p.is_service ? (p.is_sellable === false ? "Not tracked" : "Made on the spot")
+                              : p.recipe_mode === "batch" ? (productsWithRecipe.has(p.id) ? "Batch recipe" : "Prepared ahead")
+                              : p.recipe_mode === "deal" ? "Deal" : "Made to order")
+                            : null;
+                          const special = kindLabel && kindLabel !== "Not tracked" ? kindLabel : null;
+                          const facts = [
+                            p.is_active === false ? "Archived" : null,
+                            cafe && p.is_sellable === false ? "Not sold at the till" : null,
+                            kindLabel === "Not tracked" ? "Stock not tracked" : null,
+                            variantsCount > 0 ? t("products.variantsCount", { count: variantsCount }) : null,
+                            p.category,
+                            p.brand,
+                          ].filter(Boolean);
+                          return (
+                            <>
+                              <div className="font-medium flex items-center gap-2">
+                                {p.name}
+                                {special && (
+                                  <span className="text-[10px] uppercase tracking-wide bg-primary/10 text-primary rounded px-1.5 py-0.5 font-semibold">
+                                    {special}
+                                  </span>
+                                )}
+                              </div>
+                              {facts.length > 0 && (
+                                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                  {variantsCount > 0 && <Layers className="size-3" />}
+                                  {facts.join(" · ")}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                         {(() => {
                           const place = whereKept(p, null, locations);
                           return place ? (
@@ -1030,35 +1042,31 @@ export default function Products() {
                           ) : null;
                         })()}
                       </td>
-                      <td className="p-3 hidden md:table-cell font-mono text-xs text-muted-foreground">
+                      <td className="px-3 py-2.5 hidden md:table-cell font-mono text-xs text-muted-foreground">
                         {p.sku || "—"} {p.barcode && <span className="ms-2">· {p.barcode}</span>}
                       </td>
-                      <td className="p-3 text-end font-semibold">{formatMoney(p.price, cur)}</td>
-                      <td className={`p-3 text-end font-mono font-semibold ${low ? "text-warning" : ""}`}>
-                        {p.is_service ? <span className="text-muted-foreground font-normal">—</span> : <>{formatQty(stock)} {p.unit}</>}
+                      <td className="px-3 py-2.5 text-end font-semibold tabular-nums">
+                        {/* An unpriced raw material reads as blank, not "PKR 0.00". */}
+                        {Number(p.price) > 0 ? formatMoney(p.price, cur) : <span className="text-muted-foreground font-normal">—</span>}
                       </td>
-                      <td className="p-3 text-end whitespace-nowrap">
-                        <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(p)}>
-                          <Eye className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title={t("products.printSticker")}
-                          onClick={() => setStickerProduct(p)}
-                          disabled={!p.barcode}
-                        >
-                          <Printer className="size-4" />
-                        </Button>
-                        {canEdit && (
-                          <>
-                            <Button variant="ghost" size="icon" onClick={() => startEdit(p)}><Edit2 className="size-4" /></Button>
-                            <Button variant="ghost" size="icon" title={p.is_active === false ? "Restore" : "Archive"} onClick={() => setArchived([p.id], p.is_active !== false)}>
-                              {p.is_active === false ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => remove(p.id)}><Trash2 className="size-4 text-destructive" /></Button>
-                          </>
-                        )}
+                      <td className={`px-3 py-2.5 text-end font-semibold tabular-nums ${low ? "text-warning" : ""}`}>
+                        {p.is_service ? null : <>{formatQty(stock)} <span className="text-xs font-normal text-muted-foreground">{p.unit}</span></>}
+                      </td>
+                      <td className="px-2 py-1.5 text-end whitespace-nowrap">
+                        <RowActions
+                          actions={[
+                            { label: t("common.details"), icon: Eye, onClick: () => setDetails(p) },
+                            { label: t("common.edit"), icon: Edit2, onClick: () => startEdit(p), hidden: !canEdit },
+                            { label: t("products.printSticker"), icon: Printer, onClick: () => setStickerProduct(p), disabled: !p.barcode },
+                            {
+                              label: p.is_active === false ? "Restore" : "Archive",
+                              icon: p.is_active === false ? ArchiveRestore : Archive,
+                              onClick: () => setArchived([p.id], p.is_active !== false),
+                              hidden: !canEdit,
+                            },
+                            { label: t("common.delete"), icon: Trash2, onClick: () => remove(p.id), destructive: true, hidden: !canEdit },
+                          ]}
+                        />
                       </td>
                     </tr>
                   );
