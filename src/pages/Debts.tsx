@@ -1600,11 +1600,23 @@ export default function Debts() {
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead className="text-right">Paid</TableHead>
                     <TableHead className="text-right">Remaining</TableHead>
+                    <TableHead className="text-right" title="This bill's remaining plus every older bill's">Running total</TableHead>
                     {canManage && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...detailsGroup.debts].reverse().map((d) => {
+                  {(() => {
+                    // Running total of what is still owed, added up from the
+                    // OLDEST bill forward — so each row reads "this bill and
+                    // everything before it", and the newest row (shown first)
+                    // equals the whole balance.
+                    let sum = 0;
+                    const running = new Map<string, number>();
+                    for (const d of detailsGroup.debts) {
+                      sum = Math.round((sum + getRemainingAmount(d)) * 100) / 100;
+                      running.set(d.id, sum);
+                    }
+                    return [...detailsGroup.debts].reverse().map((d) => {
                     const money = (n: number) => formatMoney(n, d.currency ?? cur);
                     return (
                       <TableRow key={d.id}>
@@ -1618,6 +1630,7 @@ export default function Debts() {
                         <TableCell className="text-right tabular-nums">{money(d.amount)}</TableCell>
                         <TableCell className="text-right tabular-nums">{money(d.paid_amount ?? 0)}</TableCell>
                         <TableCell className="text-right tabular-nums font-medium">{money(getRemainingAmount(d))}</TableCell>
+                        <TableCell className="text-right tabular-nums font-semibold text-primary">{money(running.get(d.id) ?? 0)}</TableCell>
                         {canManage && (
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
@@ -1632,7 +1645,8 @@ export default function Debts() {
                         )}
                       </TableRow>
                     );
-                  })}
+                  });
+                  })()}
                 </TableBody>
               </Table>
             </div>
