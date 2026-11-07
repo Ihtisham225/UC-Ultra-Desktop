@@ -23,14 +23,13 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowDownLeft, ArrowUpRight, Pencil, Plus, Trash2, Wallet, Eye, TrendingUp, TrendingDown, MessageCircle, Upload, Printer, ReceiptText } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { buildLedgerStatementHtml } from "@/lib/ledger-statement";
 import { ImportDebtsDialog } from "@/components/ImportDebtsDialog";
-import { buildDebtReminderMessage } from "@/lib/debt-reminder";
+import { buildLedgerMessage } from "@/lib/debt-reminder";
 import { openWhatsApp } from "@/lib/whatsapp-open";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
@@ -193,7 +192,6 @@ export default function Debts() {
       );
   }, [rawDebts, allPayments]);
   const loading = debtsLoading;
-  const [tab, setTab] = useState<"all" | "open" | "settled">("open");
   const [filter, setFilter] = useState<"all" | Direction>("all");
   const [search, setSearch] = useState("");
   /** Accounts with an entry or a payment in these days; both empty = everything. */
@@ -284,9 +282,18 @@ export default function Debts() {
   const cur = currentShop?.currency ?? "USD";
 
   /** Open WhatsApp (owner's own) with a pre-filled reminder for everything the person owes. */
-  const sendReminder = (g: Group) => {
-    if (!g.phone) return toast.error("This ledger has no phone number.");
-    const message = buildDebtReminderMessage({
+  /**
+   * WhatsApp is offered on EVERY ledger. With no phone on file it asks for one
+   * first — saved onto the ledger and, if it has none, the person's record —
+   * then opens the chat. Saving goes through the server, so it needs a connection.
+   */
+  const [phoneFor, setPhoneFor] = useState<Group | null>(null);
+  const [phoneDraft, setPhoneDraft] = useState("");
+  const [savingPhone, setSavingPhone] = useState(false);
+
+  const openChat = (g: Group, phone: string) => {
+    const message = buildLedgerMessage({
+      direction: g.direction,
       personName: g.person_name,
       shopName: currentShop?.name ?? "our shop",
       balance: g.remaining,
@@ -294,7 +301,44 @@ export default function Debts() {
       dueDate: g.due_date,
       formatMoney,
     });
-    if (!openWhatsApp(g.phone, message)) return toast.error("This phone number looks invalid for WhatsApp.");
+    if (!openWhatsApp(phone, message)) toast.error("This phone number looks invalid for WhatsApp.");
+  };
+
+  const sendReminder = (g: Group) => {
+    if (g.phone) return openChat(g, g.phone);
+    setPhoneDraft("");
+    setPhoneFor(g);
+  };
+
+  const savePhoneAndSend = async () => {
+    if (!phoneFor) return;
+    if (!navigator.onLine) return toast.error("Saving a phone number needs a connection.");
+    setSavingPhone(true);
+    try {
+      // The rows may only exist on this till so far — push them first.
+      await syncNow().catch(() => {});
+      const res = (await rpc("setLedgerPhoneAction", phoneFor.debts.map((d) => d.id), phoneDraft)) as {
+        ok: boolean;
+        error?: string;
+        phone?: string;
+      };
+      if (!res.ok || !res.phone) return toast.error(res.error ?? "Could not save the phone number.");
+      const g = phoneFor;
+      setPhoneFor(null);
+      toast.success(`Phone saved for ${g.person_name}`);
+      void syncNow().catch(() => {});
+      openChat(g, res.phone);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save the phone number.");
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
+  /** Several bills: the pencil/bin can't know which one, so open the list of them. */
+  const pickBill = (g: Group, what: "edit" | "delete") => {
+    setDetailsKey(g.key);
+    toast.info(`${g.person_name} has ${g.debts.length} bills — pick the one to ${what} below.`);
   };
 
   /**
@@ -317,8 +361,10 @@ export default function Debts() {
   }, [currentShop?.id]);
 
   const filtered = useMemo(() => {
+    // Every account is listed: open ones first, settled ones after them with a
+    // badge, still fully usable (add more, receive, print, message).
+    const rank = (g: Group) => (g.status === "open" ? 0 : 1);
     return groups.filter((g) => {
-      if (tab !== "all" && g.status !== tab) return false;
       if (filter !== "all" && g.direction !== filter) return false;
       // A row is touched when it's written (created_at) and again whenever a
       // payment lands on it (updated_at) — either in the range keeps the account.
@@ -347,10 +393,10 @@ export default function Debts() {
         if (!hit) return false;
       }
       return true;
-    });
-  }, [groups, tab, filter, search, billNo, range]);
+    }).sort((a, b) => rank(a) - rank(b));
+  }, [groups, filter, search, billNo, range]);
 
-  // The tiles follow the list: the tab, the receive/pay filter and the search
+  // The tiles follow the list: the receive/pay filter, the dates and the search
   // all narrow them, so searching one person shows what THAT person owes.
   const totals = useMemo(() => {
     let owedToMe = 0;
@@ -368,7 +414,7 @@ export default function Debts() {
 
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(filtered, {
     key: "debts",
-    resetDeps: [tab, filter, search, range],
+    resetDeps: [filter, search, range],
   });
 
   const selectedRemaining = selectedGroup?.remaining ?? 0;
@@ -480,7 +526,6 @@ export default function Debts() {
       Number(b.remaining > 0) - Number(a.remaining > 0) || Number(b.direction === usual) - Number(a.direction === usual),
     )[0];
     if (pick) {
-      setTab("all");
       openPaymentsDialog(pick);
       return;
     }
@@ -1003,13 +1048,6 @@ export default function Debts() {
 
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as "all" | "open" | "settled")}>
-            <TabsList>
-              <TabsTrigger value="open">Open</TabsTrigger>
-              <TabsTrigger value="settled">Settled</TabsTrigger>
-              <TabsTrigger value="all">All</TabsTrigger>
-            </TabsList>
-          </Tabs>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={filter} onValueChange={(v) => setFilter(v as "all" | Direction)}>
               <SelectTrigger className="w-44 h-9"><SelectValue /></SelectTrigger>
@@ -1046,15 +1084,14 @@ export default function Debts() {
                 <TableHead className="text-right">Paid</TableHead>
                 <TableHead className="text-right">Remaining</TableHead>
                 <TableHead>Due</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
               ) : visible.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">No debts to show.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">No debts to show.</TableCell></TableRow>
               ) : visible.map((g) => {
                 const money = (n: number) => formatMoney(n, g.currency ?? cur);
                 const only = g.debts.length === 1 ? g.debts[0] : null;
@@ -1062,7 +1099,12 @@ export default function Debts() {
                 return (
                   <TableRow key={g.key}>
                     <TableCell>
-                      <div className="font-medium">{g.person_name}</div>
+                      <div className="font-medium flex items-center gap-2">
+                        {g.person_name}
+                        {g.status === "settled" && (
+                          <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium uppercase tracking-wide">Settled</Badge>
+                        )}
+                      </div>
                       {g.phone && <div className="text-xs text-muted-foreground">{g.phone}</div>}
                       {g.debts.length > 1 && (
                         <div className="text-xs text-muted-foreground">{g.debts.length} bills</div>
@@ -1083,20 +1125,19 @@ export default function Debts() {
                     <TableCell className="text-right tabular-nums">{money(g.paid)}</TableCell>
                     <TableCell className="text-right tabular-nums font-medium">{money(g.remaining)}</TableCell>
                     <TableCell className="text-sm">{g.due_date ?? "—"}</TableCell>
-                    <TableCell>
-                      {g.status === "open"
-                        ? <Badge variant="secondary">Open</Badge>
-                        : <Badge>Settled</Badge>}
-                    </TableCell>
 
                     <TableCell className="text-right">
                       {canManage && (
                         <div className="flex justify-end gap-2">
-                          {g.direction === "owed_to_me" && g.phone && g.remaining > 0 && (
-                            <Button variant="ghost" size="icon" className="size-8 text-success" onClick={() => sendReminder(g)} title="Send WhatsApp reminder">
-                              <MessageCircle className="size-4" />
-                            </Button>
-                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-success"
+                            onClick={() => sendReminder(g)}
+                            title={g.phone ? "Message on WhatsApp" : "Message on WhatsApp — add a phone number first"}
+                          >
+                            <MessageCircle className="size-4" />
+                          </Button>
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => setDetailsKey(g.key)} title="Details">
                             <Eye className="size-4" />
                           </Button>
@@ -1112,18 +1153,26 @@ export default function Debts() {
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => openPaymentsDialog(g)} title="Payments">
                             <Wallet className="size-4" />
                           </Button>
-                          {/* With several bills, each is edited from the details
-                              view — one pencil here couldn't say which bill. */}
-                          {only && (
-                            <>
-                              <Button variant="ghost" size="icon" className="size-8" onClick={() => startEdit(only)} title="Edit">
-                                <Pencil className="size-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setConfirmId(only.id)} title="Delete">
-                                <Trash2 className="size-4" />
-                              </Button>
-                            </>
-                          )}
+                          {/* Same buttons on every row. With several bills one
+                              pencil can't say which, so it opens the bills to pick. */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            onClick={() => (only ? startEdit(only) : pickBill(g, "edit"))}
+                            title="Edit"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-destructive"
+                            onClick={() => (only ? setConfirmId(only.id) : pickBill(g, "delete"))}
+                            title="Delete"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
                         </div>
                       )}
                     </TableCell>
@@ -1625,6 +1674,35 @@ export default function Debts() {
           />
         </DetailsDialog>
       )}
+
+      <Dialog open={!!phoneFor} onOpenChange={(v) => { if (!v) setPhoneFor(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add a phone number first</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {phoneFor?.person_name} has no phone number yet. Add one to message them on WhatsApp — it is saved for next time.
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="ledger-phone">Phone (WhatsApp)</Label>
+            <Input
+              id="ledger-phone"
+              autoFocus
+              inputMode="tel"
+              placeholder="03xx xxxxxxx"
+              value={phoneDraft}
+              onChange={(e) => setPhoneDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void savePhoneAndSend(); } }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPhoneFor(null)}>Cancel</Button>
+            <Button onClick={() => void savePhoneAndSend()} disabled={savingPhone || !phoneDraft.trim()}>
+              <MessageCircle className="size-4 mr-2" /> {savingPhone ? "Saving…" : "Save & open WhatsApp"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={!!confirmId}

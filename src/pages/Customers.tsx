@@ -1,6 +1,9 @@
 import { PartyFieldInputs, partyFieldRows } from "@/components/PartyFieldInputs";
 import { fieldsFor, type PartyFieldValues } from "@/lib/party-fields";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocalPartyKhata } from "@/hooks/useLocalPartyKhata";
+import { customerBalance } from "@/lib/party-balances";
+import { formatMoney } from "@/lib/format";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useTranslation } from "react-i18next";
@@ -72,6 +75,9 @@ export default function Customers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
+  const currency = currentShop?.currency ?? "PKR";
+  /** What each customer stands at on the Ledger, from the offline store. */
+  const khata = useLocalPartyKhata(currentShop?.id);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const shown = items.filter((c) => !!c.is_archived === showArchived);
@@ -82,6 +88,12 @@ export default function Customers() {
       (c.email ?? "").toLowerCase().includes(q)
     );
   }, [items, search, showArchived]);
+
+  /** The list's total, netted the same way as each row. */
+  const receivableTotal = useMemo(
+    () => filtered.reduce((sum, p) => sum + customerBalance(khata[p.id]), 0),
+    [filtered, khata],
+  );
 
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(
     filtered,
@@ -249,6 +261,22 @@ export default function Customers() {
         </div>
       )}
 
+      {canLedger && !showArchived && (
+        <Card className="shadow-card p-4 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              {receivableTotal < 0 ? "You owe customers" : "You will receive"}
+            </div>
+            <div className={`text-2xl font-bold tabular-nums ${receivableTotal > 0 ? "text-success" : receivableTotal < 0 ? "text-destructive" : ""}`}>
+              {formatMoney(receivableTotal, currency)}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground max-w-sm">
+            From the Ledger: each figure is what that customer owes you. A minus means you owe them.
+          </p>
+        </Card>
+      )}
+
       <BulkActionBar
         selectedCount={sel.count}
         onClear={sel.clear}
@@ -290,6 +318,19 @@ export default function Customers() {
                     <div className="font-medium flex items-center gap-2">{c.name}{c.is_archived && <span className="text-[10px] uppercase border rounded px-1.5 py-0.5 text-muted-foreground">Archived</span>}</div>
                     <div className="text-xs text-muted-foreground">{c.phone || c.email || "—"}</div>
                   </button>
+                  {canLedger && (() => {
+                    const bal = customerBalance(khata[c.id]);
+                    return (
+                      <div className="text-end shrink-0 min-w-[7rem]">
+                        <div className={`font-semibold tabular-nums ${bal > 0 ? "text-success" : bal < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                          {formatMoney(bal, currency)}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {bal > 0 ? "to receive" : bal < 0 ? "you owe them" : "settled"}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(c)}><Eye className="size-4" /></Button>
                   {/* Their khata — take a payment, add credit, print a statement — on the Ledger page. */}
                   {canLedger && (
