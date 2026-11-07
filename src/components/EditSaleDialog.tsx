@@ -15,6 +15,7 @@ import { loadAccountOptions } from "@/components/AccountPicker";
 import { VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft } from "@/components/VehicleFields";
 import { isOil } from "@/lib/oil";
 import { rpc } from "@/lib/apiClient";
+import { DateInput } from "@/components/DateInput";
 
 export interface EditableProduct {
   id: string;
@@ -65,6 +66,8 @@ export interface EditableSale {
   /** The tenders as they stand, so a split bill opens showing its split. */
   payments?: Array<{ account_id: string | null; amount: number }>;
   notes?: string | null;
+  /** When the bill was rung up (ISO). Lets a bill dated wrongly be moved to its real day. */
+  created_at?: string | null;
   items: Array<{
     product_id: string | null;
     variant_id: string | null;
@@ -89,6 +92,25 @@ interface Props {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+const pad = (n: number) => String(n).padStart(2, "0");
+/** The bill's day on this computer, as the date box holds it. */
+const dayOf = (iso: string | null | undefined) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+/**
+ * Move a bill to another day but keep its time of day, so bills moved onto
+ * the same day still read in the order they were rung up.
+ */
+const moveToDay = (iso: string, day: string) => {
+  const d = new Date(iso);
+  const [y, m, dd] = day.split("-").map(Number);
+  d.setFullYear(y, m - 1, dd);
+  return d.toISOString();
+};
+
 export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Props) {
   const { currentShop } = useShop();
   const formatMoney = useFormatMoney();
@@ -112,6 +134,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
   const [accounts, setAccounts] = useState<{ id: string; name: string; type: string }[]>([]);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
+  const [day, setDay] = useState("");
   // The free oil change is why the car came in, so correcting the bill has to
   // be able to correct the visit recorded beside it.
   const oilShop = isOil(currentShop);
@@ -141,6 +164,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
       }),
     );
     setDiscount(String(sale.discount ?? 0));
+    setDay(dayOf(sale.created_at));
     setMethod(sale.payment_method || "cash");
     setCustomer(
       sale.customer_id
@@ -301,6 +325,10 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
         customer_id: customer?.id ?? null,
         account_id: accountId,
         notes: sale.notes ?? null,
+        // Sent only when the day was changed, so an edit never shifts a bill's time.
+        ...(sale.created_at && day && day !== dayOf(sale.created_at)
+          ? { created_at: moveToDay(sale.created_at, day) }
+          : {}),
       });
       if (!result.ok) return toast.error(result.error ?? "Could not update this bill");
 
@@ -338,7 +366,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
 
         <p className="text-xs text-muted-foreground">
           Stock, any investor holding and the customer&apos;s balance are all corrected to match
-          the new lines. The receipt number and date stay as they are.
+          the new lines. The receipt number stays; change the bill date below if it was wrong.
         </p>
 
         <div className="space-y-2">
@@ -466,6 +494,12 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
             <Label className="text-xs">Customer</Label>
             <CustomerPicker value={customer} onChange={setCustomer} />
           </div>
+          {sale?.created_at && (
+            <div className="space-y-1">
+              <Label className="text-xs">Bill date</Label>
+              <DateInput className="h-9" value={day} onChange={(e) => setDay(e.target.value)} />
+            </div>
+          )}
         </div>
 
         {/* Settled the same way the till settles a sale: as many accounts as
