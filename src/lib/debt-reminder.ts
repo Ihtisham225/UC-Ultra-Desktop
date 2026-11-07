@@ -44,6 +44,28 @@ export function buildDebtReminderMessage(i: DebtReminderInput): string {
   return lines.join("\n");
 }
 
+/**
+ * The WhatsApp message for any ledger, whichever way it faces. A reminder only
+ * makes sense when the person owes the shop; the Ledger now offers the button
+ * on every account, so the other cases get a plain statement of where it stands.
+ */
+export function buildLedgerMessage(
+  i: DebtReminderInput & { direction: "owed_to_me" | "i_owe" | string },
+): string {
+  if (i.direction === "owed_to_me" && i.balance > 0) return buildDebtReminderMessage(i);
+  const lines = [`Assalam-o-Alaikum ${i.personName},`, ""];
+  if (i.balance <= 0) {
+    lines.push(`Your account with ${i.shopName} is fully settled. Thank you!`);
+  } else {
+    lines.push(
+      `This is ${i.shopName}. Our records show we owe you ${i.formatMoney(i.balance, i.currency)}.`,
+    );
+    if (i.dueDate) lines.push(`Due date: ${fmtDate(i.dueDate)}`);
+    lines.push("", "Please get in touch to arrange payment. Thank you!");
+  }
+  return lines.join("\n");
+}
+
 /** Full wa.me URL with the message encoded, or null if the phone is unusable. */
 export function buildWaReminderUrl(phone: string, message: string, dialCode = "92"): string | null {
   const to = normalizeWaPhone(phone, dialCode);

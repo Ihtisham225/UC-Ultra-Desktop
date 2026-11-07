@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
 import { Card } from "@/components/ui/card";
-import { Plus, Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2, Pencil, Truck } from "lucide-react";
+import { Plus, Receipt as ReceiptIcon, ChevronRight, Eye, Undo2, Trash2, Pencil, Truck, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -173,12 +173,13 @@ export default function Sales() {
         0,
         Math.round((Number(s.total ?? 0) - Number(s.amount_paid ?? 0)) * 100) / 100,
       );
-      const customer_name =
-        (s.customer_id
-          ? allParties.find((c: any) => c.id === s.customer_id)?.name ??
-            allLegacyCustomers.find((c: any) => c.id === s.customer_id)?.name
-          : null) ?? null;
-      return { ...s, sale_items: items, returnStatus, payments, balance_due, customer_name };
+      const party = s.customer_id
+        ? allParties.find((c: any) => c.id === s.customer_id) ??
+          allLegacyCustomers.find((c: any) => c.id === s.customer_id)
+        : null;
+      const customer_name = party?.name ?? null;
+      const customer_phone = party?.phone ?? null;
+      return { ...s, sale_items: items, returnStatus, payments, balance_due, customer_name, customer_phone };
     });
   }, [allSalesRaw, allSaleItems, allReturns, allPayments, allAccounts, allParties, allLegacyCustomers]);
 
@@ -186,8 +187,29 @@ export default function Sales() {
   // thousands of bills and the counter almost always wants the current day;
   // anything older is one date change away.
   const [range, setRange] = useState(() => dayRange(0));
+  /** What's typed in the search box, and the settled value the list filters on. */
+  const [searchText, setSearchText] = useState("");
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const t = window.setTimeout(() => { setQuery(searchText.trim()); setPage(1); }, 300);
+    return () => window.clearTimeout(t);
+  }, [searchText]);
 
   const inRange = useMemo(() => {
+    // Find a bill — order #, customer or patient name/phone, notes or a product
+    // on it. A search looks across EVERY date (same as the web): someone typing
+    // a bill number wants that bill, not "nothing today".
+    if (query) {
+      const q = query.toLowerCase();
+      const bill = q.replace(/^#/, "");
+      const has = (v: unknown) => typeof v === "string" && v.toLowerCase().includes(q);
+      return allSales.filter((s: any) =>
+        String(s.receipt_number ?? "").toLowerCase().includes(bill) ||
+        has(s.customer_name) || has(s.customer_phone) ||
+        has(s.patient_name) || has(s.patient_phone) || has(s.notes) ||
+        (s.sale_items ?? []).some((i: any) => has(i.product_name)),
+      );
+    }
     if (!range.from && !range.to) return allSales;
     return allSales.filter((s: any) => {
       if (!s.created_at) return false;
@@ -196,7 +218,7 @@ export default function Sales() {
       if (range.to && day > range.to) return false;
       return true;
     });
-  }, [allSales, range]);
+  }, [allSales, range, query]);
 
   const totalCount = inRange.length;
   const grandTotal = inRange.reduce((a: number, s: any) => a + Number(s.total ?? 0), 0);
@@ -374,8 +396,30 @@ export default function Sales() {
         canDelete={canDelete}
       />
 
-      <Card className="p-3">
-        <div className="flex flex-wrap items-end gap-3">
+      <Card className="p-3 space-y-3">
+        <div className="relative">
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Search a bill — order #, customer, phone or product"
+            className="ps-9 pe-9"
+          />
+          {searchText && (
+            <button
+              type="button"
+              className="absolute end-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+              onClick={() => setSearchText("")}
+              aria-label="Clear search"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+        {query && (
+          <p className="text-xs text-muted-foreground">Searching every date for “{query}”. Clear the search to go back to the dates below.</p>
+        )}
+        <div className={`flex flex-wrap items-end gap-3 ${query ? "opacity-50" : ""}`}>
           <div className="space-y-1">
             <Label className="text-xs">From</Label>
             <DateInput
@@ -405,7 +449,7 @@ export default function Sales() {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Card className="p-4">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">
-            {range.from || range.to ? "Sales in range" : "Total sales"}
+            {query ? "Matching sales" : range.from || range.to ? "Sales in range" : "Total sales"}
           </div>
           <div className="text-lg sm:text-2xl font-bold tabular-nums mt-1 break-words leading-tight">{totalCount}</div>
         </Card>

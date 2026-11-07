@@ -743,16 +743,16 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
           </label>
         )}
 
-        <DialogFooter className={`p-4 pt-3 print:hidden flex-col sm:flex-row gap-2 bg-white shrink-0 ${terms ? "" : "border-t border-gray-200"}`}>
+        <DialogFooter className={`p-4 pt-3 print:hidden flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-2 sm:space-x-0 bg-white shrink-0 ${terms ? "" : "border-t border-gray-200"}`}>
           {customer?.phone && (
             isPro ? (
-              <Button variant="outline" onClick={sendWhatsApp} disabled={sent} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
+              <Button variant="outline" onClick={sendWhatsApp} disabled={sent} className="w-full sm:w-auto sm:flex-1 border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
                 <MessageCircle className="size-4 mr-2" />
                 {sent ? "Opened" : "WhatsApp"}
                 {!sent && kbd("whatsapp")}
               </Button>
             ) : (
-              <Button asChild variant="outline" className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
+              <Button asChild variant="outline" className="w-full sm:w-auto sm:flex-1 border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
                 <Link to="/billing">
                   <Sparkles className="size-4 mr-2" />
                   WhatsApp (Pro)
@@ -765,16 +765,16 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
             <Button
               variant="outline"
               onClick={() => void printThermalHtml(buildKitchenSlipHtml(sale, sale.shop?.name ?? "", fmtDateTime(sale.created_at)))}
-              className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900"
+              className="w-full sm:w-auto sm:flex-1 border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900"
             >
               <ChefHat className="size-4 mr-2" /> Kitchen slip
             </Button>
           )}
-          <Button variant="outline" onClick={print} className="w-full sm:w-auto border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
+          <Button variant="outline" onClick={print} className="w-full sm:w-auto sm:flex-1 border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900">
             <Printer className="size-4 mr-2" /> Print
             {kbd("print")}
           </Button>
-          <Button onClick={onClose} className="w-full sm:w-auto bg-gradient-primary text-white border-0 hover:opacity-90">
+          <Button onClick={onClose} className="w-full sm:w-auto sm:flex-1 bg-gradient-primary text-white border-0 hover:opacity-90">
             New sale
             <kbd className="ms-2 rounded border border-white/40 px-1 text-[10px] font-medium text-white/80">{shortcutLabel("newSale", isMac)}</kbd>
           </Button>

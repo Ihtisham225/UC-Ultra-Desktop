@@ -1,6 +1,8 @@
 import { PartyFieldInputs, partyFieldRows } from "@/components/PartyFieldInputs";
 import { fieldsFor, type PartyFieldValues } from "@/lib/party-fields";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocalPartyKhata } from "@/hooks/useLocalPartyKhata";
+import { supplierBalance } from "@/lib/party-balances";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { rpc } from "@/lib/apiClient";
@@ -98,6 +100,9 @@ export default function Suppliers() {
     return items.filter(isProcessor);
   }, [items, craft, roleTab]);
 
+  // Every other store type: what each supplier stands at on the Ledger,
+  // from the offline store (works with no connection).
+  const khata = useLocalPartyKhata(currentShop?.id);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const shown = byRole.filter((s) => !!s.is_archived === showArchived);
@@ -109,6 +114,12 @@ export default function Suppliers() {
       (s.city ?? "").toLowerCase().includes(q)
     );
   }, [byRole, search, showArchived]);
+
+  /** The list's total, netted the same way as each row. */
+  const payableTotal = useMemo(
+    () => filtered.reduce((sum, p) => sum + supplierBalance(khata[p.id]), 0),
+    [filtered, khata],
+  );
 
   const { page, pageSize, setPage, setPageSize, visible, totalItems } = usePagination(
     filtered,
@@ -319,6 +330,22 @@ export default function Suppliers() {
         </div>
       )}
 
+      {canLedger && !showArchived && (
+        <Card className="shadow-card p-4 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              {payableTotal < 0 ? "Suppliers owe you" : "You have to pay"}
+            </div>
+            <div className={`text-2xl font-bold tabular-nums ${payableTotal > 0 ? "text-destructive" : payableTotal < 0 ? "text-success" : ""}`}>
+              {formatMoney(payableTotal, currency)}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground max-w-sm">
+            From the Ledger: each figure is what you owe that supplier. A minus means they owe you.
+          </p>
+        </Card>
+      )}
+
       <BulkActionBar
         selectedCount={sel.count}
         onClear={sel.clear}
@@ -380,6 +407,19 @@ export default function Suppliers() {
                       </div>
                     </div>
                   )}
+                  {canLedger && (() => {
+                    const bal = supplierBalance(khata[s.id]);
+                    return (
+                      <div className="text-end shrink-0 min-w-[7rem]">
+                        <div className={`font-semibold tabular-nums ${bal > 0 ? "text-destructive" : bal < 0 ? "text-success" : "text-muted-foreground"}`}>
+                          {formatMoney(bal, currency)}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {bal > 0 ? "you pay" : bal < 0 ? "they owe you" : "settled"}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <Button variant="ghost" size="icon" title={t("common.details")} onClick={() => setDetails(s)}><Eye className="size-4" /></Button>
                   {canLedger && (
                     <Button variant="ghost" size="icon" title="Ledger" onClick={() => navigate(`/debts?party=${s.id}&name=${encodeURIComponent(s.name)}&role=supplier`)}>
