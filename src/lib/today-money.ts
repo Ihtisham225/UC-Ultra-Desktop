@@ -88,6 +88,10 @@ export interface TodayMoneyInput {
     account_id?: string | null;
     cheque_id?: string | null;
     sale_return_id?: string | null;
+    supplier_return_id?: string | null;
+    /** Settled by goods — a credit purchase or a credit bill set off. */
+    purchase_id?: string | null;
+    sale_id?: string | null;
     created_at?: Stamp;
   }[];
   purchases: {
@@ -179,7 +183,9 @@ export function computeTodayMoney(input: TodayMoneyInput): TodayMoney {
     // owed, and moved money only when it names an account — and then the
     // other way round: more owed TO the shop means the shop paid it out.
     const kind = p.kind ?? "payment";
-    if (p.sale_return_id) continue;
+    if (p.sale_return_id || p.supplier_return_id) continue;
+    // Goods set off against a balance (purchase-credit / sale-credit): no money.
+    if (p.purchase_id || p.sale_id) continue;
     if (kind === "increase" ? !p.account_id || p.cheque_id : kind !== "payment") continue;
     if (!onOrAfter(p.created_at, input.since)) continue;
     const debt = debtById.get(p.debt_id);

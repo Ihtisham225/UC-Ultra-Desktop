@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins, PackageCheck, Undo2, BadgeDollarSign, Building2, Landmark, ScrollText } from "lucide-react";
+import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins, PackageCheck, Undo2, BadgeDollarSign, Building2, Landmark, ScrollText, Banknote } from "lucide-react";
 import { downloadCsv, CsvColumn } from "@/lib/csv";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { isHandicraft } from "@/lib/handicraft";
@@ -37,6 +37,7 @@ import {
   AccountsReportTab,
   AssetsReport,
   ChequesReport,
+  CollectionReport,
   PayrollReportTab,
   ReturnsReport,
   type MoreReportProps,
@@ -105,6 +106,7 @@ export default function Reports() {
           <TabsTrigger value="accounts"><Landmark className="size-3.5 mr-1.5" />Cash &amp; bank</TabsTrigger>
           <TabsTrigger value="customers"><Users className="size-3.5 mr-1.5" />Customers</TabsTrigger>
           <TabsTrigger value="ledger"><HandCoins className="size-3.5 mr-1.5" />Ledger</TabsTrigger>
+          <TabsTrigger value="collection"><Banknote className="size-3.5 mr-1.5" />Collection</TabsTrigger>
           {currentShop.cheques_enabled && <TabsTrigger value="cheques"><ScrollText className="size-3.5 mr-1.5" />Cheques</TabsTrigger>}
           <TabsTrigger value="tax"><Percent className="size-3.5 mr-1.5" />Tax</TabsTrigger>
         </TabsList>
@@ -127,6 +129,7 @@ export default function Reports() {
           <TabsContent value="accounts"><ServerReport report={AccountsReportTab} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="customers"><CustomersReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="ledger"><LedgerReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          <TabsContent value="collection"><ServerReport report={CollectionReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           {currentShop.cheques_enabled && (
             <TabsContent value="cheques"><ServerReport report={ChequesReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           )}
@@ -163,6 +166,13 @@ function ReportToolbar<T>({ title, rows, columns, filename }: { title: string; r
     </div>
   );
 }
+
+/** A ledger report movement, in the shop's words. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const movementType = (m: any) =>
+  m.kind === "increase" ? "Added to account"
+    : m.kind === "set_off" ? "Set off (no money)"
+    : m.direction === "owed_to_me" ? "Collected" : "Paid out";
 
 /** The khata's stored direction, in the shop's words rather than "owed_to_me". */
 const directionLabel = (direction: string) => (direction === "owed_to_me" ? "Owes you" : "You owe");
@@ -924,7 +934,7 @@ function LedgerReport({ shopId, range, formatMoney, cur }: ReportProps) {
   const moveCols: CsvColumn<any>[] = [
     { header: "Date", value: (r) => r.date },
     { header: "Party", value: (r) => r.person_name },
-    { header: "Type", value: (r) => (r.kind === "increase" ? "Added to account" : r.direction === "owed_to_me" ? "Collected" : "Paid out") },
+    { header: "Type", value: (r) => movementType(r) },
     { header: "Amount", value: (r) => Number(r.amount).toFixed(2) },
     { header: "Discount", value: (r) => Number(r.discount).toFixed(2) },
   ];
@@ -997,7 +1007,7 @@ function LedgerReport({ shopId, range, formatMoney, cur }: ReportProps) {
                     <TableCell>{fmtDate(m.date)}</TableCell>
                     <TableCell className="font-medium">{m.person_name}</TableCell>
                     <TableCell className="text-xs">
-                      {m.kind === "increase" ? "Added to account" : m.direction === "owed_to_me" ? "Collected" : "Paid out"}
+                      {movementType(m)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{formatMoney(m.amount, cur)}</TableCell>
                     <TableCell className="text-right tabular-nums">{m.discount > 0 ? formatMoney(m.discount, cur) : "—"}</TableCell>
