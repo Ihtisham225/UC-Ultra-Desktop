@@ -8,7 +8,7 @@
  * maintaining a list.
  *
  * The order the counter was promised:
- *   1 customer · 2 vehicle (oil shops) · 3 discount · 4 amount · 5 account · 6 notes
+ *   (order type · table, when the shop uses them) · 1 customer · 2 vehicle (oil shops) · 3 discount · 4 amount · 5 account · 6 notes
  * Enter on the notes places the order.
  *
  * A step marked `data-checkout-picker` is a dropdown: arriving at it OPENS it,
@@ -19,6 +19,10 @@
  */
 
 export const STEP = {
+  // How the order is served (Settings → Till order types) and, for dine-in,
+  // the table — before the customer, since the counter is told "parcel" first.
+  orderType: 0.5,
+  table: 0.6,
   customer: 1,
   vehicle: 2,
   discount: 3,

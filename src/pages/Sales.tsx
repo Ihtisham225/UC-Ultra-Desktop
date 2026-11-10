@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SaleKindBadges } from "@/components/SaleKindBadges";
+import { orderTypeLabel, parseFilter, paymentStatus, PAYMENT_LABELS, saleFilterOptions, saleMatchesFilter } from "@/lib/order-types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
@@ -153,6 +156,11 @@ export default function Sales() {
   const { data: allParties } = useLocalStore<any>("suppliers", currentShop?.id);
   const { data: allLegacyCustomers } = useLocalStore<any>("customers", currentShop?.id);
 
+  // Bills that had an oil change recorded with them (lib/order-types filters on it).
+  const oilSaleIds = useMemo(
+    () => new Set(allOilChanges.map((o: { sale_id?: string | null }) => o.sale_id).filter(Boolean) as string[]),
+    [allOilChanges],
+  );
   // Sort and paginate locally
   const allSales = useMemo(() => {
     return [...allSalesRaw].sort(
@@ -180,9 +188,12 @@ export default function Sales() {
         : null;
       const customer_name = party?.name ?? null;
       const customer_phone = party?.phone ?? null;
-      return { ...s, sale_items: items, returnStatus, payments, balance_due, customer_name, customer_phone };
+      return {
+        ...s, sale_items: items, returnStatus, payments, balance_due, customer_name, customer_phone,
+        has_oil_change: oilSaleIds.has(s.id),
+      };
     });
-  }, [allSalesRaw, allSaleItems, allReturns, allPayments, allAccounts, allParties, allLegacyCustomers]);
+  }, [allSalesRaw, allSaleItems, allReturns, allPayments, allAccounts, allParties, allLegacyCustomers, oilSaleIds]);
 
   // The list opens on today. A shop that has been trading a while has
   // thousands of bills and the counter almost always wants the current day;
@@ -196,7 +207,10 @@ export default function Sales() {
     return () => window.clearTimeout(t);
   }, [searchText]);
 
-  const inRange = useMemo(() => {
+  // Order type / oil change / paid-vs-ledger (lib/order-types filterValue).
+  const [kind, setKind] = useState("all");
+
+  const inWindow = useMemo(() => {
     // Find a bill — order #, customer or patient name/phone, notes or a product
     // on it. A search looks across EVERY date (same as the web): someone typing
     // a bill number wants that bill, not "nothing today".
@@ -220,6 +234,11 @@ export default function Sales() {
       return true;
     });
   }, [allSales, range, query]);
+
+  const inRange = useMemo(() => {
+    const f = parseFilter(kind);
+    return f.kind === "all" ? inWindow : inWindow.filter((s) => saleMatchesFilter(s, f));
+  }, [inWindow, kind]);
 
   const totalCount = inRange.length;
   const grandTotal = inRange.reduce((a: number, s: any) => a + Number(s.total ?? 0), 0);
@@ -279,6 +298,7 @@ export default function Sales() {
           amount: Number(p.amount ?? 0),
         })),
       created_at: (sale as { created_at?: string | null }).created_at ?? null,
+      order_type: (sale as { order_type?: string | null }).order_type ?? null,
       items: sale.sale_items.map((it) => ({
         product_id: (it as { product_id?: string | null }).product_id ?? null,
         variant_id: (it as { variant_id?: string | null }).variant_id ?? null,
@@ -359,6 +379,9 @@ export default function Sales() {
     downloadCsv(`sales-${new Date().toISOString().slice(0, 10)}`, rows, [
       { header: "Receipt", value: (r) => orderNumberLabel(r.receipt_number) },
       { header: "Customer", value: (r) => r.customer_name ?? "" },
+      { header: "Order type", value: (r) => orderTypeLabel(currentShop, r.order_type) },
+      { header: "Oil change", value: (r) => (r.has_oil_change ? "Yes" : "") },
+      { header: "Paid", value: (r) => PAYMENT_LABELS[paymentStatus(r.total, r.amount_paid ?? 0)] },
       { header: "Date", value: (r) => format(new Date(r.created_at), "yyyy-MM-dd HH:mm") },
       { header: "Items", value: (r) => r.sale_items.length },
       { header: "Payment", value: (r) => (r.payments?.length ? r.payments.map((p) => `${p.account_name} ${p.amount}`).join(" | ") : r.payment_method) },
@@ -438,6 +461,17 @@ export default function Sales() {
               onChange={(e) => { setPage(1); setRange((r) => ({ ...r, to: e.target.value })); }}
             />
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Show</Label>
+            <Select value={kind} onValueChange={(v) => { setPage(1); setKind(v); }}>
+              <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {saleFilterOptions(currentShop).map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => { setPage(1); setRange(dayRange(0)); }}>Today</Button>
             <Button variant="outline" size="sm" onClick={() => { setPage(1); setRange(dayRange(1)); }}>Yesterday</Button>
@@ -451,7 +485,7 @@ export default function Sales() {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Card className="p-4">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">
-            {query ? "Matching sales" : range.from || range.to ? "Sales in range" : "Total sales"}
+            {query || kind !== "all" ? "Matching sales" : range.from || range.to ? "Sales in range" : "Total sales"}
           </div>
           <div className="text-lg sm:text-2xl font-bold tabular-nums mt-1 break-words leading-tight">{totalCount}</div>
         </Card>
@@ -496,6 +530,7 @@ export default function Sales() {
                     <button onClick={() => openReceipt(s.id)} className="min-w-0 flex-1 text-start">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold font-mono text-sm">{orderNumberLabel(s.receipt_number)}</span>
+                        <SaleKindBadges sale={s} shop={currentShop} formatMoney={(n) => formatMoney(n, cur)} />
                         {s.returnStatus === "full" && (
                           <Badge variant="destructive" className="gap-1 text-[10px] uppercase tracking-wide">
                             <Undo2 className="size-3" /> {t("sales.fullyReturned")}
@@ -523,7 +558,7 @@ export default function Sales() {
                           ? s.payments.map((p) => `${p.account_name} ${formatMoney(p.amount, cur)}`).join(" · ")
                           : s.payment_method}
                         {(s.balance_due ?? 0) > 0 && (
-                          <span className="text-warning font-medium"> · {formatMoney(s.balance_due ?? 0, cur)} due</span>
+                          <span className="text-warning font-medium"> · {formatMoney(s.balance_due ?? 0, cur)} on ledger</span>
                         )}
                       </div>
                     </button>

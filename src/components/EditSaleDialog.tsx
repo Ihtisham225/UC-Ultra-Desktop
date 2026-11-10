@@ -14,6 +14,7 @@ import { CustomerPicker, type CustomerLite } from "@/components/CustomerPicker";
 import { loadAccountOptions } from "@/components/AccountPicker";
 import { VehicleFields, blankVehicle, vehicleDraftToInput, type VehicleDraft } from "@/components/VehicleFields";
 import { isOil } from "@/lib/oil";
+import { orderTypeLabel, tillOrderTypes } from "@/lib/order-types";
 import { rpc } from "@/lib/apiClient";
 import { DateInput } from "@/components/DateInput";
 
@@ -68,6 +69,8 @@ export interface EditableSale {
   notes?: string | null;
   /** When the bill was rung up (ISO). Lets a bill dated wrongly be moved to its real day. */
   created_at?: string | null;
+  /** How it was served (lib/order-types). Undefined = the caller doesn't know, so it isn't offered. */
+  order_type?: string | null;
   items: Array<{
     product_id: string | null;
     variant_id: string | null;
@@ -91,6 +94,8 @@ interface Props {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+/** The Select can't hold null: "no order type" travels as this. */
+const NO_TYPE = "__none";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 /** The bill's day on this computer, as the date box holds it. */
@@ -138,6 +143,14 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
   // The free oil change is why the car came in, so correcting the bill has to
   // be able to correct the visit recorded beside it.
   const oilShop = isOil(currentShop);
+  // The shop's till order types, plus the bill's own if it has since been switched off.
+  const typeChoices = [
+    ...tillOrderTypes(currentShop),
+    ...(sale?.order_type && !tillOrderTypes(currentShop).some((t) => t.key === sale.order_type)
+      ? [{ key: sale.order_type, label: orderTypeLabel(currentShop, sale.order_type), enabled: false }]
+      : []),
+  ];
+  const [orderType, setOrderType] = useState<string>(NO_TYPE);
   const [oil, setOil] = useState<VehicleDraft>(blankVehicle);
   const [oilId, setOilId] = useState<string | null>(null);
   const [oilLoaded, setOilLoaded] = useState(false);
@@ -165,6 +178,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
     );
     setDiscount(String(sale.discount ?? 0));
     setDay(dayOf(sale.created_at));
+    setOrderType(sale.order_type ?? NO_TYPE);
     setMethod(sale.payment_method || "cash");
     setCustomer(
       sale.customer_id
@@ -328,6 +342,10 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
         // Sent only when the day was changed, so an edit never shifts a bill's time.
         ...(sale.created_at && day && day !== dayOf(sale.created_at)
           ? { created_at: moveToDay(sale.created_at, day) }
+          : {}),
+        // Sent only when changed — and never by a caller that didn't say what it was.
+        ...(sale.order_type !== undefined && orderType !== (sale.order_type ?? NO_TYPE)
+          ? { order_type: orderType === NO_TYPE ? null : orderType }
           : {}),
       });
       if (!result.ok) return toast.error(result.error ?? "Could not update this bill");
@@ -498,6 +516,18 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
             <div className="space-y-1">
               <Label className="text-xs">Bill date</Label>
               <DateInput className="h-9" value={day} onChange={(e) => setDay(e.target.value)} />
+            </div>
+          )}
+          {sale && sale.order_type !== undefined && typeChoices.length > 0 && (
+            <div className="space-y-1">
+              <Label className="text-xs">Order type</Label>
+              <Select value={orderType} onValueChange={setOrderType}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_TYPE}>None — a counter sale</SelectItem>
+                  {typeChoices.map((t) => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           )}
         </div>

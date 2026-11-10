@@ -40,7 +40,7 @@ import { fmtDate } from "@/lib/date-format";
 type ReturnKind = "customer" | "supplier";
 
 /** Where each field sits in the right-hand Enter chain. */
-const RSTEP = { kind: 1, party: 2, bill: 3, deduction: 4, refundTo: 5, account: 6, reason: 7, notes: 8 } as const;
+const RSTEP = { kind: 1, party: 2, bill: 3, orderType: 3.5, deduction: 4, refundTo: 5, account: 6, reason: 7, notes: 8 } as const;
 
 /** What a picker needs to take part in the chain. */
 export interface ChainProps {
@@ -65,8 +65,13 @@ const plainEnter = (e: React.KeyboardEvent) =>
 
 export function NewReturnScreen({
   currency, products, renderCustomer, submit, onSaved, searchBills,
-  renderSupplier, submitSupplier, onSupplierSaved, onBack, mode = "inline",
+  renderSupplier, submitSupplier, onSupplierSaved, onBack, mode = "inline", orderTypes = [],
 }: {
+  /**
+   * The shop's till order types (lib/order-types tillOrderTypes). With any,
+   * a customer return asks how the goods came back — starting on the bill's.
+   */
+  orderTypes?: { key: string; label: string }[];
   currency: string;
   products: ReturnProductOption[];
   /** The shop's own customer picker, bound to the id it reports. */
@@ -128,8 +133,12 @@ export function NewReturnScreen({
     }, 200);
     return () => { cancelled = true; clearTimeout(t); };
   }, [billOpen, billQuery, searchBills]);
+  /** How the goods came back (lib/order-types); "" = a regular return. */
+  const [retType, setRetType] = useState("");
   const chooseBill = (b: ReturnBillOption | null) => {
     setBill(b);
+    // A delivery returned is usually taken back the same way.
+    setRetType(b?.order_type && orderTypes.some((t) => t.key === b.order_type) ? b.order_type : "");
     billPickedRef.current = true;
     setBillOpen(false);
   };
@@ -203,7 +212,7 @@ export function NewReturnScreen({
 
   const reset = () => {
     setLines([]); setCustomerId(null); setSupplierId(null); setDeduction(""); setReason(""); setNotes("");
-    setBill(null); setBillQuery(""); setToLedger(false); setSearch("");
+    setBill(null); setBillQuery(""); setToLedger(false); setSearch(""); setRetType("");
     setRound((r) => r + 1);
     setCheckoutOpen(false);
     focusSoon(SEARCH);
@@ -259,6 +268,7 @@ export function NewReturnScreen({
         reason: reason.trim() || null,
         notes: notes.trim() || null,
         deduction: deductionNum > 0 ? deductionNum : null,
+        ...(orderTypes.length > 0 ? { orderType: retType || null } : {}),
         lines: valid.map(({ l, qty, price }) => ({
           product_id: l.option.product_id,
           variant_id: l.option.variant_id,
@@ -491,6 +501,23 @@ export function NewReturnScreen({
                 {bill?.customer_name && !customerId && (
                   <p className="text-xs text-muted-foreground">The bill&apos;s customer, {bill.customer_name}, goes on the return unless you pick another above.</p>
                 )}
+              </div>
+            )}
+
+            {!toSupplier && orderTypes.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Order type</Label>
+                {/* ←/→ switch, Enter moves on — a stop in the chain after the bill. */}
+                <ChoiceToggle<string>
+                  label="Order type"
+                  value={retType}
+                  options={[{ value: "", label: "Regular" }, ...orderTypes.map((t) => ({ value: t.key, label: t.label }))]}
+                  onChange={setRetType}
+                  step={RSTEP.orderType}
+                  onEnter={() => advanceFromStep(RSTEP.orderType)}
+                  className="flex flex-wrap gap-1"
+                  buttonClassName="flex-1 min-w-[5rem] px-2 py-1.5 text-xs truncate"
+                />
               </div>
             )}
 

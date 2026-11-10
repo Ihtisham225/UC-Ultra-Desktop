@@ -29,6 +29,8 @@ export interface ReturnBillOption {
   total: number;
   customer_id: string | null;
   customer_name: string | null;
+  /** How the bill was served (lib/order-types) — the return starts on it. */
+  order_type?: string | null;
 }
 
 export interface NewReturnInput {
@@ -41,6 +43,8 @@ export interface NewReturnInput {
   reason: string | null;
   notes: string | null;
   deduction: number | null;
+  /** How the goods came back (lib/order-types); null = a regular return. */
+  orderType?: string | null;
   lines: { product_id: string; variant_id: string | null; product_name: string; quantity: number; unit_price: number }[];
 }
 
