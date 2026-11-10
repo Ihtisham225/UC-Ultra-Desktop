@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { tillOrderTypes } from "@/lib/order-types";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { rpc } from "@/lib/apiClient";
@@ -60,7 +61,7 @@ export default function NewReturn() {
   }, [catalogue, localPurchaseItems]);
 
   // The optional Bill field searches the terminal's own copy of the bills.
-  const { data: localSales } = useLocalStore<{ id: string; receipt_number: string | null; created_at: string; total: number | string; customer_id: string | null }>("sales", currentShop?.id);
+  const { data: localSales } = useLocalStore<{ id: string; receipt_number: string | null; created_at: string; total: number | string; customer_id: string | null; order_type?: string | null }>("sales", currentShop?.id);
   const { data: localParties } = useLocalStore<{ id: string; name: string; phone: string | null; is_supplier?: boolean; is_maker?: boolean; is_processor?: boolean; is_archived?: boolean }>("suppliers", currentShop?.id);
   const searchBills = useCallback(async (query: string): Promise<ReturnBillOption[]> => {
     const byId = new Map(localParties.map((p) => [p.id, p]));
@@ -82,6 +83,7 @@ export default function NewReturn() {
         total: Number(s.total) || 0,
         customer_id: s.customer_id,
         customer_name: s.customer_id ? byId.get(s.customer_id)?.name ?? null : null,
+        order_type: s.order_type ?? null,
       }));
   }, [localSales, localParties]);
 
@@ -125,6 +127,7 @@ export default function NewReturn() {
         submitSupplier={(input) => saveVia("createStandaloneSupplierReturnAction", input)}
         onBack={() => navigate("/returns")}
         mode={mode}
+        orderTypes={tillOrderTypes(currentShop)}
       />
       <ReturnReceiptDialog
         slip={slip}

@@ -16,6 +16,10 @@ import { ReturnReceiptDialog } from "@/components/ReturnReceiptDialog";
 import { RefundToToggle } from "@/components/NewReturnDialog";
 import { bulkUpsertLocal, notifyChange } from "@/lib/localDb";
 import type { ReturnSlip } from "@/lib/return-receipt";
+import { orderTypeLabel, tillOrderTypes } from "@/lib/order-types";
+
+/** The Select can't hold null: "no order type" travels as this. */
+const NO_TYPE = "__none";
 
 interface SaleItem {
   id: string;
@@ -56,6 +60,10 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
   const [customerName, setCustomerName] = useState<string | null>(null);
   const [toLedger, setToLedger] = useState(false);
 
+  /** How the goods came back (lib/order-types) — starts on the bill's own type. */
+  const typeChoices = tillOrderTypes(currentShop);
+  const [retType, setRetType] = useState(NO_TYPE);
+
   const cur = currentShop?.currency ?? "USD";
 
   useEffect(() => {
@@ -64,13 +72,14 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
       setLoading(true);
       setQtyMap({}); setReason(""); setNotes(""); setDeduction(""); setRefundMethod("cash");
       try {
-        const ctx = await rpc<{ receipt_number: string | null; customer_name?: string | null; items: SaleItem[]; alreadyReturned: Record<string, number> } | null>(
+        const ctx = await rpc<{ receipt_number: string | null; customer_name?: string | null; order_type?: string | null; items: SaleItem[]; alreadyReturned: Record<string, number> } | null>(
           "getReturnContextAction",
           saleId,
         );
         setItems(ctx?.items ?? []);
         setReceipt(ctx?.receipt_number ?? null);
         setCustomerName(ctx?.customer_name ?? null);
+        setRetType(ctx?.order_type ?? NO_TYPE);
         setToLedger(false);
         setAlreadyReturned(ctx?.alreadyReturned ?? {});
       } catch (e) {
@@ -111,6 +120,7 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
         reason: reason || null,
         notes: notes || null,
         deduction: deductionNum > 0 ? deductionNum : null,
+        ...(typeChoices.length > 0 ? { orderType: retType === NO_TYPE ? null : retType } : {}),
         lines: lines.map((l) => ({
           sale_item_id: l.item.id,
           product_id: l.item.product_id,
@@ -266,6 +276,22 @@ export const ReturnDialog = ({ open, onClose, saleId, onDone }: Props) => {
               </p>
             ) : (
               <AccountPicker value={accountId} onChange={setAccountId} label="Refund from" />
+            )}
+
+            {typeChoices.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Order type</Label>
+                <Select value={retType} onValueChange={setRetType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_TYPE}>Regular return</SelectItem>
+                    {typeChoices.map((t) => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}
+                    {retType !== NO_TYPE && !typeChoices.some((t) => t.key === retType) && (
+                      <SelectItem value={retType}>{orderTypeLabel(currentShop, retType)}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
 
             <div className="space-y-1.5">

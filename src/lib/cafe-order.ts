@@ -1,6 +1,9 @@
+import { orderTypeLabel as shopOrderTypeLabel } from "./order-types";
+
 /**
  * How a cafe order is served — dine-in (at a table), takeaway or delivery —
- * and the kitchen slip that goes to the kitchen with it.
+ * and the kitchen slip that goes to the kitchen with it. Which order types a
+ * till offers, and what they are called, is lib/order-types (every store).
  *
  * ⚠️ Pure and COPIED verbatim to the desktop (pinned by src/test/cafe-order.test.ts).
  */
@@ -19,6 +22,8 @@ export const orderTypeOf = (raw: unknown): OrderType | null =>
 export const orderTypeLabel = (raw: unknown): string =>
   ORDER_TYPES.find((t) => t.value === raw)?.label ?? "";
 
+type ShopLabels = Parameters<typeof shopOrderTypeLabel>[0];
+
 /** The shop's table names from Settings — trimmed, no blanks, no repeats, in order. */
 export function normalizeTables(raw: unknown): string[] {
   const list = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[,\n]/) : [];
@@ -30,9 +35,13 @@ export function normalizeTables(raw: unknown): string[] {
   return out.slice(0, 200);
 }
 
-/** "Dine-in · Table 4" for the receipt; empty when the bill has no order type. */
-export function orderLine(sale: { order_type?: unknown; table_label?: unknown }): string {
-  const type = orderTypeLabel(sale.order_type);
+/**
+ * "Dine-in · Table 4" for the receipt; empty when the bill has no order type.
+ * Named with the shop's own labels when the sale carries its shop (a renamed
+ * "Take away" prints as the shop calls it, old bills included).
+ */
+export function orderLine(sale: { order_type?: unknown; table_label?: unknown; shop?: ShopLabels }): string {
+  const type = sale.shop ? shopOrderTypeLabel(sale.shop, sale.order_type) : orderTypeLabel(sale.order_type);
   if (!type) return "";
   const table = sale.order_type === "dine_in" && sale.table_label ? ` · Table ${String(sale.table_label)}` : "";
   return `${type}${table}`;
@@ -46,6 +55,7 @@ export interface KitchenSlipSale {
   created_at: string;
   order_type?: string | null;
   table_label?: string | null;
+  shop?: ShopLabels;
   notes?: string | null;
   items?: { product_name: string; quantity: number | string; unit_label?: string | null; unit_factor?: number | string | null }[];
 }

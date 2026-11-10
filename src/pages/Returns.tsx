@@ -11,7 +11,11 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
 import { SCROLL_BATCH } from "@/hooks/usePagination";
 import { RowActions } from "@/components/RowActions";
-import { Undo2, Eye, Trash2, Truck, Plus, Printer } from "lucide-react";
+import { Undo2, Eye, Trash2, Truck, Plus, Printer, ShoppingBag } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { orderTypeLabel, tillOrderTypes } from "@/lib/order-types";
 import { useNavigate } from "react-router-dom";
 import { ReturnReceiptDialog } from "@/components/ReturnReceiptDialog";
 import type { ReturnSlip } from "@/lib/return-receipt";
@@ -35,6 +39,8 @@ interface CustomerReturnRow {
   sales: { receipt_number: string | null } | null;
   customer_name?: string | null;
   credited_to_ledger?: boolean;
+  /** How the goods came back (lib/order-types); null = regular. */
+  order_type?: string | null;
   sale_return_items: { id: string; product_name: string; quantity: number; unit_price: number; line_total: number }[];
 }
 
@@ -62,6 +68,9 @@ export default function Returns() {
 
   // Customer returns state
   const [custRows, setCustRows] = useState<CustomerReturnRow[]>([]);
+  /** "all", "regular", or one of the shop's order types (lib/order-types). */
+  const [custType, setCustType] = useState("all");
+  const typeChoices = tillOrderTypes(currentShop);
   const [custCount, setCustCount] = useState(0);
   const [custLoading, setCustLoading] = useState(true);
   const [custPage, setCustPage] = useState(1);
@@ -87,7 +96,7 @@ export default function Returns() {
     setCustLoading(true);
     try {
       const { rows, totalCount } = await rpc<{ rows: CustomerReturnRow[]; totalCount: number }>(
-        "listSaleReturnsAction", 1, custPage * pageSize,
+        "listSaleReturnsAction", 1, custPage * pageSize, custType === "all" ? null : custType,
       );
       setCustRows(rows ?? []);
       setCustCount(totalCount ?? 0);
@@ -96,7 +105,7 @@ export default function Returns() {
     } finally {
       setCustLoading(false);
     }
-  }, [currentShop, custPage, pageSize, t]);
+  }, [currentShop, custPage, pageSize, custType, t]);
 
   const loadSupplier = useCallback(async () => {
     if (!currentShop) return;
@@ -210,10 +219,25 @@ export default function Returns() {
 
         {/* CUSTOMER RETURNS */}
         <TabsContent value="customer" className="space-y-4">
-          <Card className="px-5 py-3 inline-block">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">{t("returns.totalRefunded")}</div>
-            <div className="text-xl font-bold tabular-nums">{formatMoney(custTotal, cur)}</div>
-          </Card>
+          <div className="flex flex-wrap items-end gap-3">
+            <Card className="px-5 py-3 inline-block">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">{t("returns.totalRefunded")}</div>
+              <div className="text-xl font-bold tabular-nums">{formatMoney(custTotal, cur)}</div>
+            </Card>
+            {typeChoices.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs">Show</Label>
+                <Select value={custType} onValueChange={(v) => { setCustPage(1); setCustType(v); }}>
+                  <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All returns</SelectItem>
+                    <SelectItem value="regular">Regular</SelectItem>
+                    {typeChoices.map((o) => <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
           <Card>
             <Table>
               <TableHeader>
@@ -238,6 +262,11 @@ export default function Returns() {
                     <TableCell className="whitespace-nowrap">
                       <div className="font-mono text-xs">{r.return_number}</div>
                       <div className="text-xs text-muted-foreground tabular-nums">{fmtDateTime(r.created_at)}</div>
+                      {r.order_type && (
+                        <Badge variant="secondary" className="mt-0.5 gap-1 text-[10px] font-medium px-1.5 py-0 h-5">
+                          <ShoppingBag className="size-3" /> {orderTypeLabel(currentShop, r.order_type)}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs">
                       <div className="font-mono whitespace-nowrap">{r.sales?.receipt_number ?? (r.sale_id ? "—" : "No bill")}</div>

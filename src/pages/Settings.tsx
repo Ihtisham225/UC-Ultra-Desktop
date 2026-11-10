@@ -1,4 +1,6 @@
 import { normalizeTables } from "@/lib/cafe-order";
+import { orderTypeSettings, serializeOrderTypes, type OrderTypeSetting } from "@/lib/order-types";
+import { OrderTypesSettings } from "@/components/settings/OrderTypesSettings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { WhatsAppTargetSetting } from "@/components/WhatsAppChooser";
 import {
@@ -89,6 +91,8 @@ export default function Settings() {
   const [allowNegative, setAllowNegative] = useState(false);
   /** Cafe shops: the tables offered for dine-in, one per line while typed. */
   const [cafeTables, setCafeTables] = useState("");
+  // Saved as the shop's own list; null until the shop has loaded.
+  const [orderTypes, setOrderTypes] = useState<OrderTypeSetting[] | null>(null);
   const [cafeRecipes, setCafeRecipes] = useState(true);
   const [rawMaterials, setRawMaterials] = useState(true);
   const [chequesOn, setChequesOn] = useState(false);
@@ -152,6 +156,7 @@ export default function Settings() {
       setLabTests(!!currentShop.lab_tests_enabled);
       setAllowNegative(!!currentShop.allow_negative_stock);
       setCafeTables((currentShop.cafe_tables ?? []).join("\n"));
+      setOrderTypes(orderTypeSettings(currentShop));
       setCafeRecipes(currentShop.cafe_recipes !== false);
       setRawMaterials(currentShop.raw_materials_enabled !== false);
       setChequesOn(!!currentShop.cheques_enabled);
@@ -214,6 +219,12 @@ export default function Settings() {
 
   const canEdit = role === "owner";
   const canEditShop = role === "owner" || role === "manager";
+  // Re-read against the store type picked in the form, so choosing "Oil" here
+  // brings its Oil change row up before saving.
+  const typesForForm = orderTypes
+    ? orderTypeSettings({ store_type: storeType, order_types: orderTypes }, { keepBlank: true })
+    : null;
+  const dineInOn = !!typesForForm?.some((t) => t.key === "dine_in" && t.enabled);
 
   const saveProfile = async () => {
     if (!user) return;
@@ -242,7 +253,9 @@ export default function Settings() {
         store_type: storeType,
         lab_tests_enabled: labTests,
         allow_negative_stock: allowNegative,
-        ...(storeType === "cafe" ? { cafe_tables: normalizeTables(cafeTables), cafe_recipes: cafeRecipes, raw_materials_enabled: rawMaterials } : {}),
+        ...(storeType === "cafe" ? { cafe_recipes: cafeRecipes, raw_materials_enabled: rawMaterials } : {}),
+        ...(storeType === "cafe" || dineInOn ? { cafe_tables: normalizeTables(cafeTables) } : {}),
+        ...(typesForForm ? { order_types: serializeOrderTypes(typesForForm) } : {}),
         show_cost_in_pos: showCostInPos,
         receipt_prefix: receiptPrefix.trim() || null,
         receipt_next_number: receiptNext.trim() === "" ? null : (parseInt(receiptNext, 10) || null),
@@ -685,7 +698,12 @@ export default function Settings() {
                     <Switch id="rawMaterials" checked={rawMaterials} onCheckedChange={setRawMaterials} disabled={!canEditShop} />
                   </div>
                 )}
-                {storeType === "cafe" && (
+                {typesForForm && (
+                  <div className="rounded-lg border p-3">
+                    <OrderTypesSettings value={typesForForm} onChange={setOrderTypes} disabled={!canEditShop} />
+                  </div>
+                )}
+                {(storeType === "cafe" || dineInOn) && (
                   <div className="space-y-1.5 rounded-lg border p-3">
                     <Label htmlFor="cafeTables">Tables</Label>
                     <p className="text-xs text-muted-foreground">

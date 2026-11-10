@@ -1,4 +1,5 @@
-import { ORDER_TYPES, type OrderType } from "@/lib/cafe-order";
+import { defaultTillOrderType, oilChangeEnabled, tillOrderTypes } from "@/lib/order-types";
+import { ChoiceToggle } from "@/components/NewReturnDialog";
 import { isCafe } from "@/lib/cafe";
 import { lineTotalOf, priceForAmount } from "@/lib/sell-by-amount";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -208,9 +209,11 @@ export default function POS() {
   const [discountValue, setDiscountValue] = useState<string>("");
   /** A note written at checkout, kept with the bill. */
   const [notes, setNotes] = useState("");
-  /** Cafe shops: how the order is served, and the table for dine-in. The type
-   *  sticks between sales (a counter usually does one kind all day); the table doesn't. */
-  const [orderType, setOrderType] = useState<OrderType>("dine_in");
+  /** How the order is served — one of the shop's own till order types
+   *  (Settings → Shop, lib/order-types), and the table for dine-in. The type
+   *  sticks between sales (a counter usually does one kind all day); the table
+   *  doesn't. Tapping the chosen one again clears it: an ordinary counter sale. */
+  const [orderType, setOrderType] = useState<string | null>(() => defaultTillOrderType(currentShop));
   const [tableLabel, setTableLabel] = useState("");
   const isMac = useIsMac();
   /**
@@ -236,6 +239,12 @@ export default function POS() {
   const advancePastPicker = (step: number) =>
     requestAnimationFrame(() => {
       const el = chargeRef.current?.querySelector(`[data-checkout-step="${step}"][data-checkout-picker]`);
+      if (el) advance(el);
+    });
+  /** Move on from a step that handles its own Enter (the order-type and table toggles). */
+  const advanceFromStep = (step: number) =>
+    requestAnimationFrame(() => {
+      const el = chargeRef.current?.querySelector(`[data-checkout-step="${step}"]`);
       if (el) advance(el);
     });
   /** Plain Enter moves on. Ctrl/Cmd+Enter is left for the checkout shortcut. */
@@ -267,8 +276,18 @@ export default function POS() {
   const allowNegativeStock = !!currentShop?.allow_negative_stock;
   // Oil shops write the vehicle down at the counter. Optional, because not
   // every bill is a service — someone buying a filter has no odometer to give.
-  const oilShop = isOil(currentShop);
+  // The shop can switch the vehicle form off (Settings → Shop → Till order types).
+  const oilShop = isOil(currentShop) && oilChangeEnabled(currentShop);
   const cafeShop = isCafe(currentShop);
+  const tillTypes = tillOrderTypes(currentShop);
+  const chosenType = orderType && tillTypes.some((t) => t.key === orderType) ? orderType : null;
+  // The terminal's shop can arrive after the first render (or be switched):
+  // start that shop's till on its own default (Dine-in for a cafe).
+  const [typesFor, setTypesFor] = useState(currentShop?.id ?? null);
+  if ((currentShop?.id ?? null) !== typesFor) {
+    setTypesFor(currentShop?.id ?? null);
+    setOrderType(defaultTillOrderType(currentShop));
+  }
   const cafeTables = currentShop?.cafe_tables ?? [];
   const [vehicle, setVehicle] = useState<VehicleDraft>({ ...blankVehicle });
   /** The car chosen from the register; null until one is picked. */
@@ -641,8 +660,8 @@ export default function POS() {
       receipt_number: receiptNumber,
       notes: notes.trim() || null,
       // Plain columns, so they ride the bill row to the server offline too.
-      order_type: cafeShop ? orderType : null,
-      table_label: cafeShop && orderType === "dine_in" ? tableLabel.trim() || null : null,
+      order_type: chosenType,
+      table_label: chosenType === "dine_in" ? tableLabel.trim() || null : null,
       updated_at: now,
       created_at: now,
     };
@@ -1334,41 +1353,38 @@ export default function POS() {
 
   const customerSection = (
     <>
-                {cafeShop && (
+                {tillTypes.length > 0 && (
                   <div className="space-y-2">
-                    <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Order type">
-                      {ORDER_TYPES.map((o) => (
-                        <Button
-                          key={o.value}
-                          type="button"
-                          size="sm"
-                          role="radio"
-                          aria-checked={orderType === o.value}
-                          variant={orderType === o.value ? "default" : "outline"}
-                          onClick={() => setOrderType(o.value)}
-                        >
-                          {o.label}
-                        </Button>
-                      ))}
-                    </div>
-                    {orderType === "dine_in" && (
+                    {/* Keyboard: the first stop in the checkout chain. ←/→ switch the
+                        type, Enter moves on (to the table for dine-in, else the customer). */}
+                    <ChoiceToggle<string>
+                      label="Order type"
+                      value={chosenType ?? ""}
+                      options={[
+                        { value: "", label: "Regular sale" },
+                        ...tillTypes.map((o) => ({ value: o.key, label: o.label })),
+                      ]}
+                      onChange={(v) => setOrderType(v || null)}
+                      step={STEP.orderType}
+                      onEnter={() => advanceFromStep(STEP.orderType)}
+                      className="flex flex-wrap gap-1"
+                      buttonClassName="flex-1 min-w-[5.5rem] px-2 py-1.5 text-sm truncate"
+                    />
+                    {chosenType === "dine_in" && (
                       cafeTables.length > 0 ? (
-                        <div className="flex flex-wrap gap-1" aria-label="Table">
-                          {cafeTables.map((tb) => (
-                            <Button
-                              key={tb}
-                              type="button"
-                              size="sm"
-                              variant={tableLabel === tb ? "secondary" : "ghost"}
-                              className={`h-7 px-2 ${tableLabel === tb ? "ring-1 ring-primary" : "border"}`}
-                              onClick={() => setTableLabel(tableLabel === tb ? "" : tb)}
-                            >
-                              {tb}
-                            </Button>
-                          ))}
-                        </div>
+                        <ChoiceToggle<string>
+                          label="Table"
+                          value={cafeTables.includes(tableLabel) ? tableLabel : ""}
+                          options={[{ value: "", label: "No table" }, ...cafeTables.map((tb) => ({ value: tb, label: tb }))]}
+                          onChange={setTableLabel}
+                          step={STEP.table}
+                          onEnter={() => advanceFromStep(STEP.table)}
+                          className="flex flex-wrap gap-1"
+                          buttonClassName="px-2 py-1 text-xs"
+                        />
                       ) : (
                         <Input placeholder="Table (optional)" value={tableLabel} maxLength={30}
+                          data-checkout-step={STEP.table} onKeyDown={enterAdvances}
                           onChange={(e) => setTableLabel(e.target.value)} aria-label="Table" />
                       )
                     )}

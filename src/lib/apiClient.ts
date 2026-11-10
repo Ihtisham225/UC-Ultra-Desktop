@@ -102,6 +102,8 @@ export interface DeviceShop {
   show_logo_on_receipt?: boolean;
   /** Cafe shops: tables offered for dine-in at checkout (lib/cafe-order). */
   cafe_tables?: string[];
+  /** The till's order types and their labels, every store type (lib/order-types). */
+  order_types?: { key: string; label: string; enabled: boolean }[];
   /** Cafe shops: products built from recipes (lib/cafe usesRecipes). Missing = yes. */
   cafe_recipes?: boolean;
   /** Cafe shops: raw materials switched on (lib/cafe usesRawMaterials). Missing = yes. */

@@ -760,8 +760,9 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
               </Button>
             )
           )}
-          {/* Cafe orders: the kitchen's copy — items and table, no prices. */}
-          {sale.order_type && (
+          {/* Cafe orders: the kitchen's copy — items and table, no prices. Other
+              stores can mark a bill Delivery too, but they have no kitchen. */}
+          {sale.order_type && sale.shop?.store_type === "cafe" && (
             <Button
               variant="outline"
               onClick={() => void printThermalHtml(buildKitchenSlipHtml(sale, sale.shop?.name ?? "", fmtDateTime(sale.created_at)))}
