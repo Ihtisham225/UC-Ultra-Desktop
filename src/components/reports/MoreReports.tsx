@@ -1,6 +1,6 @@
 /**
  * Reports page tabs whose figures come from the server: Assets, Payroll,
- * Returns, Cash & bank and Cheques. Each host passes its own data source
+ * Returns, Cash & bank, Cheques and Collection. Each host passes its own data source
  * (`api`: server actions on the web, RPC on the terminal) and its own KPI /
  * toolbar / empty-state pieces, so these read exactly like the other tabs.
  *
@@ -19,6 +19,7 @@ import {
   type AccountsReport,
   type AssetReportRow,
   type ChequeReportRow,
+  type CollectionRow,
   type MoreReportsApi,
   type PayrollReport,
   type ReturnReportRow,
@@ -553,6 +554,206 @@ export function ChequesReport({ api, ui, fromDate, toDate, formatMoney, cur }: M
           Every pending cheque is listed whatever its date; cleared and bounced ones show when they were dated or settled in this range.
         </p>
       </Card>
+    </div>
+  );
+}
+
+/* ---------- Collection ---------- */
+
+const NO_COLLECTIONS: CollectionRow[] = [];
+const VIA_LABEL: Record<CollectionRow["via"], string> = {
+  cash: "Cash", bank: "Bank", wallet: "Wallet", cheque: "Cheque", none: "No account",
+};
+/** A bounced cheque brought nothing in — listed, never totalled. */
+const counts = (r: CollectionRow) => r.cheque_status !== "bounced";
+
+interface CollectionByCustomer {
+  key: string;
+  person_name: string;
+  phone: string | null;
+  payments: number;
+  collected: number;
+  discount: number;
+  last: string;
+}
+
+/**
+ * What customers paid against their khata in the period: totals by how it
+ * came in, one line per customer, and every payment. Settlements made by goods
+ * (a credit bill set off against credit held) and return credits are not
+ * collections and never appear here.
+ */
+export function CollectionReport({ api, ui, fromDate, toDate, formatMoney, cur }: MoreReportProps) {
+  const { KPI, Toolbar, Empty } = ui;
+  const { data, error, loading } = useReport(() => api.collection(fromDate, toDate), `${fromDate}|${toDate}`);
+  const rows = data ?? NO_COLLECTIONS;
+  const [view, setView] = useState<"customers" | "payments">("customers");
+
+  const live = rows.filter(counts);
+  const sum = (list: CollectionRow[]) => list.reduce((a, r) => a + r.amount, 0);
+  const total = sum(live);
+  const cash = sum(live.filter((r) => r.via === "cash"));
+  const banked = sum(live.filter((r) => r.via === "bank" || r.via === "wallet"));
+  const cheques = live.filter((r) => r.via === "cheque");
+  const pendingCheques = cheques.filter((r) => r.cheque_status === "pending");
+  const unassigned = sum(live.filter((r) => r.via === "none"));
+  const discount = live.reduce((a, r) => a + r.discount, 0);
+  const bounced = rows.filter((r) => !counts(r));
+
+  const byCustomer = useMemo(() => {
+    const map = new Map<string, CollectionByCustomer>();
+    for (const r of rows) {
+      if (!counts(r)) continue;
+      const c = map.get(r.party_key) ?? { key: r.party_key, person_name: r.person_name, phone: r.phone, payments: 0, collected: 0, discount: 0, last: r.date };
+      c.payments += 1;
+      c.collected = Math.round((c.collected + r.amount) * 100) / 100;
+      c.discount = Math.round((c.discount + r.discount) * 100) / 100;
+      if (r.date > c.last) c.last = r.date;
+      if (!c.phone && r.phone) c.phone = r.phone;
+      map.set(r.party_key, c);
+    }
+    return [...map.values()].sort((a, b) => b.collected - a.collected);
+  }, [rows]);
+
+  const customerCols: CsvColumn<CollectionByCustomer>[] = [
+    { header: "Customer", value: (r) => r.person_name },
+    { header: "Phone", value: (r) => r.phone ?? "" },
+    { header: "Payments", value: (r) => r.payments },
+    { header: "Collected", value: (r) => money2(r.collected) },
+    { header: "Discount", value: (r) => money2(r.discount) },
+    { header: "Last paid", value: (r) => r.last },
+  ];
+  const paymentCols: CsvColumn<CollectionRow>[] = [
+    { header: "Date", value: (r) => r.date },
+    { header: "Receipt", value: (r) => r.receipt_number ?? "" },
+    { header: "Customer", value: (r) => r.person_name },
+    { header: "Phone", value: (r) => r.phone ?? "" },
+    { header: "Via", value: (r) => VIA_LABEL[r.via] },
+    { header: "Account / cheque", value: (r) => r.via_label },
+    { header: "Cheque status", value: (r) => (r.cheque_status ? CHEQUE_STATUS[r.cheque_status] : "") },
+    { header: "Bills", value: (r) => (r.advance ? "Advance" : r.bills) },
+    { header: "More than owed", value: (r) => money2(r.extra) },
+    { header: "Amount", value: (r) => money2(r.amount) },
+    { header: "Discount", value: (r) => money2(r.discount) },
+  ];
+
+  if (loading) return <Loading />;
+  if (error) return <Failed msg={error} />;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KPI label="Collected" value={formatMoney(total, cur)} sub={`${live.length} ${live.length === 1 ? "payment" : "payments"} · ${byCustomer.length} ${byCustomer.length === 1 ? "customer" : "customers"}`} />
+        <KPI label="Cash" value={formatMoney(cash, cur)} sub={unassigned > 0 ? `No account ${formatMoney(unassigned, cur)}` : undefined} />
+        <KPI label="Bank & wallet" value={formatMoney(banked, cur)} />
+        <KPI
+          label="Cheques"
+          value={formatMoney(sum(cheques), cur)}
+          sub={[
+            pendingCheques.length ? `${formatMoney(sum(pendingCheques), cur)} not cleared yet` : null,
+            bounced.length ? `${bounced.length} bounced, not counted` : null,
+          ].filter(Boolean).join(" · ") || undefined}
+        />
+      </div>
+      {discount > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Discount given to settle: <span className="font-medium tabular-nums">{formatMoney(discount, cur)}</span> — written off, not collected.
+        </p>
+      )}
+
+      <div className="flex gap-1 print:hidden">
+        <Button size="sm" variant={view === "customers" ? "default" : "outline"} onClick={() => setView("customers")}>By customer</Button>
+        <Button size="sm" variant={view === "payments" ? "default" : "outline"} onClick={() => setView("payments")}>Every payment</Button>
+      </div>
+
+      {view === "customers" ? (
+        <Card className="shadow-card p-4">
+          <Toolbar title="Collected by customer" rows={byCustomer} columns={customerCols} filename={`collection_by_customer_${fromDate}_${toDate}`} />
+          {byCustomer.length === 0 ? <Empty msg="Nothing collected from customers in this range." /> : (
+            <div className="mt-3 overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Customer</TableHead><TableHead className="text-right">Payments</TableHead>
+                    <TableHead className="text-right">Discount</TableHead><TableHead className="text-right">Collected</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {byCustomer.map((c) => (
+                    <TableRow key={c.key}>
+                      <TableCell>
+                        <div className="font-medium">{c.person_name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {[c.phone, `last paid ${fmtDate(c.last)}`].filter(Boolean).join(" · ")}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{c.payments}</TableCell>
+                      <TableCell className="text-right tabular-nums">{c.discount > 0 ? formatMoney(c.discount, cur) : "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums font-semibold">{formatMoney(c.collected, cur)}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow>
+                    <TableCell className="font-semibold">Total</TableCell>
+                    <TableCell className="text-right tabular-nums">{live.length}</TableCell>
+                    <TableCell className="text-right tabular-nums">{discount > 0 ? formatMoney(discount, cur) : "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums font-bold">{formatMoney(total, cur)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </Card>
+      ) : (
+        <Card className="shadow-card p-4">
+          <Toolbar title="Every payment" rows={rows} columns={paymentCols} filename={`collection_payments_${fromDate}_${toDate}`} />
+          {rows.length === 0 ? <Empty msg="Nothing collected from customers in this range." /> : (
+            <div className="mt-3 overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead><TableHead>Customer</TableHead><TableHead>Via</TableHead>
+                    <TableHead className="text-right">Discount</TableHead><TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((r) => (
+                    <TableRow key={r.id} className={counts(r) ? undefined : "opacity-60"}>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {fmtDate(r.date)}
+                        {r.receipt_number && <div className="font-mono text-muted-foreground">{r.receipt_number}</div>}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{r.person_name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {r.advance
+                            ? "More than owed — held as credit"
+                            : [
+                                r.bills > 1 ? `Spread over ${r.bills} bills` : r.phone,
+                                r.extra > 0 ? `${formatMoney(r.extra, cur)} more than owed, held as credit` : null,
+                              ].filter(Boolean).join(" · ")}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {r.via_label}
+                        {r.cheque_status && (
+                          <span className={r.cheque_status === "bounced" ? "text-destructive" : r.cheque_status === "pending" ? "text-warning" : "text-success"}>
+                            {" "}· {CHEQUE_STATUS[r.cheque_status]}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{r.discount > 0 ? formatMoney(r.discount, cur) : "—"}</TableCell>
+                      <TableCell className={`text-right tabular-nums font-semibold ${counts(r) ? "" : "line-through"}`}>{formatMoney(r.amount, cur)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <p className="mt-3 text-xs text-muted-foreground">
+            Payments customers made against their ledger. A cheque counts on the day it was taken; a bounced one is struck through and left out of the totals. Bills set off against credit and returns credited to the ledger moved no money, so they are not here.
+          </p>
+        </Card>
+      )}
     </div>
   );
 }

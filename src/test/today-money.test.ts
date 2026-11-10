@@ -71,6 +71,11 @@ describe("computeTodayMoney", () => {
       debtPayments: [
         { debt_id: "cust", kind: "increase", amount: 500, created_at: NOW },
         { debt_id: "cust", amount: 90, sale_return_id: "r1", created_at: NOW },
+        // Settled by goods, not money: a credit bill set off against credit
+        // the customer held, a purchase netting a supplier, a supplier return.
+        { debt_id: "cust", amount: 3000, sale_id: "s1", created_at: NOW },
+        { debt_id: "cust", amount: 400, purchase_id: "p1", created_at: NOW },
+        { debt_id: "cust", amount: 80, supplier_return_id: "sr1", created_at: NOW },
         { debt_id: "cust", amount: 60, created_at: YESTERDAY },
       ],
       returns: [

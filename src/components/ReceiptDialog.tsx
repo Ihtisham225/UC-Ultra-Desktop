@@ -186,9 +186,9 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
       : "",
     ledger
       ? `<div class="rule"></div>` +
-        `<div class="row small"><span>Previous balance</span><span class="value">${escapeHtml(formatMoney(ledger.previous, currency))}</span></div>` +
+        `<div class="row small"><span>${escapeHtml(ledger.previousLabel)}</span><span class="value">${escapeHtml(formatMoney(ledger.previous, currency))}</span></div>` +
         `<div class="row small"><span>This bill</span><span class="value">${escapeHtml(formatMoney(ledger.thisBill, currency))}</span></div>` +
-        `<div class="total-row" style="font-size:14px;"><span>TOTAL BALANCE</span><span class="value">${escapeHtml(formatMoney(ledger.total, currency))}</span></div>`
+        `<div class="total-row" style="font-size:14px;"><span>${escapeHtml(ledger.totalLabel)}</span><span class="value">${escapeHtml(formatMoney(ledger.total, currency))}</span></div>`
       : "",
     note
       ? `<div class="rule"></div><div class="small note">Note: ${withLineBreaks(note)}</div>`
@@ -577,10 +577,10 @@ export const ReceiptPaper = ({
         <>
           <div className={dashed} />
           <div className="space-y-0.5">
-            <div className="flex justify-between text-[11px] gap-2"><span>Previous balance</span><span className="tabular-nums text-right">{formatMoney(ledger.previous, cur)}</span></div>
+            <div className="flex justify-between text-[11px] gap-2"><span>{ledger.previousLabel}</span><span className="tabular-nums text-right">{formatMoney(ledger.previous, cur)}</span></div>
             <div className="flex justify-between text-[11px] gap-2"><span>This bill</span><span className="tabular-nums text-right">{formatMoney(ledger.thisBill, cur)}</span></div>
             <div className="border-t border-black mt-1 pt-1 flex justify-between gap-2 font-bold text-[13px]">
-              <span>TOTAL BALANCE</span>
+              <span>{ledger.totalLabel}</span>
               <span className="tabular-nums text-right">{formatMoney(ledger.total, cur)}</span>
             </div>
           </div>

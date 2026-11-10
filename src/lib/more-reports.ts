@@ -116,12 +116,46 @@ export interface ChequeReportRow {
   settled_on: string | null;
 }
 
+/** How a collection came in. */
+export type CollectionVia = "cash" | "bank" | "wallet" | "cheque" | "none";
+
+/**
+ * One payment a customer made against their khata. A payment spread over
+ * several bills is ONE row (lib/payment-parts). A cheque or cash for more than
+ * was owed shows its excess as a separate "advance" row — that is how it is
+ * stored (splitOverpayment), and it is money in all the same.
+ */
+export interface CollectionRow {
+  id: string;
+  /** yyyy-mm-dd. */
+  date: string;
+  /** Groups a person's rows: party id when there is one, else the name. */
+  party_key: string;
+  person_name: string;
+  phone: string | null;
+  receipt_number: string | null;
+  via: CollectionVia;
+  /** The account's name, or "Cheque 123456 · Bank". */
+  via_label: string;
+  amount: number;
+  discount: number;
+  bills: number;
+  /** Part of `amount` that was more than they owed, now held as credit. */
+  extra: number;
+  /** The whole row is such credit (they owed nothing when they paid). */
+  advance: boolean;
+  /** For a cheque: pending / cleared / bounced. A bounced one collected nothing. */
+  cheque_status: "pending" | "cleared" | "bounced" | null;
+  notes: string | null;
+}
+
 export interface MoreReportsApi {
   assets: (fromDate: string, toDate: string) => Promise<AssetReportRow[]>;
   payroll: (fromDate: string, toDate: string) => Promise<PayrollReport>;
   returns: (fromISO: string, toISO: string) => Promise<ReturnReportRow[]>;
   accounts: (fromDate: string, toDate: string) => Promise<AccountsReport>;
   cheques: (fromDate: string, toDate: string) => Promise<ChequeReportRow[]>;
+  collection: (fromDate: string, toDate: string) => Promise<CollectionRow[]>;
 }
 
 /** Money-account movement kinds, in the shop's words. */
