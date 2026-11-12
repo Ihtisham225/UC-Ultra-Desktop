@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Search, Trash2, Edit2 } from "lucide-react";
+import { Plus, Search, Trash2, Edit2, History } from "lucide-react";
 import { toast } from "sonner";
 import { v4 as uuid } from "uuid";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -28,6 +28,7 @@ interface LocalVisit {
   vehicle_key?: string | null;
   serviced_at: string;
   next_km?: number | string | null;
+  oil_changer?: string | null;
 }
 
 /**
@@ -36,9 +37,10 @@ interface LocalVisit {
  * with no connection.
  */
 export default function VehiclesTab({
-  onSearchVisits, openNew = false,
+  onHistory, openNew = false,
 }: {
-  onSearchVisits: (plate: string) => void;
+  /** Open this car's oil-change history. */
+  onHistory: (v: LocalVehicle) => void;
   /** Open the register form as the page mounts. */
   openNew?: boolean;
 }) {
@@ -144,6 +146,7 @@ export default function VehiclesTab({
       { header: "Visits", value: (v) => stats.get(v.id)?.count ?? 0 },
       { header: "Last serviced", value: (v) => { const l = stats.get(v.id)?.last; return l ? format(new Date(l.serviced_at), "yyyy-MM-dd") : ""; } },
       { header: "Due at KM", value: (v) => num(stats.get(v.id)?.last?.next_km) ?? "" },
+      { header: "Last oil", value: (v) => stats.get(v.id)?.last?.oil_changer ?? "" },
       { header: "Notes", value: (v) => v.notes ?? "" },
     ]);
   };
@@ -188,6 +191,7 @@ export default function VehiclesTab({
                   <th className="text-end p-3 font-semibold">Visits</th>
                   <th className="text-start p-3 font-semibold">Last serviced</th>
                   <th className="text-end p-3 font-semibold">Due at</th>
+                  <th className="text-start p-3 font-semibold">Last oil</th>
                   <th className="text-end p-3 font-semibold" />
                 </tr>
               </thead>
@@ -197,7 +201,11 @@ export default function VehiclesTab({
                   const due = num(st?.last?.next_km);
                   return (
                     <tr key={v.id} className="border-t hover:bg-muted/30">
-                      <td className="p-3 font-semibold font-mono">{v.vehicle_number}</td>
+                      <td className="p-3 font-semibold font-mono">
+                        <button type="button" className="hover:text-primary hover:underline underline-offset-2" onClick={() => onHistory(v)}>
+                          {v.vehicle_number}
+                        </button>
+                      </td>
                       <td className="p-3">{v.make || "—"}</td>
                       <td className="p-3">{v.model_number || "—"}</td>
                       <td className="p-3 text-end tabular-nums">
@@ -205,7 +213,7 @@ export default function VehiclesTab({
                           <button
                             type="button"
                             className="underline underline-offset-2 hover:text-primary"
-                            onClick={() => onSearchVisits(v.vehicle_number)}
+                            onClick={() => onHistory(v)}
                           >
                             {st.count}
                           </button>
@@ -217,7 +225,11 @@ export default function VehiclesTab({
                       <td className="p-3 text-end tabular-nums">
                         {due == null ? "—" : `${due.toLocaleString()} km`}
                       </td>
+                      <td className="p-3">{st?.last?.oil_changer || "—"}</td>
                       <td className="p-3 text-end whitespace-nowrap">
+                        <Button size="icon" variant="ghost" aria-label="History" title="Oil-change history" onClick={() => onHistory(v)}>
+                          <History className="size-4" />
+                        </Button>
                         <Button
                           size="icon" variant="ghost" aria-label="Edit"
                           onClick={() => setEditing({

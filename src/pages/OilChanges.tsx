@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Car, CarFront, Trash2, Search, Eye, Edit2, Receipt } from "lucide-react";
+import { Car, CarFront, History, Trash2, Search, Eye, Edit2, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePagination } from "@/hooks/usePagination";
@@ -21,7 +21,10 @@ import {
   VehicleFields, vehicleDraftToInput, type VehicleDraft,
 } from "@/components/VehicleFields";
 import { isOil, normalizePlate, tidyPlate } from "@/lib/oil";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useFormatMoney } from "@/hooks/useFormatMoney";
+import { VehicleHistoryDialog, type HistoryVisit } from "@/components/VehicleHistoryDialog";
+import { toHistoryVisits, visitsForVehicle } from "@/lib/vehicleHistory";
 import { DateInput } from "@/components/DateInput";
 import { fmtDate } from "@/lib/date-format";
 
@@ -92,6 +95,15 @@ export default function OilChanges() {
   const [search, setSearch] = useState(() => params.get("q") ?? "");
   const [editing, setEditing] = useState<{ id?: string; draft: VehicleDraft; date: string } | null>(null);
   const [details, setDetails] = useState<OilChange | null>(null);
+  const navigate = useNavigate();
+  const formatMoney = useFormatMoney();
+  const [fullFor, setFullFor] = useState<OilChange | null>(null);
+  const [fullVisits, setFullVisits] = useState<HistoryVisit[] | null>(null);
+  const openFullHistory = (d: OilChange) => {
+    setFullFor(d);
+    setFullVisits(null);
+    toHistoryVisits(visitsForVehicle(items, { vehicle_number: d.vehicle_number })).then(setFullVisits).catch(() => setFullVisits([]));
+  };
   const [busy, setBusy] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
   const canDelete = role === "owner" || role === "manager";
@@ -369,9 +381,15 @@ export default function OilChanges() {
                 </div>
               )}
               <div>
-                <div className="text-sm font-semibold mb-2">
+                <div className="text-sm font-semibold mb-2 flex items-center">
                   This vehicle&apos;s visits
                   <Badge variant="secondary" className="ms-2">{historyFor(details.vehicle_number).length}</Badge>
+                  <Button
+                    type="button" variant="ghost" size="sm" className="ms-auto h-7 text-primary"
+                    onClick={() => openFullHistory(details)}
+                  >
+                    <History className="size-4 me-1" /> Full history
+                  </Button>
                 </div>
                 <ul className="space-y-1">
                   {historyFor(details.vehicle_number).map((h) => (
@@ -381,7 +399,10 @@ export default function OilChanges() {
                         h.id === details.id ? "bg-muted" : ""
                       }`}
                     >
-                      <span>{fmtDate(h.serviced_at)}</span>
+                      <span>
+                        {fmtDate(h.serviced_at)}
+                        {h.oil_changer && <span className="ms-2 font-medium">{h.oil_changer}</span>}
+                      </span>
                       <span className="text-muted-foreground tabular-nums">
                         {km(h.current_km)} → {km(h.next_km)}
                       </span>
@@ -398,6 +419,13 @@ export default function OilChanges() {
         </DialogContent>
       </Dialog>
 
+      <VehicleHistoryDialog
+        vehicle={fullFor}
+        visits={fullVisits}
+        onClose={() => setFullFor(null)}
+        onOpenReceipt={(saleId) => navigate(`/sales?sale=${saleId}`)}
+        formatMoney={(n) => formatMoney(n, currentShop?.currency ?? "PKR")}
+      />
       {confirmDialog}
     </div>
   );

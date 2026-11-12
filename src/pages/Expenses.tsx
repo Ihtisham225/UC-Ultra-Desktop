@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLandingParams } from "@/hooks/useLandingParams";
 import { useTranslation } from "react-i18next";
 import { rpc } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
@@ -70,6 +71,10 @@ export default function Expenses() {
   } | null>(null);
   const [from, setFrom] = useState(format(new Date(new Date().setDate(1)), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
+  // Global search lands here with `?day=yyyy-mm-dd`: show that day's expenses.
+  useLandingParams(["day"] as const, ({ day }) => {
+    if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) { setFrom(day); setTo(day); setFilterCat("all"); }
+  });
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

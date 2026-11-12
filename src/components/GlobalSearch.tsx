@@ -1,72 +1,119 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Package, Users, Receipt, Truck, Loader2, X, FolderTree, Tag } from "lucide-react";
+import {
+  Search, Package, Users, Receipt, Truck, Loader2, X, FolderTree, Tag, CarFront, Droplet,
+  ShoppingCart, Undo2, Wallet, BookOpen, HeartPulse, CornerDownLeft, type LucideIcon,
+} from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSearch, SearchResult } from "@/contexts/SearchContext";
+import { useAppNav } from "@/hooks/useAppNav";
+import { cn } from "@/lib/utils";
 import { getById, getAll } from "@/lib/localDb";
 import { useShop } from "@/contexts/ShopContext";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
-import { cn } from "@/lib/utils";
+import { GROUP_ORDER, matchPages, searchTarget, type SearchHit } from "@/lib/global-search";
 
 type Variant = "desktop-bar" | "mobile-icon";
 
-const iconFor = (type: SearchResult["type"]) => {
-  switch (type) {
-    case "product": return Package;
-    case "category": return FolderTree;
-    case "brand": return Tag;
-    case "sale": return Receipt;
-    case "customer": return Users;
-    case "supplier": return Truck;
-  }
+const ICONS: Record<SearchHit["type"], LucideIcon> = {
+  page: CornerDownLeft,
+  product: Package,
+  category: FolderTree,
+  brand: Tag,
+  sale: Receipt,
+  customer: Users,
+  supplier: Truck,
+  vehicle: CarFront,
+  oil_change: Droplet,
+  purchase: ShoppingCart,
+  return: Undo2,
+  expense: Wallet,
+  ledger: BookOpen,
+  patient: HeartPulse,
 };
 
-const labelFor = (type: SearchResult["type"]) => ({
-  product: "Product",
-  category: "Categorie",
-  brand: "Brand",
-  sale: "Sale",
-  customer: "Customer",
-  supplier: "Supplier",
-}[type]);
+const GROUP_LABELS: Record<SearchHit["type"], string> = {
+  page: "Pages",
+  product: "Products",
+  category: "Categories",
+  brand: "Brands",
+  sale: "Sales",
+  customer: "Customers",
+  supplier: "Suppliers",
+  vehicle: "Vehicles",
+  oil_change: "Oil changes",
+  purchase: "Purchases",
+  return: "Returns",
+  expense: "Expenses",
+  ledger: "Ledger",
+  patient: "Patients",
+};
 
 export const GlobalSearch = ({ variant }: { variant: Variant }) => {
   const { query, setQuery, open, setOpen, results, loading } = useSearch();
-  const { currentShop } = useShop();
   const navigate = useNavigate();
+  const { currentShop } = useShop();
   const [openSale, setOpenSale] = useState<any>(null);
+  const { pages } = useAppNav();
+  const [active, setActive] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  // Group results by type for nicer display
-  const grouped = results.reduce<Record<string, SearchResult[]>>((acc, r) => {
-    (acc[r.type] ||= []).push(r);
-    return acc;
-  }, {});
+  // Pages come from the sidebar the user can actually see, matched here —
+  // instantly, without a round trip.
+  const pageHits = useMemo(() => matchPages(pages, query), [pages, query]);
 
-  // close on route change
+  // Grouped, in a fixed order, and flattened for the arrow keys.
+  const groups = useMemo(() => {
+    const all: SearchHit[] = [...pageHits, ...(results as SearchResult[])];
+    return GROUP_ORDER
+      .map((type) => ({ type, items: all.filter((r) => r.type === type) }))
+      .filter((g) => g.items.length > 0);
+  }, [pageHits, results]);
+  const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
+  // Where each group starts in `flat`, so a row knows its own arrow-key index.
+  const starts = useMemo(() => {
+    const out: number[] = [];
+    let n = 0;
+    for (const g of groups) { out.push(n); n += g.items.length; }
+    return out;
+  }, [groups]);
+
   useEffect(() => {
     if (!open) setQuery("");
   }, [open, setQuery]);
+  // Typing starts the highlight on the first hit again; a list that shrank
+  // under it (results arriving) keeps it in range.
+  const current = Math.min(active, Math.max(0, flat.length - 1));
+  useEffect(() => {
+    listRef.current?.querySelector(`[data-hit="${current}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [current]);
 
-  const handleSelect = async (r: SearchResult) => {
+  const handleSelect = async (r: SearchHit) => {
     setOpen(false);
-    if (r.type === "product") navigate(`/products?q=${encodeURIComponent(r.title)}`);
-    else if (r.type === "category") navigate(`/products?category=${r.id}`);
-    else if (r.type === "brand") navigate(`/products?brand=${r.id}`);
-    else if (r.type === "customer") navigate(`/customers?q=${encodeURIComponent(r.title)}`);
-    else if (r.type === "supplier") navigate(`/purchases?supplier=${r.id}`);
-    else if (r.type === "sale" && currentShop) {
+    if (r.type === "sale" && currentShop) {
       // Sales + items + customers are synced locally, so read the receipt from
       // the offline store (works with no connection).
       const sale = await getById<any>("sales", r.id);
       if (sale) {
         const allItems = await getAll<any>("sale_items", currentShop.id);
         const items = allItems.filter((i) => i.sale_id === r.id);
-        const customer = sale.customer_id ? await getById<any>("customers", sale.customer_id) : null;
+        const customer = sale.customer_id
+          ? (await getById<any>("suppliers", sale.customer_id)) ?? (await getById<any>("customers", sale.customer_id))
+          : null;
         setOpenSale({ ...sale, items, customer, shop: currentShop });
+        return;
       }
     }
+    navigate(searchTarget(r));
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing || flat.length === 0) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive((current + 1) % flat.length); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((current - 1 + flat.length) % flat.length); }
+    else if (e.key === "Enter") { e.preventDefault(); const hit = flat[current]; if (hit) void handleSelect(hit); }
   };
 
   const trigger = variant === "desktop-bar" ? (
@@ -101,8 +148,9 @@ export const GlobalSearch = ({ variant }: { variant: Variant }) => {
             <Input
               autoFocus
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search products, sales, customers, suppliers…"
+              onChange={(e) => { setQuery(e.target.value); setActive(0); }}
+              onKeyDown={onKeyDown}
+              placeholder="Search anything — products, bills, people, vehicles, pages…"
               className="border-0 focus-visible:ring-0 shadow-none text-base h-11 px-0"
             />
             {loading && <Loader2 className="size-4 text-muted-foreground animate-spin" />}
@@ -113,50 +161,56 @@ export const GlobalSearch = ({ variant }: { variant: Variant }) => {
             )}
           </div>
 
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div ref={listRef} className="max-h-[60vh] overflow-y-auto">
             {!query.trim() ? (
               <div className="p-10 text-center text-sm text-muted-foreground">
                 <Search className="size-8 mx-auto mb-2 opacity-40" />
                 Start typing to search across your shop
-                <div className="text-xs mt-2 opacity-70">Products · Categories · Brands · Sales · Customers · Suppliers</div>
+                <div className="text-xs mt-2 opacity-70">
+                  Pages · Products · Sales · Customers · Suppliers · Ledger · Purchases · Returns · Expenses
+                </div>
               </div>
-            ) : results.length === 0 && !loading ? (
+            ) : flat.length === 0 && !loading ? (
               <div className="p-10 text-center text-sm text-muted-foreground">
-                No results for "{query}"
+                No results for &quot;{query}&quot;
               </div>
             ) : (
               <div className="py-2">
-                {(["category", "brand", "product", "customer", "sale", "supplier"] as const).map((type) => {
-                  const items = grouped[type];
-                  if (!items?.length) return null;
-                  const Icon = iconFor(type);
+                {groups.map(({ type, items }, gi) => {
+                  const Icon = ICONS[type];
                   return (
                     <div key={type} className="mb-1">
                       <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
-                        {labelFor(type)}s
+                        {GROUP_LABELS[type]}
                       </div>
-                      {items.map((r) => (
-                        <button
-                          key={`${r.type}-${r.id}`}
-                          onClick={() => handleSelect(r)}
-                          className={cn(
-                            "w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/60 active:bg-muted transition-colors"
-                          )}
-                        >
-                          <div className="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                            <Icon className="size-4 text-muted-foreground" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium text-sm truncate">{r.title}</div>
-                            <div className="text-xs text-muted-foreground truncate">{r.subtitle}</div>
-                          </div>
-                          {r.meta && (
-                            <div className="text-xs font-medium text-muted-foreground tabular-nums shrink-0 hidden sm:block">
-                              {r.meta}
+                      {items.map((r, k) => {
+                        const i = starts[gi] + k;
+                        return (
+                          <button
+                            key={`${r.type}-${r.id}`}
+                            data-hit={i}
+                            onClick={() => handleSelect(r)}
+                            onMouseMove={() => setActive(i)}
+                            className={cn(
+                              "w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors",
+                              i === current ? "bg-muted" : "hover:bg-muted/60",
+                            )}
+                          >
+                            <div className="size-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                              <Icon className="size-4 text-muted-foreground" />
                             </div>
-                          )}
-                        </button>
-                      ))}
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-sm truncate">{r.title}</div>
+                              <div className="text-xs text-muted-foreground truncate">{r.subtitle}</div>
+                            </div>
+                            {r.meta && (
+                              <div className="text-xs font-medium text-muted-foreground tabular-nums shrink-0 hidden sm:block">
+                                {r.meta}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -165,7 +219,7 @@ export const GlobalSearch = ({ variant }: { variant: Variant }) => {
           </div>
 
           <div className="hidden sm:flex items-center justify-between px-4 py-2 border-t bg-muted/30 text-[11px] text-muted-foreground">
-            <span>↵ open · esc close</span>
+            <span>↑↓ move · ↵ open · esc close</span>
             <span>⌘K to open anywhere</span>
           </div>
         </DialogContent>
