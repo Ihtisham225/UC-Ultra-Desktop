@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useLandingParams } from "@/hooks/useLandingParams";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { printDocumentA4 } from "@/lib/printA4";
 import { useLocalStore } from "@/hooks/useLocalStore";
@@ -195,6 +196,8 @@ export default function Debts() {
   const loading = debtsLoading;
   const [filter, setFilter] = useState<"all" | Direction>("all");
   const [search, setSearch] = useState("");
+  // Global search lands here with `?q=<name>`: search the ledger for them.
+  useLandingParams(["q"] as const, ({ q }) => { if (q) setSearch(q); });
   /** Accounts with an entry or a payment in these days; both empty = everything. */
   const [range, setRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
 

@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { orderTypeLabel, tillOrderTypes } from "@/lib/order-types";
 import { useNavigate } from "react-router-dom";
+import { useLandingParams } from "@/hooks/useLandingParams";
 import { ReturnReceiptDialog } from "@/components/ReturnReceiptDialog";
 import type { ReturnSlip } from "@/lib/return-receipt";
 import { useAddNew } from "@/hooks/useAddNew";
@@ -180,6 +181,9 @@ export default function Returns() {
   const [reprint, setReprint] = useState<ReturnSlip | null>(null);
   const startReturn = () => navigate("/returns/new");
   useAddNew({ return: canCreate && startReturn });
+  // Global search lands here with `?return=<id>`: open that return's slip.
+  useLandingParams(["return"] as const, ({ return: id }) => { if (id) void openReprint(id); });
+
   const openReprint = async (id: string) => {
     const slip = await rpc<ReturnSlip | null>("getReturnReceiptAction", id).catch(() => null);
     if (!slip) return toast.error(t("common.error"));

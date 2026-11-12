@@ -18,12 +18,14 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw, FlaskConical, Car, UserRound } from "lucide-react";
+import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw, FlaskConical, Car, UserRound, Droplet, History } from "lucide-react";
 import { useOfflineProducts } from "@/hooks/useOfflineProducts";
 import { upsertLocal, notifyChange, getAll } from "@/lib/localDb";
 import { allocateTenders, round2 } from "@/lib/tender";
 import { v4 as uuid } from "uuid";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
+import { VehicleHistoryDialog, type HistoryVisit } from "@/components/VehicleHistoryDialog";
+import { toHistoryVisits, visitsForVehicle, type LocalOilVisit } from "@/lib/vehicleHistory";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { toast } from "sonner";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
@@ -305,14 +307,22 @@ export default function POS() {
   /** The car chosen from the register; null until one is picked. */
   const [pickedVehicle, setPickedVehicle] = useState<VehicleLite | null>(null);
   /** Its last visit, so the counter sees when it was in and what it was due at. */
-  const [knownVehicle, setKnownVehicle] = useState<{ serviced_at: string; next_km: number | null } | null>(null);
+  const [knownVehicle, setKnownVehicle] = useState<{
+    serviced_at: string; current_km: number | null; next_km: number | null; oil_changer: string | null; visits: number;
+  } | null>(null);
+  /** The picked car's full oil-change history, from the offline store (closed while false). */
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyVisits, setHistoryVisits] = useState<HistoryVisit[] | null>(null);
   // The register itself, to link a newly typed plate to a car already on it.
   const { data: localVehicles } = useLocalStore<{ id: string; vehicle_number: string; vehicle_key?: string | null }>("vehicles", currentShop?.id);
   // Past visits, synced like everything else, so the lookup works offline.
-  const { data: oilChangeRows } = useLocalStore<{
-    id: string; vehicle_id?: string | null; serviced_at: string;
-    next_km?: number | string | null; visitor_name?: string | null; phone?: string | null;
-  }>("oil_changes", currentShop?.id);
+  const { data: oilChangeRows } = useLocalStore<LocalOilVisit>("oil_changes", currentShop?.id);
+  const openVehicleHistory = () => {
+    if (!pickedVehicle) return;
+    setHistoryOpen(true);
+    setHistoryVisits(null);
+    toHistoryVisits(visitsForVehicle(oilChangeRows, pickedVehicle)).then(setHistoryVisits).catch(() => setHistoryVisits([]));
+  };
   const isPhone = currentShop?.store_type === "phone";
   const imeiOnProduct = isPhone && currentShop?.imei_capture_mode === "product";
   const imeiOnSale = isPhone && currentShop?.imei_capture_mode !== "product";
@@ -494,13 +504,20 @@ export default function POS() {
       setKnownVehicle(null);
       return;
     }
-    const last = oilChangeRows
-      .filter((o) => o.vehicle_id === v.id)
-      .sort((a, b) => (b.serviced_at ?? "").localeCompare(a.serviced_at ?? ""))[0];
-    const raw = last?.next_km;
-    const nextKm = raw === null || raw === undefined || raw === "" ? null : Number(raw);
-    const dueAt = nextKm !== null && Number.isFinite(nextKm) ? nextKm : null;
-    setKnownVehicle(last ? { serviced_at: last.serviced_at, next_km: dueAt } : null);
+    const visits = visitsForVehicle(oilChangeRows, v);
+    const last = visits[0];
+    const kmOf = (raw: number | string | null | undefined) => {
+      const x = raw === null || raw === undefined || raw === "" ? null : Number(raw);
+      return x !== null && Number.isFinite(x) ? x : null;
+    };
+    const dueAt = kmOf(last?.next_km);
+    setKnownVehicle(last ? {
+      serviced_at: last.serviced_at,
+      current_km: kmOf(last.current_km),
+      next_km: dueAt,
+      oil_changer: last.oil_changer ?? null,
+      visits: visits.length,
+    } : null);
     setVehicle((prev) => ({
       ...prev,
       vehicle_number: v.vehicle_number,
@@ -1427,10 +1444,26 @@ export default function POS() {
                       }}
                     />
                     {knownVehicle && (
-                      <p className="text-[11px] text-primary">
-                        Last in {fmtDate(knownVehicle.serviced_at)}
-                        {knownVehicle.next_km != null && ` · was due at ${knownVehicle.next_km.toLocaleString()} km`}
-                      </p>
+                      // What went in last time — the counter usually puts the same oil back.
+                      <div className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <Droplet className="size-3.5 text-primary shrink-0" />
+                          <span className="text-muted-foreground">Last oil</span>
+                          <span className="min-w-0 truncate font-semibold">{knownVehicle.oil_changer || "not recorded"}</span>
+                          <Button
+                            type="button" variant="ghost" size="sm"
+                            className="ms-auto h-6 px-2 text-xs text-primary"
+                            onClick={openVehicleHistory}
+                          >
+                            <History className="size-3.5 me-1" /> History{knownVehicle.visits > 0 ? ` (${knownVehicle.visits})` : ""}
+                          </Button>
+                        </div>
+                        <div className="mt-0.5 text-muted-foreground">
+                          Last in {fmtDate(knownVehicle.serviced_at)}
+                          {knownVehicle.current_km != null && ` at ${knownVehicle.current_km.toLocaleString()} km`}
+                          {knownVehicle.next_km != null && ` · due at ${knownVehicle.next_km.toLocaleString()} km`}
+                        </div>
+                      </div>
                     )}
                     {!pickedVehicle && vehicle.vehicle_number.trim() && (
                       <p className="text-[11px] text-muted-foreground">New vehicle — it is registered when the sale completes.</p>
@@ -1677,6 +1710,12 @@ export default function POS() {
       )}
       <LabTokenDialog orders={labTokens} onClose={() => setLabTokens(null)} />
       {confirmDialog}
+      <VehicleHistoryDialog
+        vehicle={historyOpen ? pickedVehicle : null}
+        visits={historyVisits}
+        onClose={() => setHistoryOpen(false)}
+        formatMoney={(n) => formatMoney(n, currentShop?.currency ?? "PKR")}
+      />
     </>
   );
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
+import { useLandingParams } from "@/hooks/useLandingParams";
 import type { PurchaseOrderDto } from "@/lib/purchase-orders";
 import { rpc, uploadInvoiceImage, uploadCnicImage } from "@/lib/apiClient";
 import { useShop } from "@/contexts/ShopContext";
@@ -340,6 +341,9 @@ export default function Purchases() {
     });
     return { totalQty, totalCost, avgCost, suppliers: Array.from(suppliers.values()), purchaseCount: new Set(searchResults.map(r => r.purchases?.id)).size };
   }, [searchResults]);
+
+  // Global search lands here with `?purchase=<id>`: open that purchase.
+  useLandingParams(["purchase"] as const, ({ purchase }) => { if (purchase) void openDetails(purchase); });
 
   const openDetails = async (id: string) => {
     try {

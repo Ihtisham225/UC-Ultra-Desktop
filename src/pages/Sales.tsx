@@ -1,5 +1,6 @@
 import { orderNumberLabel } from "@/lib/format";
 import { useEffect, useMemo, useState } from "react";
+import { useLandingParams } from "@/hooks/useLandingParams";
 import { useTranslation } from "react-i18next";
 import { useShop } from "@/contexts/ShopContext";
 import { Card } from "@/components/ui/card";
@@ -311,6 +312,13 @@ export default function Sales() {
       })),
     });
   };
+
+  // Global search and the vehicle history land here: `?sale=<id>` opens that
+  // bill, `?q=` searches every date for it.
+  useLandingParams(["sale", "q"] as const, ({ sale, q }) => {
+    if (q) { setRange({ from: "", to: "" }); setSearchText(q); }
+    if (sale) openReceipt(sale);
+  }, allSales.length > 0);
 
   const openReceipt = (saleId: string) => {
     if (!currentShop) return;

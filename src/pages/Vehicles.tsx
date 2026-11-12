@@ -1,4 +1,5 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Car, CarFront } from "lucide-react";
 import { useShop } from "@/contexts/ShopContext";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,11 @@ import { Card } from "@/components/ui/card";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { isOil } from "@/lib/oil";
 import VehiclesRegister from "@/components/VehiclesRegister";
+import { VehicleHistoryDialog, type HistoryVehicle, type HistoryVisit } from "@/components/VehicleHistoryDialog";
+import { useLocalStore } from "@/hooks/useLocalStore";
+import { useFormatMoney } from "@/hooks/useFormatMoney";
+import { getById } from "@/lib/localDb";
+import { toHistoryVisits, visitsForVehicle, type LocalOilVisit } from "@/lib/vehicleHistory";
 
 /**
  * The vehicle register on its own page (sidebar → Vehicles, under Oil
@@ -19,6 +25,30 @@ export default function Vehicles() {
   });
   const { currentShop } = useShop();
   const navigate = useNavigate();
+  const formatMoney = useFormatMoney();
+  const { data: oilRows } = useLocalStore<LocalOilVisit>("oil_changes", currentShop?.id);
+  const [historyFor, setHistoryFor] = useState<(HistoryVehicle & { id?: string }) | null>(null);
+  const [visits, setVisits] = useState<HistoryVisit[] | null>(null);
+  const openHistory = (v: HistoryVehicle & { id?: string }) => {
+    setHistoryFor(v);
+    setVisits(null);
+  };
+  // Built from the offline store, and rebuilt as visits sync in.
+  useEffect(() => {
+    if (!historyFor) return;
+    let live = true;
+    toHistoryVisits(visitsForVehicle(oilRows, historyFor)).then((h) => { if (live) setVisits(h); }).catch(() => live && setVisits([]));
+    return () => { live = false; };
+  }, [historyFor, oilRows]);
+
+  // Global search lands here with `?vehicle=<id>`: open that car's history.
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const id = params.get("vehicle");
+    if (!id) return;
+    setParams((p) => { p.delete("vehicle"); return p; }, { replace: true });
+    getById<HistoryVehicle & { id: string }>("vehicles", id).then((v) => { if (v) openHistory(v); }).catch(() => {});
+  }, [params, setParams]);
 
   if (currentShop && !isOil(currentShop)) {
     return (
@@ -37,14 +67,21 @@ export default function Vehicles() {
             <CarFront className="size-6 text-primary" /> Vehicles
           </h1>
           <p className="text-sm text-muted-foreground">
-            Every car the shop knows. Add one here or at the till; its oil changes are on the Oil Changes page.
+            Every car the shop knows. Click one to see its oil-change history — which oil went in last time, and every visit before.
           </p>
         </div>
         <Button variant="outline" asChild>
           <Link to="/oil-changes"><Car className="size-4 me-1.5" /> Oil changes</Link>
         </Button>
       </div>
-      <VehiclesRegister onSearchVisits={(plate) => navigate(`/oil-changes?q=${encodeURIComponent(plate)}`)} />
+      <VehiclesRegister onHistory={openHistory} />
+      <VehicleHistoryDialog
+        vehicle={historyFor}
+        visits={visits}
+        onClose={() => setHistoryFor(null)}
+        onOpenReceipt={(saleId) => navigate(`/sales?sale=${saleId}`)}
+        formatMoney={(n) => formatMoney(n, currentShop?.currency ?? "PKR")}
+      />
     </div>
   );
 }
