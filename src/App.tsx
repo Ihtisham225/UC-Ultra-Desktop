@@ -45,6 +45,7 @@ const NewReturn = lazy(() => import("./pages/NewReturn"));
 const Customers = lazy(() => import("./pages/CustomersRouter"));
 const Patients = lazy(() => import("./pages/Patients"));
 const OilChanges = lazy(() => import("./pages/OilChanges"));
+const Vehicles = lazy(() => import("./pages/Vehicles"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Staff = lazy(() => import("./pages/Staff"));
 const Purchases = lazy(() => import("./pages/Purchases"));
@@ -227,6 +228,7 @@ const App = () => {
               <Route path="/inventory" element={<SubShell><RequireRole roles={["owner", "manager"]}><Inventory /></RequireRole></SubShell>} />
               <Route path="/patients" element={<SubShell><Patients /></SubShell>} />
               <Route path="/oil-changes" element={<SubShell><OilChanges /></SubShell>} />
+              <Route path="/vehicles" element={<SubShell><Vehicles /></SubShell>} />
               <Route path="/accounts" element={<SubShell><Accounts /></SubShell>} />
               {/* Who did what in this store. Owner/manager only, matching the
                   server action's own guard. */}

@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   RotateCcw, ClipboardList,
-  BadgeDollarSign, BarChart3, BookOpenCheck, Boxes, Car, ClipboardCheck, Factory, FileBarChart, FlaskConical,
+  BadgeDollarSign, BarChart3, BookOpenCheck, Boxes, Car, CarFront, ClipboardCheck, Factory, FileBarChart, FlaskConical,
   FolderTree, HandCoins, HeartPulse, Landmark, LayoutDashboard, LifeBuoy, Package, PackageOpen, Receipt,
   FileCheck2, ScanBarcode, Scissors, ScrollText, Settings, ShieldCheck, Tag, TrendingUp, Truck, Undo2, UserPlus, Users,
   Wallet, FileText, Banknote, SlidersHorizontal, KeyRound, MapPin, Building2, HandHeart, ChefHat, PackageMinus, Wheat,
@@ -104,7 +104,8 @@ export function navPages(ctx: NavContext): NavPage[] {
     { to: "/lab", label: "Lab", icon: FlaskConical, section: "Lab", show: labView, keywords: ["tests"] },
     { to: "/lab-results", label: "Results", icon: ClipboardCheck, section: "Lab", show: labView, keywords: ["lab results", "reports"] },
     { to: "/patients", label: "Patients", icon: HeartPulse, section: "Lab", show: labView },
-    { to: "/oil-changes", label: "Oil Changes", icon: Car, section: "Selling", show: oil, keywords: ["vehicles", "cars"] },
+    { to: "/oil-changes", label: "Oil Changes", icon: Car, section: "Selling", show: oil, keywords: ["visits", "service"] },
+    { to: "/vehicles", label: "Vehicles", icon: CarFront, section: "Selling", show: oil, keywords: ["cars", "register", "plates"] },
     { to: "/sales", label: t("nav.sales"), icon: Receipt, section: "Selling", show: !craft, keywords: ["bills", "receipts", "orders"] },
     { to: "/returns", label: t("nav.returns"), icon: Undo2, section: "Selling", show: !craft, keywords: ["refunds"] },
     { to: "/customers", label: t("nav.customers"), icon: Users, section: "Selling", show: !craft },
@@ -164,7 +165,7 @@ export function newActions(ctx: NavContext): NewAction[] {
     { id: "manual-sale", label: "Past sale (record)", icon: Receipt, to: "/sales", show: !craft, keywords: ["manual", "record"] },
     { id: "return", label: "Return", icon: Undo2, to: "/returns", show: !craft && edit, keywords: ["refund", "sale return", "exchange"] },
     { id: "customer", label: "Customer", icon: Users, to: "/customers", show: craft ? perms.canManageSuppliers : true },
-    { id: "vehicle", label: "Vehicle", icon: Car, to: "/oil-changes", show: oil, keywords: ["car", "register"] },
+    { id: "vehicle", label: "Vehicle", icon: CarFront, to: "/vehicles", show: oil, keywords: ["car", "register"] },
     { id: "wastage", label: "Wastage / used in shop", icon: PackageMinus, to: "/write-offs", show: !!ctx.cafe && edit, keywords: ["waste", "spilt", "write off"] },
     { id: "batch", label: "Batch (production)", icon: ChefHat, to: "/production", show: !!ctx.cafe && edit, keywords: ["make", "kitchen"] },
     { id: "patient", label: "Patient", icon: HeartPulse, to: "/patients", show: labView },
