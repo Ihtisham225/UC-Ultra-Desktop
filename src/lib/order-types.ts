@@ -21,8 +21,18 @@ export interface OrderTypeSetting {
   custom?: boolean;
 }
 
-/** The oil change isn't a button at the till — it's the vehicle form beside the bill. */
+/**
+ * An oil shop's oil change. A button at the till like Take away; choosing it
+ * opens the vehicle form beside the bill, and the bill is stored with this key.
+ */
 export const OIL_CHANGE_KEY = "oil_change";
+
+/**
+ * "Regular sale" — an ordinary counter sale with no order type. Only a switch
+ * in Settings (on by default, every store): off makes the till ask for a type
+ * on every bill. Never stored on a bill — a regular sale's `order_type` is null.
+ */
+export const REGULAR_KEY = "regular";
 
 const BUILT_IN: { key: string; label: string; hint: string }[] = [
   { key: "dine_in", label: "Dine-in", hint: "Eaten at the shop, with an optional table" },
@@ -33,8 +43,13 @@ const BUILT_IN: { key: string; label: string; hint: string }[] = [
 
 export const ORDER_TYPE_HINTS: Record<string, string> = {
   ...Object.fromEntries(BUILT_IN.map((b) => [b.key, b.hint])),
-  [OIL_CHANGE_KEY]: "The vehicle form at the till, and the oil-change register",
+  [REGULAR_KEY]: "An ordinary counter sale — off makes the till ask for a type on every bill",
+  [OIL_CHANGE_KEY]: "Opens the vehicle form at the till; recorded in the oil-change register",
 };
+
+/** Dine-in is a cafe's — tables and a kitchen. No other store is offered it. */
+const offeredTo = (key: string, storeType: string | null | undefined) =>
+  key === "dine_in" ? storeType === "cafe" : key === OIL_CHANGE_KEY ? storeType === "oil" : true;
 
 const MAX_CUSTOM = 10;
 const KEY = /^[a-z0-9_]{1,40}$/;
@@ -50,14 +65,16 @@ interface ShopLike {
  * always showed the vehicle form. Every other store offered nothing.
  */
 function defaultEnabled(key: string, storeType: string | null | undefined): boolean {
+  if (key === REGULAR_KEY) return true;
   if (key === OIL_CHANGE_KEY) return storeType === "oil";
   if (storeType === "cafe") return key === "dine_in" || key === "takeaway" || key === "delivery";
   return false;
 }
 
 /**
- * The shop's full list, saved or not: every built-in (plus the oil change for
- * an oil shop) in a fixed order, then the shop's own. Labels are trimmed and
+ * The shop's full list, saved or not: Regular sale, then every built-in this
+ * store is offered (Dine-in only for a cafe, the oil change only for an oil
+ * shop — right after Take away) in a fixed order, then the shop's own. Labels are trimmed and
  * never blank — a blank one falls back to the built-in name.
  */
 export function orderTypeSettings(
@@ -77,7 +94,10 @@ export function orderTypeSettings(
     return s || fallback;
   };
 
-  const builtIns = [...BUILT_IN, ...(storeType === "oil" ? [{ key: OIL_CHANGE_KEY, label: "Oil change", hint: "" }] : [])];
+  const builtIns = [
+    { key: REGULAR_KEY, label: "Regular sale" },
+    ...BUILT_IN.flatMap((b) => (b.key === "takeaway" ? [b, { key: OIL_CHANGE_KEY, label: "Oil change" }] : [b])),
+  ].filter((b) => offeredTo(b.key, storeType));
   const out: OrderTypeSetting[] = builtIns.map((b) => {
     const s = byKey.get(b.key);
     return {
@@ -97,12 +117,32 @@ export function orderTypeSettings(
   return out;
 }
 
-/** The buttons the till offers, in order. Never the oil change (that's the vehicle form). */
+/** The types the till offers, in order (Regular sale is the toggle's own "none" choice, not one of these). */
 export function tillOrderTypes(shop: ShopLike | null | undefined): OrderTypeSetting[] {
-  return orderTypeSettings(shop).filter((t) => t.enabled && t.key !== OIL_CHANGE_KEY);
+  return orderTypeSettings(shop).filter((t) => t.enabled && t.key !== REGULAR_KEY);
 }
 
-/** Whether an oil shop's till shows the vehicle form. */
+/** Whether the till offers "Regular sale" (no type) — on unless the shop switched it off. */
+export function regularSaleEnabled(shop: ShopLike | null | undefined): boolean {
+  return orderTypeSettings(shop).find((t) => t.key === REGULAR_KEY)?.enabled !== false;
+}
+
+/** What the till calls a sale with no type. */
+export function regularSaleLabel(shop: ShopLike | null | undefined): string {
+  return orderTypeSettings(shop).find((t) => t.key === REGULAR_KEY)?.label ?? "Regular sale";
+}
+
+/**
+ * The type a bill is rung up as: the chosen one while the shop still offers
+ * it; otherwise none — or, when Regular sale is switched off, the first type.
+ */
+export function effectiveTillOrderType(shop: ShopLike | null | undefined, chosen: string | null | undefined): string | null {
+  const types = tillOrderTypes(shop);
+  if (chosen && types.some((t) => t.key === chosen)) return chosen;
+  return regularSaleEnabled(shop) ? null : types[0]?.key ?? null;
+}
+
+/** Whether an oil shop's till offers the oil change (and so the vehicle form). */
 export function oilChangeEnabled(shop: ShopLike | null | undefined): boolean {
   return orderTypeSettings(shop).some((t) => t.key === OIL_CHANGE_KEY && t.enabled);
 }
@@ -119,16 +159,22 @@ export function oilChangeLabel(shop: ShopLike | null | undefined): string {
 export function orderTypeLabel(shop: ShopLike | null | undefined, key: unknown): string {
   if (typeof key !== "string" || !key) return "";
   const found = orderTypeSettings(shop).find((t) => t.key === key);
-  if (found) return found.label;
+  if (found && key !== REGULAR_KEY) return found.label;
   const builtIn = BUILT_IN.find((b) => b.key === key);
   if (builtIn) return builtIn.label;
   if (key === "takeaway") return "Take away";
   return key.startsWith("c_") ? "Other" : key.replace(/_/g, " ");
 }
 
-/** Which button the till starts on: Dine-in when the shop offers it (a cafe), else none. */
+/**
+ * Which button the till starts on: Dine-in for a cafe, the oil change for an
+ * oil shop (so the vehicle form is open, as it always was), else none — or the
+ * first type when Regular sale is switched off.
+ */
 export function defaultTillOrderType(shop: ShopLike | null | undefined): string | null {
-  return tillOrderTypes(shop).some((t) => t.key === "dine_in") ? "dine_in" : null;
+  const types = tillOrderTypes(shop);
+  for (const k of ["dine_in", OIL_CHANGE_KEY]) if (types.some((t) => t.key === k)) return k;
+  return effectiveTillOrderType(shop, null);
 }
 
 /** A key the till may store: a built-in or one of the "c_…" form. */
@@ -197,11 +243,14 @@ export function parseFilter(v: unknown): SaleFilter {
 /** The filters the sales page offers this shop, with their labels. */
 export function saleFilterOptions(shop: ShopLike | null | undefined): { value: string; label: string }[] {
   const settings = orderTypeSettings(shop);
+  const types = settings.filter((t) => t.enabled && t.key !== OIL_CHANGE_KEY && t.key !== REGULAR_KEY);
   return [
     { value: "all", label: "All sales" },
-    ...settings
-      .filter((t) => t.enabled && t.key !== OIL_CHANGE_KEY)
-      .map((t) => ({ value: `type:${t.key}`, label: t.label })),
+    // "Regular sale" only means something next to other types.
+    ...(types.length > 0 || settings.some((t) => t.key === OIL_CHANGE_KEY && t.enabled)
+      ? [{ value: `type:${REGULAR_KEY}`, label: regularSaleLabel(shop) }]
+      : []),
+    ...types.map((t) => ({ value: `type:${t.key}`, label: t.label })),
     ...(settings.some((t) => t.key === OIL_CHANGE_KEY && t.enabled) ? [{ value: OIL_CHANGE_KEY, label: oilChangeLabel(shop) }] : []),
     { value: "pay:ledger", label: PAYMENT_LABELS.ledger },
     { value: "pay:part", label: PAYMENT_LABELS.part },
@@ -216,8 +265,9 @@ export function saleMatchesFilter(
 ): boolean {
   switch (f.kind) {
     case "all": return true;
-    case "order_type": return sale.order_type === f.key;
-    case "oil_change": return !!sale.has_oil_change;
+    case "order_type": return f.key === REGULAR_KEY ? !sale.order_type : sale.order_type === f.key;
+    // Older oil bills carry no type, only the record — either counts.
+    case "oil_change": return !!sale.has_oil_change || sale.order_type === OIL_CHANGE_KEY;
     case "payment": return paymentStatus(sale.total, sale.amount_paid ?? 0) === f.status;
   }
 }

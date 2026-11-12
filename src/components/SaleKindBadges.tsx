@@ -8,7 +8,7 @@
 
 import { BookOpen, Car, CheckCircle2, ShoppingBag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { oilChangeLabel, orderTypeLabel, paymentStatus, PAYMENT_LABELS } from "@/lib/order-types";
+import { OIL_CHANGE_KEY, oilChangeLabel, orderTypeLabel, paymentStatus, PAYMENT_LABELS } from "@/lib/order-types";
 
 type ShopArg = Parameters<typeof orderTypeLabel>[0];
 
@@ -34,7 +34,9 @@ export function SaleKindBadges({
   /** "Paid" on every ordinary bill can be noise; the list shows it, compact views may not. */
   showPaid?: boolean;
 }) {
-  const type = orderTypeLabel(shop, sale.order_type);
+  // An oil-change bill gets the car badge below, not a second "Oil change" chip.
+  const isOil = sale.order_type === OIL_CHANGE_KEY;
+  const type = isOil ? "" : orderTypeLabel(shop, sale.order_type);
   const status = paymentStatus(sale.total, sale.amount_paid ?? 0);
   const paid = Math.max(0, Math.min(Number(sale.amount_paid) || 0, Number(sale.total) || 0));
   const owed = Math.max(0, (Number(sale.total) || 0) - paid);
@@ -47,7 +49,7 @@ export function SaleKindBadges({
           {sale.order_type === "dine_in" && sale.table_label ? ` · Table ${sale.table_label}` : ""}
         </Badge>
       )}
-      {sale.has_oil_change && (
+      {(sale.has_oil_change || isOil) && (
         <Badge variant="secondary" className={chip}>
           <Car className="size-3" /> {oilChangeLabel(shop)}
         </Badge>

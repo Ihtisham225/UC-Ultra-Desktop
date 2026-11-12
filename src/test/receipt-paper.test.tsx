@@ -131,6 +131,8 @@ describe("ReceiptPreview in Settings", () => {
 
   it("adds an oil-change block for an oil shop", () => {
     render(<ReceiptPreview shop={{ ...(shop as object), store_type: "oil" } as never} settings={settings} />);
-    expect(text()).toContain("OIL CHANGE");
+    // Headed "Oil change" by the order-type banner; the block below is the car.
+    expect(text()).toContain("Oil change");
+    expect(text()).toContain("VEHICLE");
   });
 });

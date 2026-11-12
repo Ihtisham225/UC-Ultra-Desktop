@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { newCustomKey, OIL_CHANGE_KEY, ORDER_TYPE_HINTS, type OrderTypeSetting } from "@/lib/order-types";
+import { newCustomKey, ORDER_TYPE_HINTS, type OrderTypeSetting } from "@/lib/order-types";
 
 export function OrderTypesSettings({
   value,
@@ -31,7 +31,8 @@ export function OrderTypesSettings({
         <Label>Till order types</Label>
         <p className="text-xs text-muted-foreground">
           What the till asks for each sale. Switch on the ones you use and call them what your counter calls them —
-          the Sales page filters and labels every bill by them. With none on, the till doesn&apos;t ask.
+          the Sales page filters and labels every bill by them, and the receipt prints the type as its headline.
+          With only Regular sale on, the till doesn&apos;t ask.
         </p>
       </div>
       <div className="rounded-lg border divide-y">
@@ -55,7 +56,6 @@ export function OrderTypesSettings({
               />
               <p className="mt-0.5 text-[11px] text-muted-foreground">
                 {t.custom ? "Your own" : ORDER_TYPE_HINTS[t.key] ?? ""}
-                {t.key === OIL_CHANGE_KEY && !t.enabled ? " — off hides the vehicle form at the till" : ""}
               </p>
             </div>
             {t.custom && (

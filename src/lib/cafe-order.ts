@@ -1,4 +1,4 @@
-import { orderTypeLabel as shopOrderTypeLabel } from "./order-types";
+import { OIL_CHANGE_KEY, oilChangeLabel, orderTypeLabel as shopOrderTypeLabel } from "./order-types";
 
 /**
  * How a cafe order is served — dine-in (at a table), takeaway or delivery —
@@ -45,6 +45,36 @@ export function orderLine(sale: { order_type?: unknown; table_label?: unknown; s
   if (!type) return "";
   const table = sale.order_type === "dine_in" && sale.table_label ? ` · Table ${String(sale.table_label)}` : "";
   return `${type}${table}`;
+}
+
+/** The headline on the slip — what kind of sale it was, big and boxed. */
+export interface OrderBanner {
+  /** "Take away", "Oil change", "Dine-in"… in the shop's own words. */
+  title: string;
+  /** "Table 4" for dine-in; empty otherwise. */
+  sub: string;
+  /** The banner already says oil change, so the vehicle block needn't repeat it. */
+  oil: boolean;
+}
+
+/**
+ * The bill's order type as the receipt's headline; null for a regular sale.
+ * An oil bill rung up before the oil change was a till type carries no type,
+ * only its vehicle record — it still heads up as an oil change.
+ */
+export function orderBanner(sale: {
+  order_type?: unknown;
+  table_label?: unknown;
+  shop?: ShopLabels;
+  oil_change?: unknown;
+}): OrderBanner | null {
+  const oil = sale.order_type === OIL_CHANGE_KEY || (!sale.order_type && !!sale.oil_change);
+  const title = oil
+    ? oilChangeLabel(sale.shop)
+    : sale.shop ? shopOrderTypeLabel(sale.shop, sale.order_type) : orderTypeLabel(sale.order_type);
+  if (!title) return null;
+  const sub = sale.order_type === "dine_in" && sale.table_label ? `Table ${String(sale.table_label)}` : "";
+  return { title, sub, oil };
 }
 
 const esc = (s: unknown) =>
