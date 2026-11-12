@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { ReceiptPaper } from "@/components/ReceiptDialog";
 import { isOil } from "@/lib/oil";
+import { defaultTillOrderType } from "@/lib/order-types";
 import type { DeviceShop } from "@/lib/apiClient";
 import type { PartyField } from "@/lib/party-fields";
 
@@ -79,6 +80,8 @@ export function ReceiptPreview({ shop, settings }: { shop: DeviceShop; settings:
       items,
       notes: "Customer will collect the rest on Friday",
       previous_balance: 2500,
+      // The till's usual type, so the headline banner shows where it prints.
+      order_type: defaultTillOrderType(shop),
       oil_change: oilShop
         ? {
             vehicle_number: "LEA 07-1234",

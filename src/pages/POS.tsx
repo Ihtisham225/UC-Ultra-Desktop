@@ -1,4 +1,12 @@
-import { defaultTillOrderType, oilChangeEnabled, tillOrderTypes } from "@/lib/order-types";
+import {
+  defaultTillOrderType,
+  effectiveTillOrderType,
+  OIL_CHANGE_KEY,
+  oilChangeEnabled,
+  regularSaleEnabled,
+  regularSaleLabel,
+  tillOrderTypes,
+} from "@/lib/order-types";
 import { ChoiceToggle } from "@/components/NewReturnDialog";
 import { isCafe } from "@/lib/cafe";
 import { lineTotalOf, priceForAmount } from "@/lib/sell-by-amount";
@@ -280,7 +288,12 @@ export default function POS() {
   const oilShop = isOil(currentShop) && oilChangeEnabled(currentShop);
   const cafeShop = isCafe(currentShop);
   const tillTypes = tillOrderTypes(currentShop);
-  const chosenType = orderType && tillTypes.some((t) => t.key === orderType) ? orderType : null;
+  // With "Regular sale" switched off (Settings), a bill always carries a type.
+  const chosenType = effectiveTillOrderType(currentShop, orderType);
+  const regularOffered = regularSaleEnabled(currentShop);
+  // The vehicle form opens when the bill is rung up as an oil change — the
+  // type button beside Take away (lib/order-types OIL_CHANGE_KEY).
+  const showVehicle = oilShop && chosenType === OIL_CHANGE_KEY;
   // The terminal's shop can arrive after the first render (or be switched):
   // start that shop's till on its own default (Dine-in for a cafe).
   const [typesFor, setTypesFor] = useState(currentShop?.id ?? null);
@@ -750,7 +763,7 @@ export default function POS() {
     // visit links to it offline; the server merges a plate another till
     // registered meanwhile (/api/sync/push).
     let vehicleId: string | null = pickedVehicle?.id ?? null;
-    if (oilShop && !vehicleId && vehicle.vehicle_number.trim()) {
+    if (showVehicle && !vehicleId && vehicle.vehicle_number.trim()) {
       const key = normalizePlate(vehicle.vehicle_number);
       const known = localVehicles.find((v) => v.vehicle_key === key || normalizePlate(v.vehicle_number) === key);
       if (known) vehicleId = known.id;
@@ -770,7 +783,7 @@ export default function POS() {
         notifyChange("vehicles");
       }
     }
-    const oilChangeRow = oilShop && vehicleId
+    const oilChangeRow = showVehicle && vehicleId
       ? {
           ...vehicleDraftToInput(vehicle),
           vehicle_id: vehicleId,
@@ -1361,7 +1374,7 @@ export default function POS() {
                       label="Order type"
                       value={chosenType ?? ""}
                       options={[
-                        { value: "", label: "Regular sale" },
+                        ...(regularOffered ? [{ value: "", label: regularSaleLabel(currentShop) }] : []),
                         ...tillTypes.map((o) => ({ value: o.key, label: o.label })),
                       ]}
                       onChange={(v) => setOrderType(v || null)}
@@ -1394,11 +1407,11 @@ export default function POS() {
                   ? <PatientPicker value={patient} onChange={setPatient} step={STEP.customer} onPicked={() => advancePastPicker(STEP.customer)} />
                   : <CustomerPicker value={customer} onChange={setCustomer} step={STEP.customer} onPicked={() => advancePastPicker(STEP.customer)} />}
 
-                {oilShop && (
+                {showVehicle && (
                   <div className="rounded-lg border p-3 space-y-3">
                     <div className="flex items-center gap-2">
                       <Car className="size-4 text-primary shrink-0" />
-                      <span className="text-sm font-medium">Oil change</span>
+                      <span className="text-sm font-medium">Vehicle</span>
                       <span className="text-[11px] text-muted-foreground ms-auto">Optional</span>
                     </div>
 
@@ -1688,7 +1701,7 @@ export default function POS() {
           {/* 2 · Who it's for, and the car on an oil shop */}
           <Card className="flex flex-col min-h-0 overflow-hidden">
             <div className="p-4 border-b bg-muted/30 font-semibold flex items-center gap-2">
-              <UserRound className="size-4" /> {hasLabTests ? "Patient" : "Customer"}{oilShop ? " & vehicle" : ""}
+              <UserRound className="size-4" /> {hasLabTests ? "Patient" : "Customer"}{showVehicle ? " & vehicle" : ""}
             </div>
             <div className="p-4 space-y-3 xl:overflow-y-auto xl:flex-1">
               {customerSection}

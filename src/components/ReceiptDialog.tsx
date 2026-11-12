@@ -1,4 +1,4 @@
-import { buildKitchenSlipHtml, orderLine } from "@/lib/cafe-order";
+import { buildKitchenSlipHtml, orderBanner } from "@/lib/cafe-order";
 import { receiptFieldRows } from "@/lib/party-fields";
 import { Fragment, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -68,8 +68,6 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
   const metaRows = [
     { label: "Receipt", value: orderNumberLabel(sale.receipt_number) },
     { label: "Date", value: fmtDateTime(sale.created_at) },
-    // Cafe shops: dine-in at table 4, takeaway, delivery.
-    ...(orderLine(sale) ? [{ label: "Order", value: orderLine(sale) }] : []),
     ...(showCustomer && customer ? [{ label: "Customer", value: customer.name }] : []),
     ...(showCustomer && customer?.phone ? [{ label: "Phone", value: customer.phone }] : []),
     ...customFieldRowsFor(sale, customer),
@@ -103,9 +101,18 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
       ]
     : [];
 
+  // What kind of sale it was — Take away, Oil change, Dine-in · Table 4 — as
+  // the slip's headline, boxed between double rules under the shop's name.
+  const banner = orderBanner(sale);
+  const bannerHtml = banner
+    ? `<div class="banner"><div class="banner-title">${escapeHtml(banner.title)}</div>${
+        banner.sub ? `<div class="banner-sub">${escapeHtml(banner.sub)}</div>` : ""
+      }</div>`
+    : "";
+
   const oilHtml = oilRows.length > 0
     ? `<div class="rule"></div>
-       <div class="center small">OIL CHANGE</div>
+       <div class="center small">${banner?.oil ? "VEHICLE" : "OIL CHANGE"}</div>
        ${oilRows
          .map((r) => `<div class="row"><span>${escapeHtml(r.label)}</span><span class="value">${escapeHtml(r.value)}</span></div>`)
          .join("")}`
@@ -339,6 +346,9 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
         .terms li { margin: 0; }
         .terms p { margin: 0 0 2px; }
         .logo { display: block; margin: 0 auto 6px; max-width: 48mm; max-height: 22mm; object-fit: contain; }
+        .banner { margin: 6px 0 8px; padding: 3px 0; border-top: 3px double #000; border-bottom: 3px double #000; text-align: center; }
+        .banner-title { font-size: 17px; font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase; }
+        .banner-sub { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
       </style>
     </head>
     <body>
@@ -351,7 +361,7 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
           ${sale.shop?.receipt_header ? `<div class="small note" style="margin-top:4px;">${withLineBreaks(sale.shop.receipt_header)}</div>` : ""}
         </div>
 
-        <div class="rule"></div>
+        ${bannerHtml || `<div class="rule"></div>`}
 
         <div class="small">
           ${metaRows
@@ -431,14 +441,22 @@ export const ReceiptPaper = ({
         {sale.shop?.receipt_header && <div className="text-[11px] mt-1 whitespace-pre-line break-words">{sale.shop.receipt_header}</div>}
       </div>
 
-      <div className={dashed} />
+      {(() => {
+        const banner = orderBanner(sale);
+        return banner ? (
+          <div className="mt-1.5 mb-2 border-y-[3px] border-double border-black py-0.5 text-center">
+            <div className="text-[17px] font-extrabold uppercase tracking-[0.2em]">{banner.title}</div>
+            {banner.sub && <div className="text-[12px] uppercase tracking-[0.12em]">{banner.sub}</div>}
+          </div>
+        ) : null;
+      })()}
+
+      {/* The banner's double rules already close the header. */}
+      {!orderBanner(sale) && <div className={dashed} />}
 
       <div className="text-[11px] space-y-0.5">
         <div className="flex items-start justify-between gap-2"><span className="shrink-0">Receipt</span><span className="min-w-0 max-w-[58%] text-right break-words">{orderNumberLabel(sale.receipt_number)}</span></div>
         <div className="flex items-start justify-between gap-2"><span className="shrink-0">Date</span><span className="min-w-0 max-w-[58%] text-right break-words">{fmtDateTime(sale.created_at)}</span></div>
-        {orderLine(sale) && (
-          <div className="flex items-start justify-between gap-2"><span className="shrink-0">Order</span><span className="min-w-0 max-w-[58%] text-right break-words font-bold">{orderLine(sale)}</span></div>
-        )}
         {sale.shop?.show_customer_on_receipt && customer && (
           <div className="flex items-start justify-between gap-2"><span className="shrink-0">Customer</span><span className="min-w-0 max-w-[58%] text-right break-words">{customer.name}</span></div>
         )}
@@ -462,7 +480,7 @@ export const ReceiptPaper = ({
       {sale.oil_change && (
         <>
           <div className={dashed} />
-          <div className="text-center text-[11px]">OIL CHANGE</div>
+          <div className="text-center text-[11px]">{orderBanner(sale)?.oil ? "VEHICLE" : "OIL CHANGE"}</div>
           <div className="text-[11px] space-y-0.5 mt-0.5">
             {[
               ["Vehicle", String(sale.oil_change.vehicle_number ?? "")],
