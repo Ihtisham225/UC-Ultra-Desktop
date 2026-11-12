@@ -39,7 +39,7 @@ export default function VehiclesTab({
   onSearchVisits, openNew = false,
 }: {
   onSearchVisits: (plate: string) => void;
-  /** Open the register form as the tab mounts (Add new → Vehicle from the visits tab). */
+  /** Open the register form as the page mounts. */
   openNew?: boolean;
 }) {
   const { currentShop, role } = useShop();

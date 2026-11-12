@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Car, Trash2, Search, Eye, Edit2, Receipt } from "lucide-react";
+import { Car, CarFront, Trash2, Search, Eye, Edit2, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePagination } from "@/hooks/usePagination";
@@ -21,8 +21,7 @@ import {
   VehicleFields, vehicleDraftToInput, type VehicleDraft,
 } from "@/components/VehicleFields";
 import { isOil, normalizePlate, tidyPlate } from "@/lib/oil";
-import VehiclesTab from "./VehiclesTab";
-import { useAddNew } from "@/hooks/useAddNew";
+import { Link, useSearchParams } from "react-router-dom";
 import { DateInput } from "@/components/DateInput";
 import { fmtDate } from "@/lib/date-format";
 
@@ -88,20 +87,13 @@ export default function OilChanges() {
   const { data: sales } = useLocalStore<{ id: string; receipt_number: string | null; total: number | string }>(
     "sales", currentShop?.id,
   );
-  const [search, setSearch] = useState("");
+  // The Vehicles page links here with `?q=<plate>` to show that car's visits.
+  const [params] = useSearchParams();
+  const [search, setSearch] = useState(() => params.get("q") ?? "");
   const [editing, setEditing] = useState<{ id?: string; draft: VehicleDraft; date: string } | null>(null);
   const [details, setDetails] = useState<OilChange | null>(null);
   const [busy, setBusy] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
-  const [tab, setTab] = useState<"visits" | "vehicles">("visits");
-  /**
-   * Add new asked for a vehicle from the visits tab: switch tabs, and the
-   * Vehicles tab opens its form as it mounts. On the Vehicles tab itself the
-   * tab registers its own handler.
-   */
-  const [newVehicle, setNewVehicle] = useState(false);
-  useAddNew({ vehicle: tab !== "vehicles" && (() => { setTab("vehicles"); setNewVehicle(true); }) });
-
   const canDelete = role === "owner" || role === "manager";
 
   useEffect(() => { document.title = "Oil Changes — UCU"; }, []);
@@ -228,31 +220,13 @@ export default function OilChanges() {
           </p>
         </div>
         <div className="flex gap-2">
-          {tab === "visits" && (
-            <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>Export CSV</Button>
-          )}
+          <Button variant="outline" asChild>
+            <Link to="/vehicles"><CarFront className="size-4 me-1.5" /> Vehicles</Link>
+          </Button>
+          <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>Export CSV</Button>
         </div>
       </div>
 
-      <div className="inline-flex rounded-lg border bg-muted/40 p-1 self-start">
-        {(["visits", "vehicles"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => { setTab(t); setNewVehicle(false); }}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              tab === t ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t === "visits" ? "Oil changes" : "Vehicles"}
-          </button>
-        ))}
-      </div>
-
-      {tab === "vehicles" ? (
-        <VehiclesTab openNew={newVehicle} onSearchVisits={(plate) => { setTab("visits"); setSearch(plate); }} />
-      ) : (
-      <>
       <div className="relative max-w-md">
         <Search className="absolute start-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <Input
@@ -334,9 +308,6 @@ export default function OilChanges() {
             onPageChange={setPage} onPageSizeChange={setPageSize}
           />
         </Card>
-      )}
-
-      </>
       )}
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
