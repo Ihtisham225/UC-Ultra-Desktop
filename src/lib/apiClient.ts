@@ -1,6 +1,7 @@
 import type { PartyField } from "@/lib/party-fields";
 import type { NavOrder } from "@/lib/nav-order";
 import type { ReturnReceiptOptions } from "@/lib/return-receipt";
+import type { ReceiptSlipOptions } from "@/lib/receipt-slips";
 /**
  * apiClient.ts — talks to the new UC Ultra backend (Next.js on ucultra.com),
  * replacing the old @supabase/supabase-js client.
@@ -112,6 +113,8 @@ export interface DeviceShop {
   price_by_markup?: boolean;
   /** What the return slip prints (Settings → Receipt → Return receipt). */
   return_receipt?: ReturnReceiptOptions;
+  /** What the purchase voucher and ledger payment receipt print (lib/receipt-slips). */
+  receipt_slips?: ReceiptSlipOptions;
   /** The shop's own customer / supplier fields (lib/party-fields). */
   party_fields?: PartyField[];
   /** Settings → Shop → Menu: the sidebar order (lib/nav-order); null = the default. */
