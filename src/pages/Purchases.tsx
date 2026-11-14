@@ -4,6 +4,8 @@ import { useSearchParams } from "react-router-dom";
 import { useLandingParams } from "@/hooks/useLandingParams";
 import type { PurchaseOrderDto } from "@/lib/purchase-orders";
 import { rpc, uploadInvoiceImage, uploadCnicImage } from "@/lib/apiClient";
+import { printThermalHtml } from "@/lib/printThermal";
+import type { PurchaseSlip } from "@/lib/purchase-receipt";
 import { useShop } from "@/contexts/ShopContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -291,7 +293,14 @@ export default function Purchases() {
   const [investorOpen, setInvestorOpen] = useState(false);
   const [newInvestor, setNewInvestor] = useState({ name: "", phone: "", amount: "" });
   const [details, setDetails] = useState<any | null>(null);
-  const [printPurchase, setPrintPurchase] = useState<any | null>(null);
+  // The purchase voucher (lib/purchase-receipt), resolved on the server so it
+  // carries the shop's slip settings and the supplier's balance at the time.
+  const [printPurchase, setPrintPurchase] = useState<PurchaseSlip | null>(null);
+  const openVoucher = async (id: string) => {
+    const slip = await rpc<PurchaseSlip | null>("getPurchaseReceiptAction", id).catch(() => null);
+    if (!slip) return toast.error("Could not load this purchase");
+    setPrintPurchase(slip);
+  };
   const [detailsItemSearch, setDetailsItemSearch] = useState("");
   const { confirm, dialog: confirmDialog } = useConfirm();
   const { confirmDuplicates, duplicateDialog } = useDuplicatePartyConfirm();
@@ -1844,7 +1853,7 @@ export default function Purchases() {
           ]}
           footer={
             <>
-              <Button variant="outline" onClick={() => setPrintPurchase(details)}>
+              <Button variant="outline" onClick={() => void openVoucher(details.id)}>
                 <Printer className="size-4 mr-1" /> {t("common.print", "Print")}
               </Button>
               <Button variant="outline" onClick={() => startEdit(details.id)}>
@@ -1855,9 +1864,7 @@ export default function Purchases() {
         />
       )}
 
-      {printPurchase && (
-        <PurchaseReceiptDialog purchase={printPurchase} onClose={() => setPrintPurchase(null)} />
-      )}
+      <PurchaseReceiptDialog slip={printPurchase} onClose={() => setPrintPurchase(null)} print={printThermalHtml} />
 
       {variantPicker && (
         <VariantPickerDialog

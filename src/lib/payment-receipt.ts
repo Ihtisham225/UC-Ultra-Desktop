@@ -4,6 +4,7 @@
  * WhatsApp. Pure (no React, no server) and COPIED VERBATIM into the desktop
  * (`src/lib/payment-receipt.ts` there). Keep the two in step.
  */
+import { normalizePaymentSlipOptions, type PaymentSlipOptions } from "@/lib/receipt-slips";
 
 export interface PaymentReceiptDto {
   id: string;
@@ -32,7 +33,18 @@ export interface PaymentSlipShop {
   currency: string;
   receipt_header: string | null;
   receipt_footer: string | null;
+  logo_url?: string | null;
+  /** Settings → Receipt → Payment receipt (lib/receipt-slips). Missing = the defaults. */
+  options?: PaymentSlipOptions;
 }
+
+/** The options a payment slip prints with. */
+export const paymentSlipOptions = (shop: Pick<PaymentSlipShop, "options"> | null | undefined): PaymentSlipOptions =>
+  shop?.options ?? normalizePaymentSlipOptions(null);
+
+/** The logo to print, when the shop asked for it and has one. */
+export const paymentSlipLogo = (shop: PaymentSlipShop | null | undefined): string | null =>
+  shop && paymentSlipOptions(shop).show_logo && shop.logo_url ? shop.logo_url : null;
 
 type Money = (n: number, currency: string) => string;
 
@@ -58,17 +70,18 @@ export function balanceAfterLine(after: number): { label: string; amount: number
 export function buildPaymentReceiptMessage(r: PaymentReceiptDto, shop: PaymentSlipShop, money: Money, date: string): string {
   const m = (n: number) => money(n, shop.currency);
   const w = paymentSlipWords(r);
+  const o = paymentSlipOptions(shop);
   const after = balanceAfterLine(r.balance_after);
   const out: string[] = [`*${shop.name}*`];
   if (r.direction === "owed_to_me") out.push(`Assalam-o-Alaikum ${r.person_name},`);
   out.push("", `*${w.title} ${receiptNo(r)}*`, date, "");
-  out.push(`Previous balance: ${m(r.balance_before)}`);
+  if (o.show_balance) out.push(`Previous balance: ${m(r.balance_before)}`);
   out.push(`*${r.direction === "i_owe" ? "Paid" : "Received"}: ${m(r.amount)}*`);
   if (r.discount > 0) out.push(`Discount: ${m(r.discount)}`);
   if (r.method) out.push(`Via: ${r.method}`);
-  out.push(`*${after.label}: ${m(after.amount)}*`);
-  if (r.notes) out.push("", `Note: ${r.notes}`);
-  if (r.direction === "owed_to_me") out.push("", "Thank you for your payment.");
+  if (o.show_balance) out.push(`*${after.label}: ${m(after.amount)}*`);
+  if (o.show_notes && r.notes) out.push("", `Note: ${r.notes}`);
+  if (o.show_thanks && r.direction === "owed_to_me") out.push("", "Thank you for your payment.");
   if (shop.receipt_footer) out.push("", shop.receipt_footer);
   return out.join("\n");
 }
@@ -78,6 +91,8 @@ export function buildPaymentReceiptHtml(r: PaymentReceiptDto, shop: PaymentSlipS
   const m = (n: number) => esc(money(n, shop.currency));
   const w = paymentSlipWords(r);
   const after = balanceAfterLine(r.balance_after);
+  const o = paymentSlipOptions(shop);
+  const logo = paymentSlipLogo(shop);
   const row = (label: string, value: string, cls = "") =>
     `<div class="row ${cls}"><span>${esc(label)}</span><span class="v">${value}</span></div>`;
   return `<!doctype html><html><head><meta charset="utf-8" />
@@ -97,7 +112,9 @@ export function buildPaymentReceiptHtml(r: PaymentReceiptDto, shop: PaymentSlipS
   .v { text-align: right; }
   .big { font-size: 16px; }
   .box { border: 1.5px solid #000; padding: 4px 6px; margin-top: 4px; }
+  .logo { display: block; margin: 0 auto 6px; max-width: 48mm; max-height: 22mm; object-fit: contain; }
 </style></head><body><div class="slip">
+  ${logo ? `<img class="logo" src="${esc(logo)}" alt="" />` : ""}
   <div class="c t">${esc(shop.name)}</div>
   ${shop.address ? `<div class="c s">${esc(shop.address)}</div>` : ""}
   ${shop.phone ? `<div class="c s">${esc(shop.phone)}</div>` : ""}
@@ -107,16 +124,16 @@ export function buildPaymentReceiptHtml(r: PaymentReceiptDto, shop: PaymentSlipS
   ${row("Receipt no.", esc(receiptNo(r)))}
   ${row("Date", esc(date))}
   ${row(w.party, esc(r.person_name))}
-  ${r.phone ? row("Phone", esc(r.phone)) : ""}
+  ${o.show_phone && r.phone ? row("Phone", esc(r.phone)) : ""}
   <div class="rule"></div>
-  ${row("Previous balance", m(r.balance_before))}
+  ${o.show_balance ? row("Previous balance", m(r.balance_before)) : ""}
   ${row(r.direction === "i_owe" ? "Paid" : "Received", m(r.amount), "big")}
   ${r.discount > 0 ? row("Discount", m(r.discount)) : ""}
   ${r.method ? row("Via", esc(r.method)) : ""}
-  <div class="box">${row(after.label, m(after.amount), "big")}</div>
-  ${r.notes ? `<div class="s" style="margin-top:6px">Note: ${esc(r.notes)}</div>` : ""}
+  ${o.show_balance ? `<div class="box">${row(after.label, m(after.amount), "big")}</div>` : ""}
+  ${o.show_notes && r.notes ? `<div class="s" style="margin-top:6px">Note: ${esc(r.notes)}</div>` : ""}
   <div class="rule"></div>
-  ${r.direction === "owed_to_me" ? `<div class="c s">Thank you for your payment.</div>` : ""}
+  ${o.show_thanks && r.direction === "owed_to_me" ? `<div class="c s">Thank you for your payment.</div>` : ""}
   ${shop.receipt_footer ? `<div class="c s">${esc(shop.receipt_footer)}</div>` : ""}
 </div><script>window.onload = function () { window.print(); };</script></body></html>`;
 }

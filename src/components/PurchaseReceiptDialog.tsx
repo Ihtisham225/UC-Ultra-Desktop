@@ -1,203 +1,89 @@
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Printer } from "lucide-react";
+/**
+ * The purchase voucher — opened from a purchase's details, with Print and
+ * WhatsApp (to the supplier) like the sale and return slips (Ctrl/Cmd+P,
+ * Alt+W). What it prints follows Settings → Receipt → Purchase receipt.
+ *
+ * ⚠️ COPIED VERBATIM to the desktop app. The desktop passes its own `print`
+ * (the main-process thermal path); the web prints through a hidden frame.
+ */
+import { useEffect } from "react";
 import { toast } from "sonner";
-import { formatMoney } from "@/lib/format";
-import { useShop } from "@/contexts/ShopContext";
-import { printThermalHtml } from "@/lib/printThermal";
+import { MessageCircle, Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { formatAmount, formatMoney } from "@/lib/format";
+import { openWhatsApp } from "@/lib/whatsapp-open";
+import { printHtmlPage } from "@/components/ReturnReceiptDialog";
+import { matchPosShortcut } from "@/lib/pos-shortcuts";
 import { fmtDateTime } from "@/lib/date-format";
+import {
+  buildPurchaseMessage,
+  buildPurchasePrintHtml,
+  payableLine,
+  purchaseSlipLedger,
+  purchaseSlipLogo,
+  purchaseSlipOptions,
+  purchaseUnpaid,
+  type PurchaseSlip,
+} from "@/lib/purchase-receipt";
 
-const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-
-const withLineBreaks = (value?: string | null) => escapeHtml(value ?? "").replace(/\n/g, "<br />");
-
-interface PurchaseItem { id?: string; product_name: string; quantity: number | string; unit_cost: number | string; line_total: number | string; }
-interface Purchase {
-  reference_number: string | null;
-  created_at: string;
-  payment_method?: string | null;
-  notes?: string | null;
-  subtotal: number | string;
-  tax: number | string;
-  total: number | string;
-  paid_amount: number | string;
-  suppliers?: { name: string; phone: string | null } | null;
-  purchase_items: PurchaseItem[];
-}
-
-interface Shop {
-  name: string;
-  address?: string | null;
-  phone?: string | null;
-  receipt_header?: string | null;
-  receipt_footer?: string | null;
-  currency?: string | null;
-}
-
-const buildPrintHtml = ({ purchase, shop, currency }: { purchase: Purchase; shop: Shop; currency: string }) => {
-  const balance = Number(purchase.total) - Number(purchase.paid_amount);
-  const metaRows = [
-    { label: "Voucher", value: purchase.reference_number ?? "" },
-    { label: "Date", value: fmtDateTime(purchase.created_at) },
-    ...(purchase.suppliers?.name ? [{ label: "Supplier", value: purchase.suppliers.name }] : []),
-    ...(purchase.suppliers?.phone ? [{ label: "Phone", value: purchase.suppliers.phone }] : []),
-  ];
-
-  const itemsHtml = purchase.purchase_items
-    .map(
-      (item) => `
-        <div class="item">
-          <div class="item-name">${escapeHtml(item.product_name ?? "")}</div>
-          <div class="row small">
-            <span>${escapeHtml(String(Number(item.quantity)))} x ${escapeHtml(formatMoney(item.unit_cost, currency))}</span>
-            <span class="value">${escapeHtml(formatMoney(item.line_total, currency))}</span>
-          </div>
-        </div>`
-    )
-    .join("");
-
-  const summaryRows = [
-    `<div class="row"><span>Subtotal</span><span class="value">${escapeHtml(formatMoney(purchase.subtotal, currency))}</span></div>`,
-    Number(purchase.tax) > 0
-      ? `<div class="row"><span>Tax</span><span class="value">${escapeHtml(formatMoney(purchase.tax, currency))}</span></div>`
-      : "",
-    `<div class="total-row"><span>TOTAL</span><span class="value">${escapeHtml(formatMoney(purchase.total, currency))}</span></div>`,
-    `<div class="row small"><span>Paid${purchase.payment_method ? ` (${escapeHtml(purchase.payment_method)})` : ""}</span><span class="value">${escapeHtml(formatMoney(purchase.paid_amount, currency))}</span></div>`,
-    balance > 0
-      ? `<div class="row small"><span>Balance due</span><span class="value">${escapeHtml(formatMoney(balance, currency))}</span></div>`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("");
-
-  return `<!doctype html>
-  <html>
-    <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>Purchase ${escapeHtml(purchase.reference_number ?? "")}</title>
-      <style>
-        @page { margin: 0; }
-        * { box-sizing: border-box; }
-        /* Same thermal rules as the sale receipt: Arial Bold prints dark where
-           Courier printed faint, and the slip is capped at the head's 72mm
-           print window (not the 80mm paper) so nothing is cut off the right. */
-        html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: Arial, Helvetica, "Segoe UI", sans-serif; font-weight: 700; font-variant-numeric: tabular-nums; }
-        body { width: 100%; max-width: 72mm; margin: 0 auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .receipt { width: 100%; padding: 4mm 3mm 6mm; font-size: 13px; line-height: 1.45; }
-        .center { text-align: center; }
-        .title { font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
-        .small { font-size: 12px; }
-        .note { white-space: pre-line; word-break: break-word; }
-        .rule { border-top: 1px solid #000; margin: 7px 0; }
-        .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-        .row > :first-child { flex: 0 0 auto; }
-        .row > .value { flex: 1 1 auto; min-width: 0; text-align: right; word-break: break-word; }
-        .item { margin-bottom: 6px; font-weight: 400; }
-        .item-name { white-space: normal; word-break: break-word; overflow-wrap: anywhere; margin-bottom: 2px; }
-        .total-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; font-size: 16px; font-weight: 700; border-top: 2px solid #000; margin-top: 5px; padding-top: 5px; }
-        .value { text-align: right; }
-      </style>
-    </head>
-    <body>
-      <div class="receipt" dir="ltr">
-        <div class="center">
-          <div class="title">${escapeHtml(shop.name ?? "")}</div>
-          ${shop.address ? `<div class="small note">${withLineBreaks(shop.address)}</div>` : ""}
-          ${shop.phone ? `<div class="small">${escapeHtml(shop.phone)}</div>` : ""}
-          <div class="small" style="margin-top:4px;font-weight:700;">PURCHASE VOUCHER</div>
-        </div>
-
-        <div class="rule"></div>
-
-        <div class="small">
-          ${metaRows
-            .map((row) => `<div class="row"><span>${escapeHtml(row.label)}</span><span class="value">${escapeHtml(row.value)}</span></div>`)
-            .join("")}
-        </div>
-
-        <div class="rule"></div>
-
-        <div>${itemsHtml}</div>
-
-        <div class="rule"></div>
-
-        <div>${summaryRows}</div>
-
-        ${purchase.notes ? `<div class="rule"></div><div class="small note">${withLineBreaks(purchase.notes)}</div>` : ""}
-        ${shop.receipt_footer ? `<div class="rule"></div><div class="center small note">${withLineBreaks(shop.receipt_footer)}</div>` : ""}
-
-        <div class="center small" style="margin-top:8px;">** Goods received **</div>
-      </div>
-      <script>
-        window.onload = () => { setTimeout(() => { window.focus(); window.print(); }, 150); };
-      </script>
-    </body>
-  </html>`;
-};
-
-export const PurchaseReceiptDialog = ({ purchase, onClose }: { purchase: Purchase; onClose: () => void }) => {
-  const { currentShop } = useShop();
-  const shop = (currentShop ?? { name: "" }) as Shop;
-  const cur = shop.currency ?? "USD";
-  const balance = Number(purchase.total) - Number(purchase.paid_amount);
-
+export function PurchaseReceiptDialog({
+  slip,
+  onClose,
+  print: printHtml,
+}: {
+  slip: PurchaseSlip | null;
+  onClose: () => void;
+  /** How this app prints a slip's HTML. Default: a hidden frame. */
+  print?: (html: string) => void | Promise<void>;
+}) {
   const print = () => {
-    void printThermalHtml(buildPrintHtml({ purchase, shop, currency: cur }))
+    if (!slip) return;
+    const html = buildPurchasePrintHtml(slip, formatMoney, fmtDateTime(slip.created_at));
+    void Promise.resolve((printHtml ?? printHtmlPage)(html))
       .catch((e) => toast.error(e instanceof Error ? e.message : "Could not print"));
   };
+  const sendWhatsApp = () => {
+    if (!slip) return;
+    if (!slip.supplier?.phone) return toast.error("No phone number for this supplier");
+    if (!openWhatsApp(slip.supplier.phone, buildPurchaseMessage(slip, formatMoney, fmtDateTime(slip.created_at)))) {
+      toast.error("That phone number doesn't look like a WhatsApp number");
+    }
+  };
+
+  useEffect(() => {
+    if (!slip) return;
+    const onKey = (e: KeyboardEvent) => {
+      const hit = matchPosShortcut(e);
+      if (hit !== "print" && hit !== "whatsapp") return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (hit === "print") print();
+      else sendWhatsApp();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      {/* Column layout: only the paper scrolls, so Close/Print stay on screen
-          however many lines the purchase has. */}
-      <DialogContent className="sm:max-w-md p-0 sm:p-0 md:p-0 gap-0 overflow-hidden bg-white text-black flex flex-col max-h-[100dvh] sm:max-h-[calc(100dvh-2rem)]">
+    <Dialog open={!!slip} onOpenChange={(o) => !o && onClose()}>
+      {/* Only the paper scrolls, so the buttons stay on screen for a long bill. */}
+      <DialogContent
+        data-enter-chain="off"
+        className="sm:max-w-md p-0 sm:p-0 md:p-0 gap-0 overflow-hidden bg-white text-black flex flex-col max-h-[100dvh] sm:max-h-[calc(100dvh-2rem)]"
+      >
         <div className="px-4 pt-5 pb-3 flex justify-center flex-1 min-h-0 overflow-y-auto">
-          <div dir="ltr" className="w-full max-w-[72mm] mx-auto bg-white text-black font-sans font-bold text-[13px] leading-[1.45] [font-variant-numeric:tabular-nums]">
-            <div className="text-center">
-              <div className="font-bold text-base uppercase tracking-[0.08em]">{shop.name}</div>
-              {shop.address && <div className="text-[11px] whitespace-pre-line break-words">{shop.address}</div>}
-              {shop.phone && <div className="text-[11px]">{shop.phone}</div>}
-              <div className="text-[11px] mt-1 font-bold">PURCHASE VOUCHER</div>
-            </div>
-            <div className="border-t border-black my-2" />
-            <div className="text-[11px] space-y-0.5">
-              <div className="flex justify-between gap-2"><span className="shrink-0">Voucher</span><span className="text-right break-words">{purchase.reference_number}</span></div>
-              <div className="flex justify-between gap-2"><span className="shrink-0">Date</span><span className="text-right break-words">{fmtDateTime(purchase.created_at)}</span></div>
-              {purchase.suppliers?.name && <div className="flex justify-between gap-2"><span className="shrink-0">Supplier</span><span className="text-right break-words">{purchase.suppliers.name}</span></div>}
-            </div>
-            <div className="border-t border-black my-2" />
-            <div className="space-y-1.5">
-              {purchase.purchase_items.map((it, i) => (
-                <div key={it.id ?? i} className="space-y-0.5 font-normal">
-                  <div className="whitespace-normal break-words [overflow-wrap:anywhere] leading-tight">{it.product_name}</div>
-                  <div className="flex justify-between text-[11px] gap-2">
-                    <span className="shrink-0">{Number(it.quantity)} x {formatMoney(it.unit_cost, cur)}</span>
-                    <span className="tabular-nums text-right break-words">{formatMoney(it.line_total, cur)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-black my-2" />
-            <div className="space-y-0.5 text-[11px]">
-              <div className="flex justify-between gap-2"><span>Subtotal</span><span className="tabular-nums">{formatMoney(purchase.subtotal, cur)}</span></div>
-              {Number(purchase.tax) > 0 && <div className="flex justify-between gap-2"><span>Tax</span><span className="tabular-nums">{formatMoney(purchase.tax, cur)}</span></div>}
-              <div className="flex justify-between gap-2 text-[13px] font-bold border-t border-black mt-1 pt-1"><span>TOTAL</span><span className="tabular-nums">{formatMoney(purchase.total, cur)}</span></div>
-              <div className="flex justify-between gap-2"><span>Paid{purchase.payment_method ? ` (${purchase.payment_method})` : ""}</span><span className="tabular-nums">{formatMoney(purchase.paid_amount, cur)}</span></div>
-              {balance > 0 && <div className="flex justify-between gap-2"><span>Balance due</span><span className="tabular-nums">{formatMoney(balance, cur)}</span></div>}
-            </div>
-            <div className="text-center text-[11px] mt-2">** Goods received **</div>
-          </div>
+          {slip && <PurchaseSlipPaper slip={slip} />}
         </div>
-        {/* Receipt is a white "paper" preview, so keep the footer buttons light in any theme. */}
         <div className="flex gap-2 p-4 border-t border-gray-200 bg-gray-50 shrink-0">
-          <Button variant="outline" className="flex-1 border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900" onClick={onClose}>Close</Button>
+          <Button variant="outline" className="flex-1 border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900" onClick={onClose}>
+            Close
+          </Button>
+          {slip?.supplier?.phone && (
+            <Button variant="outline" className="flex-1 border-gray-300 bg-white text-gray-900 hover:bg-gray-100 hover:text-gray-900" onClick={sendWhatsApp}>
+              <MessageCircle className="size-4 mr-2" /> WhatsApp
+            </Button>
+          )}
           <Button className="flex-1 bg-gradient-primary text-white border-0 hover:opacity-90" onClick={print}>
             <Printer className="size-4 mr-2" /> Print
           </Button>
@@ -205,4 +91,94 @@ export const PurchaseReceiptDialog = ({ purchase, onClose }: { purchase: Purchas
       </DialogContent>
     </Dialog>
   );
-};
+}
+
+/**
+ * The voucher as it looks on screen — the dialog and the Settings preview both
+ * draw it, so the switches there show exactly what will print.
+ */
+export function PurchaseSlipPaper({ slip }: { slip: PurchaseSlip }) {
+  const cur = slip.shop.currency;
+  const o = purchaseSlipOptions(slip);
+  const logo = purchaseSlipLogo(slip);
+  const led = purchaseSlipLedger(slip);
+  const unpaid = purchaseUnpaid(slip);
+  const row = (label: string, value: string, cls = "") => (
+    <div className={"flex justify-between gap-2 " + cls}>
+      <span className="shrink-0">{label}</span>
+      <span className="text-right break-words tabular-nums">{value}</span>
+    </div>
+  );
+  return (
+    <div dir="ltr" className="w-full max-w-[72mm] mx-auto bg-white text-black font-sans font-bold text-[13px] leading-[1.45] [font-variant-numeric:tabular-nums]">
+      {logo && (
+        // eslint-disable-next-line @next/next/no-img-element -- the shop's own upload, printed as-is
+        <img src={logo} alt="" className="mx-auto mb-1.5 block max-h-[22mm] max-w-[48mm] object-contain" />
+      )}
+      <div className="text-center">
+        <div className="font-bold text-base uppercase tracking-[0.08em]">{slip.shop.name}</div>
+        {slip.shop.address && <div className="text-[11px] whitespace-pre-line break-words">{slip.shop.address}</div>}
+        {slip.shop.phone && <div className="text-[11px]">{slip.shop.phone}</div>}
+      </div>
+      <div className="border-t border-black my-2" />
+      <div className="text-center text-[11px]">PURCHASE VOUCHER</div>
+      <div className="text-[11px] space-y-0.5">
+        {row("Voucher", slip.reference_number ?? "")}
+        {row("Date", fmtDateTime(slip.created_at))}
+        {o.show_supplier && slip.supplier && row("Supplier", slip.supplier.name)}
+        {o.show_supplier && slip.supplier?.phone && row("Phone", slip.supplier.phone)}
+      </div>
+      <div className="border-t border-black my-2" />
+      <table className="w-full text-[11px] border-collapse">
+        <thead>
+          <tr className="border-b border-black">
+            <th className="text-left font-bold py-0.5">Description</th>
+            <th className="text-right font-bold pl-1.5">Qty</th>
+            {o.show_unit_cost && <th className="text-right font-bold pl-1.5">@</th>}
+            <th className="text-right font-bold pl-1.5">Amt</th>
+          </tr>
+        </thead>
+        <tbody className="font-normal">
+          {slip.items.map((it, i) => (
+            <tr key={i} className="align-top">
+              <td className="py-0.5 break-words [overflow-wrap:anywhere]">{it.product_name}</td>
+              <td className="text-right pl-1.5 whitespace-nowrap">{Number(Number(it.quantity).toFixed(3))}</td>
+              {o.show_unit_cost && <td className="text-right pl-1.5 whitespace-nowrap">{formatAmount(it.unit_cost, cur)}</td>}
+              <td className="text-right pl-1.5 whitespace-nowrap">{formatAmount(it.line_total, cur)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="border-t border-black my-2" />
+      <div className="space-y-0.5 text-[11px]">
+        {row("Subtotal", formatMoney(slip.subtotal, cur))}
+        {o.show_expenses && slip.expenses_total > 0 && row("Expenses", formatMoney(slip.expenses_total, cur))}
+        {slip.tax > 0 && row("Tax", formatMoney(slip.tax, cur))}
+        {row("TOTAL", formatMoney(slip.total, cur), "text-[13px] font-bold border-t border-black mt-1 pt-1")}
+        {row(`Paid${slip.account_name ? ` (${slip.account_name})` : ""}`, formatMoney(slip.paid, cur))}
+        {led ? (
+          <>
+            <div className="border-t border-black my-1.5" />
+            {row(payableLine(led.previous).label, formatMoney(payableLine(led.previous).amount, cur))}
+            {row("This bill (unpaid)", formatMoney(led.bill, cur))}
+            {row(payableLine(led.after, true).label, formatMoney(payableLine(led.after, true).amount, cur), "text-[13px] font-bold border-t border-black mt-1 pt-1")}
+          </>
+        ) : unpaid > 0 ? row("Balance due", formatMoney(unpaid, cur)) : null}
+      </div>
+      {o.show_notes && slip.notes && (
+        <>
+          <div className="border-t border-black my-2" />
+          <div className="text-[11px] whitespace-pre-line break-words">Note: {slip.notes}</div>
+        </>
+      )}
+      {o.show_signature && <div className="text-[11px] mt-4">Received by ________________</div>}
+      {slip.shop.receipt_footer && (
+        <>
+          <div className="border-t border-black my-2" />
+          <div className="text-center text-[11px] whitespace-pre-line">{slip.shop.receipt_footer}</div>
+        </>
+      )}
+      <div className="text-center text-[11px] mt-2">** Goods received **</div>
+    </div>
+  );
+}

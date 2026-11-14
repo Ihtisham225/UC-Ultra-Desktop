@@ -1730,6 +1730,8 @@ export default function Debts() {
           currency: currentShop.currency ?? "PKR",
           receipt_header: currentShop.receipt_header ?? null,
           receipt_footer: currentShop.receipt_footer ?? null,
+          logo_url: currentShop.logo_url ?? null,
+          options: currentShop.receipt_slips?.payment,
         } : null}
         onClose={() => setReceipt(null)}
       />

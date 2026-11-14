@@ -44,6 +44,8 @@ import { AppVersionBadge } from "@/components/AppVersionBadge";
 import { SignInMethodsCard } from "@/components/SignInMethodsCard";
 import { PartyFieldsEditor, PartyFieldsReceiptSwitches } from "@/components/PartyFieldsSettings";
 import { ReturnReceiptSettings } from "@/components/ReturnReceiptSettings";
+import { ReceiptSlipSettings } from "@/components/ReceiptSlipSettings";
+import { normalizeReceiptSlips, type ReceiptSlipOptions } from "@/lib/receipt-slips";
 import { normalizeReturnReceiptOptions, type ReturnReceiptOptions } from "@/lib/return-receipt";
 import type { PartyField } from "@/lib/party-fields";
 
@@ -124,6 +126,7 @@ export default function Settings() {
   const [showNotes, setShowNotes] = useState(false);
   const [showLogo, setShowLogo] = useState(false);
   const [returnReceipt, setReturnReceipt] = useState<ReturnReceiptOptions>(() => normalizeReturnReceiptOptions(null));
+  const [receiptSlips, setReceiptSlips] = useState<ReceiptSlipOptions>(() => normalizeReceiptSlips(null));
   /** The shop's own customer / supplier fields — Shop tab edits them, Receipt tab picks the printed ones. */
   const [partyFields, setPartyFields] = useState<PartyField[]>([]);
 
@@ -194,6 +197,7 @@ export default function Settings() {
       setShowNotes(currentShop.show_notes_on_receipt ?? false);
       setShowLogo(currentShop.show_logo_on_receipt ?? false);
       setReturnReceipt(currentShop.return_receipt ?? normalizeReturnReceiptOptions(null, currentShop.show_previous_balance_on_receipt));
+      setReceiptSlips(currentShop.receipt_slips ?? normalizeReceiptSlips(null));
       setPartyFields(currentShop.party_fields ?? []);
       setNotifyLow(currentShop.notify_low_stock ?? true);
       setNotifyDaily(currentShop.notify_daily_summary ?? false);
@@ -338,6 +342,18 @@ export default function Settings() {
     if (!res.ok) return toast.error(res.error ?? "Couldn't save");
     if (res.options) setReturnReceipt(res.options);
     toast.success("Return receipt saved");
+    refresh();
+  };
+
+  const saveReceiptSlips = async () => {
+    if (!currentShop) return;
+    setBusy(true);
+    const res = await rpc<{ ok: boolean; error?: string; options?: ReceiptSlipOptions }>("updateReceiptSlipsAction", receiptSlips)
+      .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : "Couldn't save", options: undefined as ReceiptSlipOptions | undefined }));
+    setBusy(false);
+    if (!res.ok) return toast.error(res.error ?? "Couldn't save");
+    if (res.options) setReceiptSlips(res.options);
+    toast.success("Purchase & payment receipts saved");
     refresh();
   };
 
@@ -956,6 +972,7 @@ export default function Settings() {
             <TabsList>
               <TabsTrigger value="sale">Sale receipt</TabsTrigger>
               <TabsTrigger value="return">Return receipt</TabsTrigger>
+              <TabsTrigger value="other">Purchase &amp; payment</TabsTrigger>
             </TabsList>
             <TabsContent value="sale" className="mt-0">
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
@@ -1056,6 +1073,18 @@ export default function Settings() {
                   onChange={setReturnReceipt}
                   partyFields={partyFields}
                   onSave={saveReturnReceipt}
+                  busy={busy}
+                  disabled={!canEditShop}
+                />
+              </TabsContent>
+            )}
+            {currentShop && (
+              <TabsContent value="other" className="mt-0">
+                <ReceiptSlipSettings
+                  shop={currentShop}
+                  options={receiptSlips}
+                  onChange={setReceiptSlips}
+                  onSave={saveReceiptSlips}
                   busy={busy}
                   disabled={!canEditShop}
                 />
