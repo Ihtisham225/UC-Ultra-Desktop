@@ -456,6 +456,8 @@ export default function Purchases() {
   const expensesTotal = useMemo(() => lines.reduce((a, l) => a + (l.expense_amount ?? 0), 0), [lines]);
   const purchaseTotal = subtotal + expensesTotal;
   // Blank means paid in full, so nothing is owed.
+  /** Nothing handed over — the whole purchase goes on the supplier's khata. */
+  const onCredit = amountPaid.trim() !== "" && (parseFloat(amountPaid) || 0) === 0;
   const purchaseOwed = (() => {
     if (amountPaid.trim() === "") return 0;
     const paid = parseFloat(amountPaid);
@@ -1450,15 +1452,16 @@ export default function Purchases() {
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* The account already says how it was paid — cash drawer,
-                      bank, wallet — so a separate method box asked the same
-                      question twice. The stored paymentMethod stays on its
-                      default; nothing downstream reads it for purchases. */}
-                  <div className="space-y-1.5">
-                    <AccountPicker value={purchaseAccountId} onChange={setPurchaseAccountId} label="Paid from" />
-                  </div>
-                  <div className="space-y-0.5 text-sm px-1">
+                {/* Payment: the total and how it was paid sit in ONE card, so the
+                    account and the amount are read together with the figure
+                    they settle — set apart from the lines above, they were
+                    easy to scroll past and the purchase saved as paid in full
+                    from the drawer by default.
+                    The account already says how it was paid — cash drawer,
+                    bank, wallet — so there is no separate method box; the
+                    stored paymentMethod stays on its default. */}
+                <div className="rounded-xl border-2 border-primary/30 bg-primary/[0.03] p-3 sm:p-4 space-y-3">
+                  <div className="space-y-0.5 text-sm">
                     <div className="flex justify-between gap-4">
                       <span className="text-muted-foreground">{t("purchases.goodsSubtotal", { defaultValue: "Goods subtotal" })}</span>
                       <span className="tabular-nums">{formatMoney(subtotal, cur)}</span>
@@ -1467,48 +1470,71 @@ export default function Purchases() {
                       <span className="text-muted-foreground">{t("purchases.expenses", { defaultValue: "Expenses" })}</span>
                       <span className="tabular-nums">{formatMoney(expensesTotal, cur)}</span>
                     </div>
-                    <div className="flex justify-between gap-4 text-lg font-bold text-primary pt-0.5 border-t">
+                    <div className="flex justify-between gap-4 text-lg font-bold text-primary pt-1 border-t">
                       <span>{t("common.total")}</span>
                       <span className="tabular-nums">{formatMoney(purchaseTotal, cur)}</span>
                     </div>
+                  </div>
+
+                  <div className="border-t pt-3 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold me-1">{t("purchases.payment", { defaultValue: "Payment" })}</span>
+                      {/* One tap for the two common cases; Part paid is just typing an amount. */}
+                      {([
+                        { key: "full", label: "Paid in full", active: !onCredit && purchaseOwed === 0, set: "" },
+                        { key: "credit", label: "On credit", active: onCredit, set: "0" },
+                      ] as const).map((o) => (
+                        <Button
+                          key={o.key}
+                          type="button"
+                          size="sm"
+                          variant={o.active ? "default" : "outline"}
+                          className="h-7 px-3 text-xs"
+                          data-enter-skip
+                          onClick={() => setAmountPaid(o.set)}
+                        >
+                          {o.label}
+                        </Button>
+                      ))}
+                      {purchaseOwed > 0 && (parseFloat(amountPaid) || 0) > 0 && (
+                        <span className="text-xs font-medium text-warning">Part paid</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <AccountPicker value={purchaseAccountId} onChange={setPurchaseAccountId} label="Paid from" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>{t("purchases.amountPaid", { defaultValue: "Amount paid" })}</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          inputMode="decimal"
+                          placeholder={`${formatMoney(purchaseTotal, cur)} (in full)`}
+                          value={amountPaid}
+                          onChange={(e) => setAmountPaid(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Leave the amount blank if you paid in full. Anything less goes on the
+                      supplier&apos;s khata as money you owe.
+                    </p>
                     {purchaseOwed > 0 && (
-                      <div className="flex justify-between gap-4 text-warning font-medium">
-                        <span>{t("purchases.balanceOwed", { defaultValue: "Balance owed" })}</span>
-                        <span className="tabular-nums">{formatMoney(purchaseOwed, cur)}</span>
+                      <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs">
+                        <div className="flex justify-between gap-4 text-sm font-semibold text-warning">
+                          <span>{t("purchases.balanceOwed", { defaultValue: "Balance owed" })}</span>
+                          <span className="tabular-nums">{formatMoney(purchaseOwed, cur)}</span>
+                        </div>
+                        <p className="text-muted-foreground mt-0.5">
+                          {sourceType === "walkin"
+                            ? "Recorded against the seller's name."
+                            : "Added to this supplier's khata, where you can settle it later."}
+                        </p>
                       </div>
                     )}
                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>{t("purchases.amountPaid", { defaultValue: "Amount paid" })}</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      inputMode="decimal"
-                      placeholder={formatMoney(purchaseTotal, cur)}
-                      value={amountPaid}
-                      onChange={(e) => setAmountPaid(e.target.value)}
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      Leave blank if you paid in full. Anything less goes on the
-                      supplier&apos;s khata as money you owe.
-                    </p>
-                  </div>
-                  {purchaseOwed > 0 && (
-                    <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 text-xs self-start">
-                      <p className="font-medium text-foreground">
-                        {formatMoney(purchaseOwed, cur)} will be owed
-                      </p>
-                      <p className="text-muted-foreground mt-0.5">
-                        {sourceType === "walkin"
-                          ? "Recorded against the seller's name."
-                          : "Added to this supplier's khata, where you can settle it later."}
-                      </p>
-                    </div>
-                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label>{t("common.notes")}</Label>
