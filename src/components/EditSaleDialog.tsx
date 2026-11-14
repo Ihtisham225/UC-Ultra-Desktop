@@ -1,4 +1,4 @@
-import { lineTotalOf, priceForAmount } from "@/lib/sell-by-amount";
+import { amountSetsQuantity, lineTotalOf, priceForAmount, qtyForAmount } from "@/lib/sell-by-amount";
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -277,12 +277,21 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
    */
   const [amountDraft, setAmountDraft] = useState<Record<string, string>>({});
 
-  /** Typing the amount keeps the quantity and works the rate out, as at the till. */
+  /**
+   * Typing the amount, as at the till: weighed or measured goods get their
+   * quantity from it at the rate; counted goods keep the quantity and the
+   * rate is worked out (lib/sell-by-amount).
+   */
   const setLineAmount = (key: string, raw: string) => {
     setAmountDraft((d) => ({ ...d, [key]: raw }));
     const amount = parseFloat(raw);
     setLines((prev) => prev.map((l) => {
       if (l.key !== key) return l;
+      const unit = l.unit_label || products.find((x) => x.id === l.product_id)?.unit;
+      if (amountSetsQuantity(unit)) {
+        const qty = qtyForAmount(amount, num(l.unit_price));
+        return qty === null ? l : { ...l, quantity: String(qty), amount };
+      }
       const price = priceForAmount(amount, num(l.quantity));
       return price === null ? l : { ...l, unit_price: String(price), amount };
     }));

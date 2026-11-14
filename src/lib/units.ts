@@ -47,6 +47,12 @@ export function normalizeUnit(raw: string | null | undefined): string | null {
   return ALIASES[k] ?? null;
 }
 
+/** Whether a unit weighs, measures volume or counts — null for the shop's own word ("Packet"). */
+export function unitDimension(raw: string | null | undefined): Dimension | null {
+  const k = normalizeUnit(raw);
+  return k ? UNITS[k].dim : null;
+}
+
 /** How a unit is shown: "L" for litres, otherwise the canonical short name or what was typed. */
 export function unitLabel(raw: string | null | undefined): string {
   const k = normalizeUnit(raw);
