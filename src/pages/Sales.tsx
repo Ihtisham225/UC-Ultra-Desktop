@@ -144,8 +144,8 @@ export default function Sales() {
   useEffect(() => { document.title = "UCU"; }, []);
 
   const { data: allSalesRaw, loading, refresh: loadSales } = useLocalStore<any>("sales", currentShop?.id);
-  const { data: allSaleItems } = useLocalStore<any>("sale_items", currentShop?.id);
-  const { data: allOilChanges } = useLocalStore<any>("oil_changes", currentShop?.id);
+  const { data: allSaleItems, loading: itemsLoading } = useLocalStore<any>("sale_items", currentShop?.id);
+  const { data: allOilChanges, loading: oilLoading } = useLocalStore<any>("oil_changes", currentShop?.id);
   const { data: allReturns } = useLocalStore<any>("sale_returns", currentShop?.id);
   // A cached sale row only has the legacy single payment_method, so the tender
   // lines (and the account names) are joined on from their own tables.
@@ -318,7 +318,11 @@ export default function Sales() {
   useLandingParams(["sale", "q"] as const, ({ sale, q }) => {
     if (q) { setRange({ from: "", to: "" }); setSearchText(q); }
     if (sale) openReceipt(sale);
-  }, allSales.length > 0);
+  // ⚠️ Wait for the bill LINES and oil changes too, not just the bills. Each
+  // table loads from the local store on its own, and opening on the first one
+  // printed a receipt with no items at all — every bill opened from the Oil
+  // changes / Vehicles history did exactly that (NIAZ OIL, receipt 358).
+  }, allSales.length > 0 && !loading && !itemsLoading && !oilLoading);
 
   const openReceipt = (saleId: string) => {
     if (!currentShop) return;
