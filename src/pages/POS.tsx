@@ -8,7 +8,7 @@ import {
 } from "@/lib/order-types";
 import { ChoiceToggle } from "@/components/NewReturnDialog";
 import { isCafe } from "@/lib/cafe";
-import { lineTotalOf, priceForAmount } from "@/lib/sell-by-amount";
+import { amountSetsQuantity, lineTotalOf, priceForAmount, qtyForAmount } from "@/lib/sell-by-amount";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatQty } from "@/lib/format";
 import { useTranslation } from "react-i18next";
@@ -416,12 +416,19 @@ export default function POS() {
       return next;
     });
 
-  /** "24 for Rs 1000": the price per item follows from the amount; the quantity stays. */
+  /**
+   * Typing the amount (lib/sell-by-amount). Weighed or measured goods — "Rs
+   * 1000 of milk" — get their QUANTITY from it at the shop's rate, so the right
+   * amount leaves stock. Counted goods — "24 for Rs 1000" — keep the quantity
+   * typed and the price per item follows.
+   */
   const setLineAmount = (key: string, amount: number) => {
     setCart((prev) => prev.map((c) => {
       if (c.key !== key) return c;
-      // The quantity typed is what's leaving the shelf: it stays, and the
-      // price per item follows from the amount (lib/sell-by-amount).
+      if (amountSetsQuantity(c.unit_label ?? c.base_unit)) {
+        const qty = qtyForAmount(amount, c.unit_price);
+        return qty === null ? c : { ...c, quantity: qty, amount };
+      }
       const price = priceForAmount(amount, c.quantity);
       return price === null ? c : { ...c, unit_price: price, amount };
     }));
@@ -1242,7 +1249,9 @@ export default function POS() {
                       step="any"
                       min="0"
                       inputMode="decimal"
-                      title="Amount — type what the customer is paying for this quantity and the price per item is worked out"
+                      title={amountSetsQuantity(c.unit_label ?? c.base_unit)
+                        ? "Amount — type what the customer is paying and the quantity is worked out at this price"
+                        : "Amount — type what the customer is paying for this quantity and the price per item is worked out"}
                       aria-label={`Amount for ${c.product_name}`}
                       value={amountDraft[c.key] ?? String(lineTotalOf(c.unit_price, c.quantity, c.amount))}
                       onChange={(e) => {

@@ -48,3 +48,19 @@ describe("priceForAmount — 24 kheer for Rs 1000", () => {
     expect(priceForAmount(0, 24)).toBeNull();
   });
 });
+
+describe("weighed goods: the amount buys a quantity", () => {
+  it("Rs 1000 of milk at Rs 220/kg is 4.55 kg, not 1 kg at Rs 1000", async () => {
+    const { amountSetsQuantity, qtyForAmount, lineTotalOf } = await import("@/lib/sell-by-amount");
+    expect(amountSetsQuantity("KG")).toBe(true);
+    const qty = qtyForAmount(1000, 220)!;
+    expect(qty).toBe(4.55);
+    // The bill still says what the customer paid.
+    expect(lineTotalOf(220, qty, 1000)).toBe(1000);
+  });
+  it("weights and volumes the shop types; counted goods keep their quantity", async () => {
+    const { amountSetsQuantity } = await import("@/lib/sell-by-amount");
+    for (const u of ["kg", "Kgs", "g", "gm", "Ltr", "L", "ml"]) expect(amountSetsQuantity(u)).toBe(true);
+    for (const u of ["pcs", "Piece", "dozen", "Packet", "", null]) expect(amountSetsQuantity(u)).toBe(false);
+  });
+});
