@@ -25,7 +25,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RowActions } from "@/components/RowActions";
-import { ArrowDownLeft, ArrowUpRight, Pencil, Plus, Trash2, Wallet, Eye, TrendingUp, TrendingDown, MessageCircle, Upload, Printer, ReceiptText } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Pencil, Plus, Trash2, Wallet, Eye, TrendingUp, TrendingDown, MessageCircle, Upload, Printer, ReceiptText, BookOpen } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -43,6 +43,7 @@ import { LedgerEntriesTable } from "@/components/LedgerEntriesLog";
 import { PageTip } from "@/components/PageTip";
 import { AccountPicker } from "@/components/AccountPicker";
 import { PaymentReceiptDialog } from "@/components/PaymentReceiptDialog";
+import { PersonLedgerDialog } from "@/components/PersonLedgerDialog";
 import { EditLedgerEntryDialog, type EditableLedgerEntry, type LedgerEntryEdit } from "@/components/EditLedgerEntryDialog";
 import type { PaymentReceiptDto } from "@/lib/payment-receipt";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -280,6 +281,10 @@ export default function Debts() {
   const [confirmPaymentDeleteId, setConfirmPaymentDeleteId] = useState<string | null>(null);
   const [editEntry, setEditEntry] = useState<EditableLedgerEntry | null>(null);
   const [detailsKey, setDetailsKey] = useState<string | null>(null);
+  // One person's whole account as a single statement (lib/person-ledger) —
+  // every bill and payment, both directions, one running balance. Read from
+  // the local store, so it works offline.
+  const [ledgerKey, setLedgerKey] = useState<string | null>(null);
   const detailsGroup = useMemo(() => groups.find((g) => g.key === detailsKey) ?? null, [groups, detailsKey]);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -454,6 +459,31 @@ export default function Debts() {
     });
     setOpen(true);
   };
+
+  const ledgerGroup = ledgerKey ? groups.find((g) => g.key === ledgerKey) ?? null : null;
+  const ledgerDebts = useMemo(
+    () => (ledgerGroup ? [ledgerGroup, ...counterpartGroups(groups, ledgerGroup)].flatMap((x) => x.debts) : [])
+      .map((d) => ({
+        ...d,
+        amount: Number(d.amount),
+        bill_number: d.sale_id ? billNo.get(d.sale_id) ?? null : d.purchase_id ? billNo.get(d.purchase_id) ?? null : null,
+      })),
+    [ledgerGroup, groups, billNo],
+  );
+  const ledgerPayments = useMemo(() => {
+    const ids = new Set(ledgerDebts.map((d) => d.id));
+    return allPayments
+      .filter((p) => ids.has(p.debt_id))
+      .map((p) => ({
+        ...p,
+        amount: Number(p.amount),
+        discount: Number(p.discount ?? 0),
+        payment_date: String(p.payment_date ?? "").slice(0, 10),
+        created_at: p.created_at ?? "",
+        notes: p.notes ?? null,
+        account_name: p.account_id ? (moneyAccounts.find((a) => a.id === p.account_id)?.name ?? null) : null,
+      }));
+  }, [ledgerDebts, allPayments, moneyAccounts]);
 
   const openPaymentsDialog = (g: Group) => {
     setPayKey(g.key);
@@ -1102,7 +1132,14 @@ export default function Debts() {
                   <TableRow key={g.key}>
                     <TableCell>
                       <div className="font-medium flex items-center gap-2">
-                        {g.person_name}
+                        <button
+                          type="button"
+                          className="text-left hover:underline underline-offset-2"
+                          title="Open this ledger"
+                          onClick={() => setLedgerKey(g.key)}
+                        >
+                          {g.person_name}
+                        </button>
                         {g.status === "settled" && (
                           <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium uppercase tracking-wide">Settled</Badge>
                         )}
@@ -1143,6 +1180,7 @@ export default function Debts() {
                       {canManage && (
                         <RowActions
                           actions={[
+                            { label: "View ledger", icon: BookOpen, onClick: () => setLedgerKey(g.key) },
                             { label: "Payments", icon: Wallet, onClick: () => openPaymentsDialog(g) },
                             {
                               label: g.phone ? "Message on WhatsApp" : "Message on WhatsApp (add a phone first)",
@@ -1720,6 +1758,19 @@ export default function Debts() {
       />
 
       <EditLedgerEntryDialog entry={editEntry} onClose={() => setEditEntry(null)} onSave={saveEntryEdit} />
+
+      <PersonLedgerDialog
+        open={!!ledgerGroup}
+        onClose={() => setLedgerKey(null)}
+        name={ledgerGroup?.person_name ?? ""}
+        phone={ledgerGroup?.phone ?? null}
+        currency={ledgerGroup?.currency ?? currentShop?.currency ?? "PKR"}
+        side={ledgerGroup?.direction === "i_owe" ? "payable" : "receivable"}
+        debts={ledgerDebts}
+        payments={ledgerPayments}
+        onRecordPayment={canManage && ledgerGroup ? () => { const g = ledgerGroup; setLedgerKey(null); openPaymentsDialog(g); } : undefined}
+        onPrint={ledgerGroup ? () => void printStatements(ledgerDebts.map((d) => d.id)) : undefined}
+      />
 
       <PaymentReceiptDialog
         receipt={receipt}
