@@ -29,6 +29,7 @@ import { AccountPicker } from "@/components/AccountPicker";
 import { useDaybookHandoff } from "@/hooks/useDaybookHandoff";
 import { useAddNew } from "@/hooks/useAddNew";
 import { DateInput } from "@/components/DateInput";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { fmtDate } from "@/lib/date-format";
 
 
@@ -449,19 +450,15 @@ export default function Expenses() {
       </div>
 
       <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <div className="flex flex-wrap gap-3 items-end">
           <div className="space-y-1.5">
-            <Label>{t("expenses.from")}</Label>
-            <DateInput value={from} onChange={(e) => setFrom(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t("expenses.to")}</Label>
-            <DateInput value={to} onChange={(e) => setTo(e.target.value)} />
+            <Label>{t("expenses.from")} – {t("expenses.to")}</Label>
+            <DateRangeFilter from={from} to={to} onChange={(r) => { setFrom(r.from); setTo(r.to); }} />
           </div>
           <div className="space-y-1.5">
             <Label>{t("expenses.category")}</Label>
             <Select value={filterCat} onValueChange={setFilterCat}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-52"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{t("expenses.allCategories")}</SelectItem>
                 {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}

@@ -156,6 +156,71 @@ export interface MoreReportsApi {
   accounts: (fromDate: string, toDate: string) => Promise<AccountsReport>;
   cheques: (fromDate: string, toDate: string) => Promise<ChequeReportRow[]>;
   collection: (fromDate: string, toDate: string) => Promise<CollectionRow[]>;
+  /** Every product (with its variants) the Flow report can be run for. */
+  flowProducts: () => Promise<FlowProductOption[]>;
+  /** One product's flow — who bought it, at what price; who it was bought from. */
+  productFlow: (productId: string, variantId: string | null, fromISO: string, toISO: string) => Promise<ProductFlow>;
+}
+
+export interface FlowProductOption {
+  id: string;
+  name: string;
+  sku: string | null;
+  barcode: string | null;
+  unit: string | null;
+  is_active: boolean;
+  variants: { id: string; name: string; sku: string | null; barcode: string | null }[];
+}
+
+/** One bill line of the product. Quantity and price are in the product's own unit. */
+export interface FlowSaleLine {
+  id: string;
+  sale_id: string;
+  date: string;
+  receipt_number: string | null;
+  /** Party id, or null for a walk-in. */
+  customer_id: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  variant_name: string | null;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  /** "2 Bottle @ 1,000" when the counter billed it in another unit. */
+  sold_as: string | null;
+}
+
+export interface FlowPurchaseLine {
+  id: string;
+  date: string;
+  reference: string | null;
+  supplier_name: string | null;
+  variant_name: string | null;
+  quantity: number;
+  unit_cost: number;
+  /** Goods + this line's share of expenses. */
+  line_total: number;
+}
+
+export interface FlowReturnLine {
+  id: string;
+  kind: "customer" | "supplier";
+  date: string;
+  number: string | null;
+  party_name: string | null;
+  variant_name: string | null;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+}
+
+export interface ProductFlow {
+  product: { id: string; name: string; unit: string | null; stock_now: number };
+  sales: FlowSaleLine[];
+  purchases: FlowPurchaseLine[];
+  returns: FlowReturnLine[];
+  /** Rows were capped at this many per kind (newest kept). */
+  capped: boolean;
 }
 
 /** Money-account movement kinds, in the shop's words. */
