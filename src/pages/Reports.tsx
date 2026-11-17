@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins, PackageCheck, Undo2, BadgeDollarSign, Building2, Landmark, ScrollText, Banknote } from "lucide-react";
+import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins, PackageCheck, Undo2, BadgeDollarSign, Building2, Landmark, ScrollText, Banknote, Route } from "lucide-react";
 import { downloadCsv, CsvColumn } from "@/lib/csv";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { isHandicraft } from "@/lib/handicraft";
@@ -43,6 +43,7 @@ import {
   type MoreReportProps,
 } from "@/components/reports/MoreReports";
 import { moreReportsApi } from "@/lib/moreReportsApi";
+import { ProductFlowReport } from "@/components/reports/ProductFlowReport";
 import { SalesReportView, type SalesReportRow } from "@/components/reports/SalesReportView";
 import type { CatalogBrand, CatalogCategory } from "@/lib/sales-report";
 
@@ -99,6 +100,7 @@ export default function Reports() {
           <TabsTrigger value="returns"><Undo2 className="size-3.5 mr-1.5" />Returns</TabsTrigger>
           <TabsTrigger value="inventory"><Boxes className="size-3.5 mr-1.5" />Inventory</TabsTrigger>
           <TabsTrigger value="sold-left"><PackageCheck className="size-3.5 mr-1.5" />Sold &amp; left</TabsTrigger>
+          <TabsTrigger value="flow"><Route className="size-3.5 mr-1.5" />Flow</TabsTrigger>
           <TabsTrigger value="pnl"><TrendingUp className="size-3.5 mr-1.5" />Profit & Loss</TabsTrigger>
           <TabsTrigger value="expenses"><Wallet className="size-3.5 mr-1.5" />Expenses</TabsTrigger>
           <TabsTrigger value="payroll"><BadgeDollarSign className="size-3.5 mr-1.5" />Payroll</TabsTrigger>
@@ -121,6 +123,7 @@ export default function Reports() {
           <TabsContent value="purchases"><PurchasesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="returns"><ServerReport report={ReturnsReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="inventory"><InventoryReport shopId={currentShop.id} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          <TabsContent value="flow"><ServerReport report={ProductFlowReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="sold-left"><SoldLeftReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="pnl"><PnlReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="expenses"><ExpensesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
