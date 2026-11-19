@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { ChequesScreen } from "@/components/ChequesScreen";
+import { ChequesScreen, type ChequeEdit } from "@/components/ChequesScreen";
 import { useShop } from "@/contexts/ShopContext";
 import { rpc } from "@/lib/apiClient";
 import { syncNow } from "@/lib/syncEngine";
@@ -35,6 +35,9 @@ export default function Cheques() {
   };
   const clear = async (id: string, accountId: string | null) => after(await rpc<Result>("clearChequeAction", id, accountId));
   const bounce = async (id: string) => after(await rpc<Result>("bounceChequeAction", id));
+  // Correcting the number/bank/date rewrites the cheque's label on its khata
+  // entries, so the returned rows are applied the same way.
+  const update = async (id: string, input: ChequeEdit) => after(await rpc<Result>("updateChequeAction", id, input));
 
   if (!currentShop?.cheques_enabled) {
     return (
@@ -51,6 +54,7 @@ export default function Cheques() {
       list={list}
       clear={clear}
       bounce={bounce}
+      update={update}
     />
   );
 }
