@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { BadgeCheck, Ban, FileCheck2 } from "lucide-react";
+import { BadgeCheck, Ban, FileCheck2, Pencil } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AccountPicker } from "@/components/AccountPicker";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { DateInput } from "@/components/DateInput";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Pagination } from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
@@ -20,6 +24,14 @@ type Status = "pending" | "cleared" | "bounced" | "all";
 // `{ok:true}|{ok:false}` union doesn't narrow on `ok`.
 type Result = { ok: boolean; error?: string };
 
+/** What a cheque's details can be corrected to. The amount is fixed once taken. */
+export interface ChequeEdit {
+  cheque_number: string;
+  bank_name: string | null;
+  cheque_date: string;
+  notes: string | null;
+}
+
 /**
  * Post-dated cheques against the khata. A cheque was already taken off the
  * person's balance when it was recorded (Ledger → Record payment → Paid by
@@ -30,7 +42,7 @@ type Result = { ok: boolean; error?: string };
  * (RPC) share this screen.
  */
 export function ChequesScreen({
-  currency, reminderDays, canManage, list, clear, bounce,
+  currency, reminderDays, canManage, list, clear, bounce, update,
 }: {
   currency: string;
   reminderDays: number;
@@ -38,6 +50,8 @@ export function ChequesScreen({
   list: (status: Status) => Promise<ChequeDto[]>;
   clear: (id: string, accountId: string | null) => Promise<Result>;
   bounce: (id: string) => Promise<Result>;
+  /** Correct a mistyped number / bank / date / note. Omitted = no Edit button. */
+  update?: (id: string, input: ChequeEdit) => Promise<Result>;
 }) {
   const [status, setStatus] = useState<Status>("pending");
   const [rows, setRows] = useState<ChequeDto[]>([]);
@@ -45,6 +59,8 @@ export function ChequesScreen({
   const [clearing, setClearing] = useState<ChequeDto | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<ChequeDto | null>(null);
+  const [edit, setEdit] = useState<ChequeEdit>({ cheque_number: "", bank_name: null, cheque_date: "", notes: null });
   const { confirm, dialog: confirmDialog } = useConfirm();
 
   const load = useCallback(async () => {
@@ -71,6 +87,30 @@ export function ChequesScreen({
     await load();
   };
 
+  const startEdit = (c: ChequeDto) => {
+    setEdit({ cheque_number: c.cheque_number, bank_name: c.bank_name, cheque_date: c.cheque_date, notes: c.notes });
+    setEditing(c);
+  };
+  const doEdit = async () => {
+    if (!editing || !update) return;
+    if (!edit.cheque_number.trim()) return toast.error("Enter the cheque number");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(edit.cheque_date)) return toast.error("Enter the date on the cheque");
+    setBusy(true);
+    try {
+      const res = await update(editing.id, {
+        cheque_number: edit.cheque_number.trim(),
+        bank_name: edit.bank_name?.trim() || null,
+        cheque_date: edit.cheque_date,
+        notes: edit.notes?.trim() || null,
+      });
+      if (!res.ok) return toast.error(res.error ?? "Couldn't save the cheque");
+      toast.success("Cheque updated");
+      setEditing(null);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
   const doBounce = async (c: ChequeDto) => {
     const ok = await confirm({
       title: `Cheque ${c.cheque_number} bounced?`,
@@ -164,14 +204,21 @@ export function ChequesScreen({
                       {c.status === "bounced" && <Badge variant="outline" className="text-destructive border-destructive/40">Bounced</Badge>}
                     </td>
                     <td className="p-3 text-end whitespace-nowrap">
-                      {canManage && c.status === "pending" && (
+                      {canManage && (
                         <div className="flex justify-end gap-1.5">
+                          {update && (
+                            <Button size="sm" variant="ghost" onClick={() => startEdit(c)} aria-label={`Edit cheque ${c.cheque_number}`} title="Edit cheque details">
+                              <Pencil className="size-4" />
+                            </Button>
+                          )}
+                          {c.status === "pending" && (<>
                           <Button size="sm" variant="outline" onClick={() => { setAccountId(null); setClearing(c); }}>
                             <BadgeCheck className="size-4 mr-1" /> Cleared
                           </Button>
                           <Button size="sm" variant="outline" className="text-destructive" onClick={() => void doBounce(c)}>
                             <Ban className="size-4 mr-1" /> Bounced
                           </Button>
+                          </>)}
                         </div>
                       )}
                     </td>
@@ -183,6 +230,47 @@ export function ChequesScreen({
         </div>
         <Pagination page={page} pageSize={pageSize} totalItems={totalItems} onPageChange={setPage} />
       </Card>
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit cheque</DialogTitle>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => { e.preventDefault(); void doEdit(); }}
+          >
+            <div className="space-y-1.5">
+              <Label>Cheque number</Label>
+              <Input value={edit.cheque_number} onChange={(e) => setEdit({ ...edit, cheque_number: e.target.value })} autoFocus />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Bank</Label>
+                <Input value={edit.bank_name ?? ""} onChange={(e) => setEdit({ ...edit, bank_name: e.target.value })} placeholder="Optional" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Cheque date</Label>
+                <DateInput value={edit.cheque_date} onChange={(e) => setEdit({ ...edit, cheque_date: e.target.value })} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Note</Label>
+              <Textarea rows={2} value={edit.notes ?? ""} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} />
+            </div>
+            {editing && (
+              <p className="text-xs text-muted-foreground">
+                {formatMoney(editing.amount, currency)} {editing.direction === "received" ? "from" : "to"} {editing.person_name}. The amount cannot be changed here —
+                it is already on the khata. If it is wrong, mark the cheque bounced and record it again.
+              </p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+              <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!clearing} onOpenChange={(o) => !o && setClearing(null)}>
         <DialogContent className="sm:max-w-md">
