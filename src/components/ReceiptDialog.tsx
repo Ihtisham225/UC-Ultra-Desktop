@@ -19,6 +19,7 @@ import { receiptLedger } from "@/lib/receipt-ledger";
 import { matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcuts";
 import { useIsMac } from "@/hooks/useIsMac";
 import { fmtDateTime } from "@/lib/date-format";
+import { billReturnTotals, hasBillReturns, returnedLines, takenLine } from "@/lib/bill-returns";
 
 const escapeHtml = (value: string) =>
   value
@@ -143,7 +144,11 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
       </thead>
       <tbody>
         ${sale.items
-          .map((item: any) => {
+          // With returns inside the bill, the table shows what was TAKEN; what
+          // came back is its own section below (lib/bill-returns).
+          .filter((item: any) => Number(item.quantity) > 0 || Number(item.returned_quantity ?? 0) > 0)
+          .map((raw: any) => {
+            const item = takenLine(raw);
             const sold = soldAs(item);
             const imeis = showImei
               ? [item.imei1, item.imei2]
@@ -165,10 +170,40 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
     </tbody>
     </table>`;
 
+  const withReturns = hasBillReturns(sale.items);
+  const returnTotals = withReturns ? billReturnTotals(sale.items) : null;
+  const returnsHtml = withReturns
+    ? `<div class="rule"></div>
+       <div class="center small">RETURNED</div>
+       <table class="items">
+         <tbody>
+           ${returnedLines(sale.items as any[])
+             .map((item: any) => {
+               const back = soldAs(item);
+               return `
+                 <tr>
+                   <td class="d">${escapeHtml(item.product_name ?? "")}</td>
+                   <td class="q">${escapeHtml(formatUnitQty(back.quantity))}</td>
+                   <td class="u">${escapeHtml(back.unit ?? "")}</td>
+                   <td class="r">${escapeHtml(formatAmount(back.unitPrice, currency))}</td>
+                   <td class="a">-${escapeHtml(formatAmount(item.line_total, currency))}</td>
+                 </tr>`;
+             })
+             .join("")}
+         </tbody>
+       </table>`
+    : "";
+
   const ledger = ledgerFor(sale);
   const note = noteFor(sale);
   const summaryRows = [
-    `<div class="row"><span>Subtotal</span><span class="value">${escapeHtml(formatMoney(sale.subtotal, currency))}</span></div>`,
+    ...(returnTotals
+      ? [
+          `<div class="row"><span>Sold</span><span class="value">${escapeHtml(formatMoney(returnTotals.taken, currency))}</span></div>`,
+          `<div class="row"><span>Returned</span><span class="value">-${escapeHtml(formatMoney(returnTotals.returned, currency))}</span></div>`,
+        ]
+      : []),
+    `<div class="row"><span>${returnTotals ? "Net" : "Subtotal"}</span><span class="value">${escapeHtml(formatMoney(sale.subtotal, currency))}</span></div>`,
     Number(sale.discount) > 0
       ? `<div class="row"><span>Discount</span><span class="value">-${escapeHtml(formatMoney(sale.discount, currency))}</span></div>`
       : "",
@@ -378,6 +413,7 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
         <div class="rule"></div>
 
         <div>${itemsHtml}</div>
+        ${returnsHtml}
 
         <div class="rule"></div>
 
@@ -532,7 +568,10 @@ export const ReceiptPaper = ({
           </tr>
         </thead>
         <tbody>
-          {sale.items.map((it: any, i: number) => {
+          {sale.items
+            .filter((raw: any) => Number(raw.quantity) > 0 || Number(raw.returned_quantity ?? 0) > 0)
+            .map((raw: any, i: number) => {
+            const it = takenLine(raw);
             const sold = soldAs(it);
             const imeis = sale.shop?.show_imei_on_receipt
               ? [it.imei1, it.imei2].filter(Boolean)
@@ -555,10 +594,42 @@ export const ReceiptPaper = ({
         </tbody>
       </table>
 
+      {hasBillReturns(sale.items) && (
+        <>
+          <div className={dashed} />
+          <div className="text-center text-[11px] font-bold">RETURNED</div>
+          <table className="w-full table-fixed border-collapse font-normal text-[11px]">
+            <tbody>
+              {returnedLines(sale.items as any[]).map((it: any, i: number) => {
+                const back = soldAs(it);
+                return (
+                  <tr key={i} className="align-top">
+                    <td className="py-0.5 pe-1 break-words [overflow-wrap:anywhere]">{it.product_name}</td>
+                    <td className="py-0.5 pe-1 text-end tabular-nums w-[12%]">{formatUnitQty(back.quantity)}</td>
+                    <td className="py-0.5 pe-1 break-words w-[13%]">{back.unit ?? ""}</td>
+                    <td className="py-0.5 pe-1 text-end tabular-nums break-words w-[21%]">{formatAmount(back.unitPrice, cur)}</td>
+                    <td className="py-0.5 text-end tabular-nums break-words w-[22%]">-{formatAmount(it.line_total, cur)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </>
+      )}
+
       <div className={dashed} />
 
       <div className="space-y-0.5">
-        <div className="flex justify-between gap-2"><span>Subtotal</span><span className="tabular-nums text-right">{formatMoney(sale.subtotal, cur)}</span></div>
+        {hasBillReturns(sale.items) && (() => {
+          const rt = billReturnTotals(sale.items);
+          return (
+            <>
+              <div className="flex justify-between gap-2"><span>Sold</span><span className="tabular-nums text-right">{formatMoney(rt.taken, cur)}</span></div>
+              <div className="flex justify-between gap-2"><span>Returned</span><span className="tabular-nums text-right">-{formatMoney(rt.returned, cur)}</span></div>
+            </>
+          );
+        })()}
+        <div className="flex justify-between gap-2"><span>{hasBillReturns(sale.items) ? "Net" : "Subtotal"}</span><span className="tabular-nums text-right">{formatMoney(sale.subtotal, cur)}</span></div>
         {Number(sale.discount) > 0 && (
           <div className="flex justify-between gap-2"><span>Discount</span><span className="tabular-nums text-right">-{formatMoney(sale.discount, cur)}</span></div>
         )}
@@ -676,12 +747,27 @@ export const ReceiptDialog = ({ sale, onClose }: { sale: any; onClose: () => voi
       receiptNumber: orderNumberLabel(sale.receipt_number),
       date: fmtDateTime(sale.created_at),
       customerName: customer.name,
-      lines: (sale.items ?? []).map((it: any) => ({
-        name: it.product_name,
-        quantity: Number(it.quantity),
-        unit_label: it.unit_label,
-        line_total: Number(it.line_total),
-      })),
+      // What was taken, then what came back inside the bill (negative), so
+      // the message adds up to the same net figure as the paper.
+      lines: [
+        ...(sale.items ?? [])
+          .filter((it: any) => Number(it.quantity) > 0 || Number(it.returned_quantity ?? 0) > 0)
+          .map((raw: any) => {
+            const it = takenLine(raw);
+            return {
+              name: it.product_name,
+              quantity: Number(it.quantity),
+              unit_label: it.unit_label,
+              line_total: Number(it.line_total),
+            };
+          }),
+        ...returnedLines((sale.items ?? []) as any[]).map((it: any) => ({
+          name: `Returned: ${it.product_name}`,
+          quantity: Number(it.quantity),
+          unit_label: it.unit_label,
+          line_total: -Number(it.line_total),
+        })),
+      ],
       subtotal: Number(sale.subtotal ?? 0),
       discount: Number(sale.discount ?? 0),
       tax: sale.shop?.show_tax_line === false ? 0 : Number(sale.tax ?? 0),

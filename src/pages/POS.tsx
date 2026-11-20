@@ -18,7 +18,8 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw, FlaskConical, Car, UserRound, Droplet, History } from "lucide-react";
+import { ScanBarcode, Search, Plus, Minus, X, Trash2, Receipt, Layers, Tag, WifiOff, RefreshCw, FlaskConical, Car, UserRound, Droplet, History, Undo2, PauseCircle, FolderOpen } from "lucide-react";
+import { Label } from "@/components/ui/label";
 import { useOfflineProducts } from "@/hooks/useOfflineProducts";
 import { upsertLocal, notifyChange, getAll } from "@/lib/localDb";
 import { allocateTenders, round2 } from "@/lib/tender";
@@ -52,7 +53,7 @@ import { isPlainEnter, matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcu
 import { useIsMac } from "@/hooks/useIsMac";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useAddNew } from "@/hooks/useAddNew";
-import { fmtDate, fmtTime } from "@/lib/date-format";
+import { fmtDate, fmtDateTime, fmtTime } from "@/lib/date-format";
 import { useCheckoutMode } from "@/components/appearance/useCheckoutMode";
 
 interface Variant {
@@ -146,6 +147,51 @@ interface CartItem {
    * moment the quantity, price or unit is changed by hand. See lib/sell-by-amount.
    */
   amount?: number;
+  /**
+   * Handed back before the bill was closed — the customer took 10 and returned
+   * 2. In the line's own unit, like `quantity`, which stays what was TAKEN.
+   * What leaves the shop is quantity − returned (see netQty); the slip prints
+   * both (lib/bill-returns).
+   */
+  returned?: number;
+}
+
+const round2Top = (n: number) => Math.round(n * 100) / 100;
+
+/** An open bill as the server lists it (pos/held-bill-actions on the web). */
+interface HeldBillSummary {
+  id: string;
+  label: string;
+  item_count: number;
+  total: number;
+  created_at: string;
+  updated_at: string;
+  updated_by_name: string | null;
+}
+
+/** What actually leaves the shop on this line. */
+const netQty = (c: { quantity: number; returned?: number }) =>
+  Math.max(0, Math.round((c.quantity - (c.returned ?? 0)) * 10000) / 10000);
+/** The line's money: a typed amount only counts while nothing came back. */
+const lineAmountOf = (c: CartItem) =>
+  lineTotalOf(c.unit_price, netQty(c), c.returned ? undefined : c.amount);
+
+/**
+ * The till parked as an open bill (pos/held-bill-actions). Client-shaped on
+ * purpose: only this screen ever reads it back.
+ */
+interface HeldCart {
+  v: 1;
+  lines: CartItem[];
+  customer: CustomerLite | null;
+  patient: PatientLite | null;
+  order_type: string | null;
+  table_label: string;
+  notes: string;
+  discount_type: "amount" | "percent";
+  discount_value: string;
+  vehicle: VehicleDraft;
+  picked_vehicle: VehicleLite | null;
 }
 
 export default function POS() {
@@ -271,6 +317,33 @@ export default function POS() {
    */
   const submittingRef = useRef(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
+  /**
+   * Open bills. The till can park its bill under a name and serve someone
+   * else; reopening it brings back every line, return and choice. `heldId` is
+   * the open bill the till is showing now — closing it (Charge) deletes it in
+   * the sale's own transaction, and holding again updates it.
+   */
+  const [heldId, setHeldId] = useState<string | null>(null);
+  const [heldLabel, setHeldLabel] = useState("");
+  const [heldBills, setHeldBills] = useState<HeldBillSummary[]>([]);
+  const [openBillsOpen, setOpenBillsOpen] = useState(false);
+  const [holdOpen, setHoldOpen] = useState(false);
+  const [holdName, setHoldName] = useState("");
+  const [holding, setHolding] = useState(false);
+  const refreshHeld = useCallback(() => {
+    if (!navigator.onLine) return;
+    rpc<HeldBillSummary[]>("listHeldBillsAction").then(setHeldBills).catch(() => {});
+  }, []);
+  useEffect(() => {
+    refreshHeld();
+    // Another till may have held or closed a bill meanwhile.
+    window.addEventListener("focus", refreshHeld);
+    return () => window.removeEventListener("focus", refreshHeld);
+  }, [refreshHeld]);
+  /** Which lines can still take a return: the open line shows its Return box. */
+  const [returnOpen, setReturnOpen] = useState<Record<string, boolean>>({});
+  const [returnDraft, setReturnDraft] = useState<Record<string, string>>({});
+  const retSel = (key: string) => `[data-pos-return="${key}"]`;
 
   // Pharmacies with a lab split the catalog: goods vs lab tests.
   const labEnabled = isLabEnabled(currentShop);
@@ -346,7 +419,7 @@ export default function POS() {
     const display_name = v ? `${p.name} — ${v.name}` : p.name;
     setCart((prev) => {
       const existing = prev.find((c) => c.key === key);
-      const currentQty = existing?.quantity ?? 0;
+      const currentQty = existing ? netQty(existing) : 0;
       // Stock is in base units, the line's quantity is in whatever the cashier
       // picked, so the comparison has to go through the factor.
       const factor = existing?.unit_factor ?? 1;
@@ -403,7 +476,9 @@ export default function POS() {
     });
 
   const setLineQuantity = (key: string, qty: number) => {
-    setCart((prev) => prev.map((c) => (c.key === key ? { ...c, quantity: qty, amount: undefined } : c)));
+    setCart((prev) => prev.map((c) => (c.key === key
+      ? { ...c, quantity: qty, amount: undefined, ...(c.returned ? { returned: Math.min(c.returned, qty) } : {}) }
+      : c)));
   };
 
   /** The amount box's in-flight text, per line — same reasoning as qtyDraft. */
@@ -425,12 +500,17 @@ export default function POS() {
   const setLineAmount = (key: string, amount: number) => {
     setCart((prev) => prev.map((c) => {
       if (c.key !== key) return c;
+      // With something returned the amount is for what is KEPT, and it isn't
+      // remembered — the line is priced plainly from then on.
+      const back = c.returned ?? 0;
       if (amountSetsQuantity(c.unit_label ?? c.base_unit)) {
         const qty = qtyForAmount(amount, c.unit_price);
-        return qty === null ? c : { ...c, quantity: qty, amount };
+        if (qty === null) return c;
+        return back > 0 ? { ...c, quantity: qty + back, amount: undefined } : { ...c, quantity: qty, amount };
       }
-      const price = priceForAmount(amount, c.quantity);
-      return price === null ? c : { ...c, unit_price: price, amount };
+      const price = priceForAmount(amount, back > 0 ? netQty(c) : c.quantity);
+      if (price === null) return c;
+      return back > 0 ? { ...c, unit_price: price, amount: undefined } : { ...c, unit_price: price, amount };
     }));
   };
 
@@ -445,9 +525,9 @@ export default function POS() {
       if (c.key !== key) return c;
       if (c.is_service || allowNegativeStock) return c;
       const max = c.stock / (c.unit_factor || 1);
-      if (c.quantity > max) {
+      if (netQty(c) > max) {
         toast.error(t("pos.insufficientStock", { name: c.product_name }));
-        return { ...c, quantity: Math.max(0, Math.round(max * 10000) / 10000), amount: undefined };
+        return { ...c, quantity: Math.max(0, Math.round((max + (c.returned ?? 0)) * 10000) / 10000), amount: undefined };
       }
       return c;
     }).filter((c) => c.quantity > 0));
@@ -459,11 +539,14 @@ export default function POS() {
       .map((c) => {
         if (c.key !== key) return c;
         const newQty = c.quantity + delta;
-        if (delta > 0 && !c.is_service && newQty * c.unit_factor > c.stock && !allowNegativeStock) {
+        if (delta > 0 && !c.is_service && (newQty - (c.returned ?? 0)) * c.unit_factor > c.stock && !allowNegativeStock) {
           toast.error(t("pos.insufficientStock", { name: c.product_name }));
           return c;
         }
-        return { ...c, quantity: newQty, amount: undefined };
+        return {
+          ...c, quantity: newQty, amount: undefined,
+          ...(c.returned ? { returned: Math.min(c.returned, Math.max(0, newQty)) } : {}),
+        };
       })
       .filter((c) => c.quantity > 0));
   };
@@ -574,7 +657,10 @@ export default function POS() {
     );
   }, [products, search, labEnabled, posTab, isLabTest]);
 
-  const subtotal = cart.reduce((a, c) => a + lineTotalOf(c.unit_price, c.quantity, c.amount), 0);
+  const subtotal = cart.reduce((a, c) => a + lineAmountOf(c), 0);
+  // Returns inside this open bill: what was taken, and what came back.
+  const returnedValue = round2Top(cart.reduce((a, c) => a + (c.returned ? lineTotalOf(c.unit_price, c.returned) : 0), 0));
+  const takenValue = round2Top(subtotal + returnedValue);
   const taxRate = Number(currentShop?.tax_rate ?? 0);
   const discountInput = parseFloat(discountValue) || 0;
   const rawDiscount = discountType === "percent"
@@ -667,6 +753,21 @@ export default function POS() {
     submittingRef.current = true;
     try {
     setBusy(true);
+    // Closing an open bill: claim it on the server first, so two tills can't
+    // ring the same one up. Gone = closed elsewhere → refuse. Unreachable →
+    // sell anyway (this till may be offline) and say the bill is still listed.
+    let heldNotClosed = false;
+    if (heldId) {
+      try {
+        const closed = await rpc<{ ok: boolean; error?: string; gone?: boolean }>("closeHeldBillAction", heldId);
+        if (!closed.ok) {
+          if (closed.gone) { setBusy(false); return toast.error(closed.error ?? "This open bill was already closed on another till."); }
+          heldNotClosed = true;
+        }
+      } catch {
+        heldNotClosed = true;
+      }
+    }
     const now = new Date().toISOString();
     // ⚠️ The terminal does NOT invent an order number. It used to mint an
     // `R-<timestamp>` code, which is how bills ended up reading "R-MTO2I2OT"
@@ -716,8 +817,11 @@ export default function POS() {
       variant_id: c.variant_id,
       product_name: c.product_name,
       unit_price: c.unit_price / c.unit_factor,
-      quantity: c.quantity * c.unit_factor,
-      line_total: lineTotalOf(c.unit_price, c.quantity, c.amount),
+      // NET: what left the shop. What came back inside the open bill rides
+      // along for the slip (lib/bill-returns); the push moves stock on quantity.
+      quantity: netQty(c) * c.unit_factor,
+      returned_quantity: c.returned ? c.returned * c.unit_factor : null,
+      line_total: lineAmountOf(c),
       // Always record what the line was measured in — the alternate unit if
       // one was picked, otherwise the product's own — so the receipt's Unit
       // column is filled whether or not any conversion happened.
@@ -937,6 +1041,11 @@ export default function POS() {
     setCart([]); setQtyDraft({}); setAmountDraft({}); setAmountPaid(""); setCustomer(null); setPatient(null); setDiscountValue(""); setIsCredit(false);
     setNotes("");
     setTableLabel("");
+    setReturnOpen({}); setReturnDraft({});
+    if (heldId) {
+      if (heldNotClosed) toast.warning(`"${heldLabel}" is still under Open bills — discard it there once this till is online.`, { duration: 10000 });
+      setHeldId(null); setHeldLabel(""); refreshHeld();
+    }
     setTendersTouched(false);
     setTenders((prev) => (prev.length > 0 ? [{ ...prev[0], amount: "" }] : prev));
     toast.success("Sale completed!");
@@ -966,7 +1075,148 @@ export default function POS() {
     setCart([]);
     // Stale typed quantities would otherwise resurface on the next line added.
     setQtyDraft({}); setAmountDraft({});
+    setReturnOpen({}); setReturnDraft({});
+    // Clearing the till while an open bill is on it only puts it down — the
+    // bill stays saved under Open bills. Discarding it is done from that list.
+    if (heldId) { setHeldId(null); setHeldLabel(""); }
     focusSoon(SEARCH);
+  };
+
+  // ─── Returns inside the open bill ────────────────────────────────────────
+
+  /**
+   * Set how many of this line came back. Never more than was taken. Checked on
+   * the way in rather than on blur: unlike quantity, there is no number on the
+   * way to a valid one that is itself too big.
+   */
+  const setLineReturned = (key: string, n: number) => {
+    setCart((prev) => prev.map((c) => {
+      if (c.key !== key) return c;
+      const back = Math.max(0, Math.min(n, c.quantity));
+      return { ...c, returned: back > 0 ? back : undefined, amount: undefined };
+    }));
+  };
+  const clearReturnDraft = (key: string) =>
+    setReturnDraft((d) => {
+      if (!(key in d)) return d;
+      const next = { ...d };
+      delete next[key];
+      return next;
+    });
+  const openReturn = (key: string) => {
+    setReturnOpen((r) => ({ ...r, [key]: true }));
+    focusSoon(retSel(key));
+  };
+
+  // ─── Open bills (hold / reopen) ──────────────────────────────────────────
+
+  const startHold = () => {
+    if (cart.length === 0) return;
+    setHoldName(
+      heldLabel ||
+      (hasLabTests ? patient?.name : customer?.name) ||
+      (chosenType === "dine_in" && tableLabel.trim() ? `Table ${tableLabel.trim()}` : "") ||
+      `Bill ${heldBills.length + 1}`,
+    );
+    setHoldOpen(true);
+  };
+
+  /** Park the till's bill and clear the till for the next customer. */
+  const holdBill = async () => {
+    const label = holdName.trim();
+    if (!label || cart.length === 0 || holding) return;
+    const snapshot: HeldCart = {
+      v: 1,
+      lines: cart,
+      customer,
+      patient,
+      order_type: orderType,
+      table_label: tableLabel,
+      notes,
+      discount_type: discountType,
+      discount_value: discountValue,
+      vehicle,
+      picked_vehicle: pickedVehicle,
+    };
+    setHolding(true);
+    try {
+      if (!navigator.onLine) { toast.error("Holding a bill needs a connection — open bills are shared by every till."); return; }
+      const res = await rpc<{ ok: boolean; id?: string; error?: string }>("saveHeldBillAction", {
+        id: heldId,
+        label,
+        cart: snapshot as unknown as Record<string, unknown>,
+        item_count: cart.length,
+        total: round2Top(total),
+      });
+      if (!res.ok) { toast.error(res.error ?? "Could not hold the bill."); return; }
+      toast.success(`Bill held as "${label}"`);
+      setHoldOpen(false);
+      setChargeOpen(false);
+      setCart([]); setQtyDraft({}); setAmountDraft({}); setReturnOpen({}); setReturnDraft({});
+      setCustomer(null); setPatient(null); setDiscountValue(""); setNotes(""); setTableLabel("");
+      setVehicle({ ...blankVehicle }); setPickedVehicle(null); setKnownVehicle(null);
+      setTendersTouched(false);
+      setTenders((prev) => (prev.length > 0 ? [{ ...prev[0], amount: "" }] : prev));
+      setHeldId(null); setHeldLabel("");
+      refreshHeld();
+      focusSoon(SEARCH);
+    } finally {
+      setHolding(false);
+    }
+  };
+
+  /** Bring an open bill back onto the till. */
+  const openHeldBill = async (id: string) => {
+    if (cart.length > 0 && id !== heldId) {
+      toast.error("Hold or clear the bill on the till first.");
+      return;
+    }
+    const bill = await rpc<(HeldBillSummary & { cart: unknown }) | null>("getHeldBillAction", id).catch(() => null);
+    if (!bill) {
+      toast.error("That bill is no longer open — it was closed or discarded on another till.");
+      refreshHeld();
+      return;
+    }
+    const c = bill.cart as Partial<HeldCart>;
+    // Stock may have moved since the bill was held; take today's figure.
+    const lines = (c.lines ?? []).map((l) => {
+      const p = products.find((x) => x.id === l.product_id);
+      const v = l.variant_id ? p?.variants?.find((x) => x.id === l.variant_id) : null;
+      const stock = v ? Number(v.stock) || 0 : p ? Number(p.stock) || 0 : l.stock;
+      return { ...l, stock };
+    });
+    setCart(lines);
+    setQtyDraft({}); setAmountDraft({}); setReturnDraft({});
+    setReturnOpen(Object.fromEntries(lines.filter((l) => l.returned).map((l) => [l.key, true])));
+    setCustomer(c.customer ?? null);
+    setPatient(c.patient ?? null);
+    if (c.order_type !== undefined) setOrderType(c.order_type);
+    setTableLabel(c.table_label ?? "");
+    setNotes(c.notes ?? "");
+    setDiscountType(c.discount_type ?? "amount");
+    setDiscountValue(c.discount_value ?? "");
+    setVehicle(c.vehicle ?? { ...blankVehicle });
+    setPickedVehicle(c.picked_vehicle ?? null);
+    setKnownVehicle(null);
+    setTendersTouched(false);
+    setHeldId(bill.id);
+    setHeldLabel(bill.label);
+    setOpenBillsOpen(false);
+    focusSoon(SEARCH);
+  };
+
+  const discardHeldBill = async (b: HeldBillSummary) => {
+    const ok = await confirm({
+      title: `Discard "${b.label}"?`,
+      description: "The open bill is deleted without being rung up. Nothing was sold from it, so stock and money are untouched.",
+      confirmLabel: "Discard bill",
+    });
+    if (!ok) return;
+    const res = await rpc<{ ok: boolean; error?: string }>("deleteHeldBillAction", b.id).catch(() => ({ ok: false, error: "Can't reach the server — try again when online." }));
+    if (!res.ok) return toast.error(res.error ?? "Could not discard the bill.");
+    if (b.id === heldId) { setHeldId(null); setHeldLabel(""); }
+    toast.success(`Discarded "${b.label}"`);
+    refreshHeld();
   };
 
   /**
@@ -1253,7 +1503,7 @@ export default function POS() {
                         ? "Amount — type what the customer is paying and the quantity is worked out at this price"
                         : "Amount — type what the customer is paying for this quantity and the price per item is worked out"}
                       aria-label={`Amount for ${c.product_name}`}
-                      value={amountDraft[c.key] ?? String(lineTotalOf(c.unit_price, c.quantity, c.amount))}
+                      value={amountDraft[c.key] ?? String(lineAmountOf(c))}
                       onChange={(e) => {
                         const raw = e.target.value;
                         setAmountDraft((d) => ({ ...d, [c.key]: raw }));
@@ -1346,8 +1596,60 @@ export default function POS() {
                         className="h-7 w-20 text-xs px-2 tabular-nums"
                       />
                     </div>
+                    <Button
+                      size="icon" variant="ghost"
+                      className={`size-7 ${c.returned ? "text-amber-600" : ""}`}
+                      onClick={() => openReturn(c.key)}
+                      title="Customer handed some back"
+                      aria-label={`Return some ${c.product_name}`}
+                    >
+                      <Undo2 className="size-3" />
+                    </Button>
                     <Button size="icon" variant="ghost" className="size-7" onClick={() => removeItem(c.key)}><X className="size-3" /></Button>
                   </div>
+                  {(returnOpen[c.key] || (c.returned ?? 0) > 0) && (
+                    // Handed back before the bill is closed: the line keeps what
+                    // was taken, and only the rest leaves stock and is charged.
+                    <div className="mt-2 flex items-center gap-2 rounded-md border border-amber-300/70 bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                      <Undo2 className="size-3.5 text-amber-700 shrink-0" />
+                      <span className="text-xs text-amber-800 dark:text-amber-300">Returned</span>
+                      <Input
+                        type="number" step="any" min="0" inputMode="decimal"
+                        aria-label={`Returned ${c.product_name}`}
+                        data-pos-return={c.key}
+                        value={returnDraft[c.key] ?? (c.returned ? formatQty(c.returned) : "")}
+                        placeholder="0"
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setReturnDraft((d) => ({ ...d, [c.key]: raw }));
+                          const n = parseFloat(raw);
+                          setLineReturned(c.key, Number.isFinite(n) ? n : 0);
+                        }}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onBlur={() => {
+                          clearReturnDraft(c.key);
+                          if (!c.returned) setReturnOpen((r) => ({ ...r, [c.key]: false }));
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") { setLineReturned(c.key, 0); focusSoon(SEARCH); return; }
+                          if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
+                          e.preventDefault();
+                          focusSoon(SEARCH);
+                        }}
+                        className="h-7 w-16 text-center text-sm px-1 tabular-nums bg-background"
+                      />
+                      <span className="text-[11px] text-muted-foreground">of {formatQty(c.quantity)} taken</span>
+                      <span className="ms-auto text-xs font-medium tabular-nums text-amber-800 dark:text-amber-300">
+                        {(c.returned ?? 0) > 0 ? `−${formatMoney(lineTotalOf(c.unit_price, c.returned ?? 0), cur)}` : ""}
+                      </span>
+                      {(c.returned ?? 0) > 0 && (
+                        <Button size="icon" variant="ghost" className="size-6" title="Undo the return"
+                          onClick={() => { setLineReturned(c.key, 0); clearReturnDraft(c.key); setReturnOpen((r) => ({ ...r, [c.key]: false })); }}>
+                          <X className="size-3" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
                   {c.unit_label && (
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       = {formatQty(c.quantity * c.unit_factor)} {c.base_unit || "pcs"} off stock
@@ -1526,6 +1828,12 @@ export default function POS() {
 
   const totalsBlock = (
             <div className="space-y-1 text-sm">
+              {returnedValue > 0 && (
+                <>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Sold</span><span className="tabular-nums">{formatMoney(takenValue, cur)}</span></div>
+                  <div className="flex justify-between text-amber-700"><span>Returned</span><span className="tabular-nums">−{formatMoney(returnedValue, cur)}</span></div>
+                </>
+              )}
               <div className="flex justify-between"><span className="text-muted-foreground">{t("common.subtotal")}</span><span className="tabular-nums">{formatMoney(subtotal, cur)}</span></div>
               {discount > 0 && (
                 <div className="flex justify-between text-success">
@@ -1681,11 +1989,33 @@ export default function POS() {
   );
 
   const cartHeader = (
-    <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
-      <div className="font-semibold flex items-center gap-2"><Receipt className="size-4" /> {t("pos.cart")}</div>
+    <div className="p-3 border-b bg-muted/30 flex items-center gap-1.5 flex-wrap">
+      <div className="font-semibold flex items-center gap-2 min-w-0 me-auto">
+        <Receipt className="size-4 shrink-0" />
+        {heldId ? (
+          <span className="truncate" title="Open bill — Charge closes it, Hold keeps it open">
+            Open bill: <span className="text-primary">{heldLabel}</span>
+          </span>
+        ) : t("pos.cart")}
+      </div>
+      <Button
+        variant="outline" size="sm" className="h-8"
+        onClick={() => { refreshHeld(); setOpenBillsOpen(true); }}
+        title="Bills left open for customers still shopping"
+      >
+        <FolderOpen className="size-4 me-1" /> Open bills
+        {heldBills.length > 0 && (
+          <span className="ms-1 rounded-full bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 leading-none">{heldBills.length}</span>
+        )}
+      </Button>
       {cart.length > 0 && (
-        <Button variant="ghost" size="sm" onClick={() => void clearCart(false)} title={`Clear cart (${shortcutLabel("clearCart", isMac)})`}>
-          <Trash2 className="size-4 me-1" /> {t("common.delete")}
+        <Button variant="outline" size="sm" className="h-8" onClick={startHold} title="Keep this bill open and serve someone else">
+          <PauseCircle className="size-4 me-1" /> Hold
+        </Button>
+      )}
+      {cart.length > 0 && (
+        <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => void clearCart(false)} title={`Clear cart (${shortcutLabel("clearCart", isMac)})`}>
+          <Trash2 className="size-4" />
         </Button>
       )}
     </div>
@@ -1718,6 +2048,80 @@ export default function POS() {
         />
       )}
       <LabTokenDialog orders={labTokens} onClose={() => setLabTokens(null)} />
+      <Dialog open={holdOpen} onOpenChange={(o) => { if (!holding) setHoldOpen(o); }}>
+        <DialogContent
+          className="sm:max-w-sm"
+          onCloseAutoFocus={(e) => { e.preventDefault(); focusSoon(SEARCH); }}
+        >
+          <DialogHeader>
+            <DialogTitle>{heldId ? "Keep this bill open" : "Hold this bill"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="hold-name">Name it so you can find it again</Label>
+            <Input
+              id="hold-name" autoFocus value={holdName} maxLength={80}
+              onChange={(e) => setHoldName(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                void holdBill();
+              }}
+              placeholder="Customer, table or bill name"
+            />
+            <p className="text-xs text-muted-foreground">
+              {cart.length} {cart.length === 1 ? "item" : "items"} · {formatMoney(total, cur)}. Nothing leaves stock until you open it again and charge it.
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setHoldOpen(false)} disabled={holding}>{t("common.cancel")}</Button>
+            <Button onClick={() => void holdBill()} disabled={holding || !holdName.trim()} data-enter-submit>
+              <PauseCircle className="size-4 me-1" /> {holding ? "Holding…" : "Hold bill"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={openBillsOpen} onOpenChange={setOpenBillsOpen}>
+        <DialogContent
+          className="sm:max-w-lg"
+          onCloseAutoFocus={(e) => { e.preventDefault(); focusSoon(SEARCH); }}
+        >
+          <DialogHeader>
+            <DialogTitle>Open bills</DialogTitle>
+          </DialogHeader>
+          {heldBills.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              No bills are open. Use <span className="font-medium">Hold</span> on the till to keep a bill open while the customer is still shopping.
+            </p>
+          ) : (
+            <ul className="divide-y max-h-[60vh] overflow-y-auto -mx-2">
+              {heldBills.map((b) => (
+                <li key={b.id} className="flex items-center gap-2 px-2 py-2">
+                  <button
+                    type="button"
+                    className="flex-1 min-w-0 text-start rounded-md px-2 py-1 hover:bg-muted focus-visible:bg-muted outline-none"
+                    onClick={() => void openHeldBill(b.id)}
+                  >
+                    <div className="font-medium truncate">
+                      {b.label}
+                      {b.id === heldId && <span className="ms-2 text-[10px] uppercase text-primary">On the till</span>}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {b.item_count} {b.item_count === 1 ? "item" : "items"} · {fmtDateTime(b.updated_at)}
+                      {b.updated_by_name ? ` · ${b.updated_by_name}` : ""}
+                    </div>
+                  </button>
+                  <span className="tabular-nums font-semibold text-sm">{formatMoney(b.total, cur)}</span>
+                  <Button size="sm" variant="outline" className="h-8" onClick={() => void openHeldBill(b.id)}>Open</Button>
+                  <Button size="icon" variant="ghost" className="size-8" title="Discard this bill" onClick={() => void discardHeldBill(b)}>
+                    <Trash2 className="size-4 text-destructive" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent>
+      </Dialog>
       {confirmDialog}
       <VehicleHistoryDialog
         vehicle={historyOpen ? pickedVehicle : null}
@@ -1815,6 +2219,12 @@ export default function POS() {
               counter is still scanning, and all of it was taking space from
               the product grid. */}
           <div className="space-y-1 text-sm">
+            {returnedValue > 0 && (
+              <>
+                <div className="flex justify-between"><span className="text-muted-foreground">Sold</span><span className="tabular-nums">{formatMoney(takenValue, cur)}</span></div>
+                <div className="flex justify-between text-amber-700"><span>Returned</span><span className="tabular-nums">−{formatMoney(returnedValue, cur)}</span></div>
+              </>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("common.subtotal")}</span>
               <span className="tabular-nums">{formatMoney(subtotal, cur)}</span>

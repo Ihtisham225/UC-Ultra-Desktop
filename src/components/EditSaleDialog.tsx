@@ -52,6 +52,12 @@ interface Line {
    * changed enough that it no longer fits. See lib/sell-by-amount.
    */
   amount?: number;
+  /**
+   * Handed back inside the open bill before it was closed, in BASE units
+   * (lib/bill-returns). Carried through untouched so a correction doesn't wipe
+   * the Returned section off the slip; Qty above is the net figure.
+   */
+  returned_quantity?: number | null;
 }
 
 export interface EditableSale {
@@ -82,6 +88,7 @@ export interface EditableSale {
     unit_factor?: number | null;
     imei1?: string | null;
     imei2?: string | null;
+    returned_quantity?: number | null;
   }>;
 }
 
@@ -173,6 +180,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
           imei1: it.imei1,
           imei2: it.imei2,
           amount: Number(it.line_total),
+          returned_quantity: it.returned_quantity == null ? null : Number(it.returned_quantity),
         };
       }),
     );
@@ -318,7 +326,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
 
   const save = async () => {
     if (!sale) return;
-    const usable = lines.filter((l) => l.product_id && num(l.quantity) > 0);
+    const usable = lines.filter((l) => l.product_id && (num(l.quantity) > 0 || (l.returned_quantity ?? 0) > 0));
     if (usable.length === 0) return toast.error("A bill needs at least one line.");
     setBusy(true);
     try {
@@ -335,6 +343,7 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
           unit_factor: l.unit_factor > 1 ? l.unit_factor : null,
           imei1: l.imei1 ?? null,
           imei2: l.imei2 ?? null,
+          ...(l.returned_quantity ? { returned_quantity: l.returned_quantity } : {}),
           ...(l.amount != null ? { line_total: l.amount } : {}),
         })),
         discount: discountValue,
@@ -471,6 +480,11 @@ export function EditSaleDialog({ sale, products, onClose, onSaved, submit }: Pro
                 {l.unit_factor > 1 && (
                   <p className="text-[11px] text-muted-foreground">
                     = {formatUnitQty(num(l.quantity) * l.unit_factor)} {p?.unit || "pcs"} off stock
+                  </p>
+                )}
+                {(l.returned_quantity ?? 0) > 0 && (
+                  <p className="text-[11px] text-amber-700">
+                    {formatUnitQty((l.returned_quantity ?? 0) / l.unit_factor)} returned in this bill — Qty is what was kept.
                   </p>
                 )}
               </div>
