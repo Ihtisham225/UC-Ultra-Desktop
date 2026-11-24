@@ -27,4 +27,12 @@ export const moreReportsApi: MoreReportsApi = {
   collection: (fromDate, toDate) => rpc<CollectionRow[]>("collectionReportAction", fromDate, toDate),
   flowProducts: () => rpc<FlowProductOption[]>("flowProductsAction"),
   productFlow: (productId, variantId, fromISO, toISO) => rpc<ProductFlow>("productFlowAction", productId, variantId, fromISO, toISO),
+  // Category / Brand filters; offline they come back empty and the filters hide.
+  catalog: async () => {
+    const [categories, brands] = await Promise.all([
+      rpc<{ id: string; name: string; parent_id: string | null }[]>("listCategoriesAction").catch(() => []),
+      rpc<{ id: string; name: string }[]>("listBrandsAction").catch(() => []),
+    ]);
+    return { categories: categories ?? [], brands: brands ?? [] };
+  },
 };

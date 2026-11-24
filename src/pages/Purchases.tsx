@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CatalogFilterBar, useCatalogFilter } from "@/components/reports/CatalogFilterBar";
+import type { CatalogBrand, CatalogCategory } from "@/lib/sales-report";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { useLandingParams } from "@/hooks/useLandingParams";
@@ -67,6 +69,11 @@ interface Product {
   is_service?: boolean;
   /** False for a raw material (cafes): listed under "Add material", not "Add product". */
   is_sellable?: boolean;
+  /** For the form's Category / Brand filter on the product picker. */
+  category_id?: string | null;
+  category?: string | null;
+  brand_id?: string | null;
+  brand?: string | null;
 }
 interface Purchase {
   id: string;
@@ -189,6 +196,7 @@ export default function Purchases() {
   // just-added product must appear instantly, before background sync runs.
   const { data: localProducts } = useProductsWithVariants<{
     id: string; name: string; price: number | string; is_active?: boolean; is_service?: boolean; is_sellable?: boolean;
+    category_id?: string | null; category?: string | null; brand_id?: string | null; brand?: string | null;
   }>(currentShop?.id);
   const products: Product[] = useMemo(
     () =>
@@ -200,6 +208,10 @@ export default function Purchases() {
           price: Number(p.price),
           is_service: !!p.is_service,
           is_sellable: p.is_sellable,
+          category_id: p.category_id ?? null,
+          category: p.category ?? null,
+          brand_id: p.brand_id ?? null,
+          brand: p.brand ?? null,
           variants: p.product_variants
             .filter((v) => v.is_active !== false)
             .map((v) => ({
@@ -524,7 +536,22 @@ export default function Purchases() {
   // Cafes with raw materials on (lib/cafe) pick them from their own list —
   // a menu of milk, sugar and cups beside the cakes and teas is hard to scan.
   const rawOn = usesRawMaterials(currentShop);
-  const pickerProducts = rawOn ? products.filter((p) => p.is_sellable !== false) : products;
+  // Category / Brand narrow the "Add product" list (a parent category takes its
+  // sub-categories too). The lists come from the server; offline the filter
+  // still offers the names the products carry, just without the tree.
+  const [catalog, setCatalog] = useState<{ categories: CatalogCategory[]; brands: CatalogBrand[] }>({ categories: [], brands: [] });
+  useEffect(() => {
+    let live = true;
+    Promise.all([
+      rpc<CatalogCategory[]>("listCategoriesAction").catch(() => []),
+      rpc<CatalogBrand[]>("listBrandsAction").catch(() => []),
+    ]).then(([categories, brands]) => { if (live) setCatalog({ categories: categories ?? [], brands: brands ?? [] }); });
+    return () => { live = false; };
+  }, [currentShop?.id]);
+  const catalogFilter = useCatalogFilter(products, catalog.categories, catalog.brands);
+  const showCatalogFilter = catalogFilter.options.categories.length > 0 || catalogFilter.options.brands.length > 0;
+  const pickerProducts = (rawOn ? products.filter((p) => p.is_sellable !== false) : products)
+    .filter((p) => catalogFilter.match(p));
   const pickerMaterials = products.filter((p) => p.is_sellable === false);
   const [materialOpen, setMaterialOpen] = useState(false);
   /** A raw material made from the purchase form goes onto the purchase at once; the product row arrives with the sync. */
@@ -542,7 +569,12 @@ export default function Purchases() {
                         <Command>
                           <CommandInput placeholder={searchLabel} autoFocus />
                           <CommandList>
-                            <CommandEmpty>{t("purchases.noProducts")}</CommandEmpty>
+                            <CommandEmpty>
+                              {t("purchases.noProducts")}
+                              {catalogFilter.filtered && list === pickerProducts && (
+                                <span className="block text-xs mt-1">Showing only {catalogFilter.label}.</span>
+                              )}
+                            </CommandEmpty>
                             <CommandGroup>
                               {list.map((p) => {
                                 const hasVariants = (p.variants?.length ?? 0) > 0;
@@ -1293,6 +1325,17 @@ export default function Purchases() {
                 )}
 
                 <div className="space-y-2">
+                  {showCatalogFilter && (
+                    <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-2">
+                      <span className="text-xs text-muted-foreground self-center me-1">Add products from</span>
+                      <CatalogFilterBar state={catalogFilter} />
+                      {catalogFilter.filtered && (
+                        <span className="text-xs text-muted-foreground self-center">
+                          {pickerProducts.length} product{pickerProducts.length === 1 ? "" : "s"}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <Label>{t("purchases.items")}</Label>
                     <div className="flex gap-2 w-full sm:w-auto">

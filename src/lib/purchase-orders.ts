@@ -57,12 +57,19 @@ export interface PoProductOption {
   variant_id: string | null;
   name: string;
   unit: string | null;
+  /** For the form's Category / Brand filter (older servers send none). */
+  category_id?: string | null;
+  category?: string | null;
+  brand_id?: string | null;
+  brand?: string | null;
 }
 
 export interface PoSupplierOption {
   id: string;
   name: string;
   phone: string | null;
+  /** Hidden from the picker unless already chosen (PartySelect). */
+  is_archived?: boolean;
 }
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -74,7 +81,13 @@ export interface PurchaseOrdersApi {
   setStatus: (id: string, status: "open" | "cancelled") => Promise<Result>;
   remove: (id: string) => Promise<Result>;
   slip: (id: string) => Promise<OrderSlipDto | null>;
-  formData: () => Promise<{ suppliers: PoSupplierOption[]; products: PoProductOption[] }>;
+  formData: () => Promise<{
+    suppliers: PoSupplierOption[];
+    products: PoProductOption[];
+    /** The shop's categories and brands, for the picker's filter. */
+    categories?: { id: string; name: string; parent_id: string | null }[];
+    brands?: { id: string; name: string }[];
+  }>;
 }
 
 export const PO_STATUS_LABEL: Record<PurchaseOrderStatus, string> = {

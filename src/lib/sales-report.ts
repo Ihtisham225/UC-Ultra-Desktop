@@ -60,11 +60,20 @@ export const RANK_SORTS: { value: RankSort; label: string }[] = [
  * text (and the terminal, which doesn't hold the category list) still group.
  */
 const nameKey = (name: string) => `name:${name.trim().toLowerCase()}`;
-function categoryKey(l: SalesReportLine): string {
+
+/** Anything that carries a product's category and brand — a bill line, a product, a report row. */
+export interface CatalogTagged {
+  category_id?: string | null;
+  category?: string | null;
+  brand_id?: string | null;
+  brand?: string | null;
+}
+
+function categoryKey(l: CatalogTagged): string {
   if (l.category_id) return l.category_id;
   return l.category?.trim() ? nameKey(l.category) : NONE;
 }
-function brandKey(l: SalesReportLine): string {
+function brandKey(l: CatalogTagged): string {
   if (l.brand_id) return l.brand_id;
   return l.brand?.trim() ? nameKey(l.brand) : NONE;
 }
@@ -85,7 +94,23 @@ export function filterOptions(
   brands: CatalogBrand[],
 ): { categories: FilterOption[]; brands: FilterOption[]; products: FilterOption[] } {
   const lines = bills.flatMap((b) => b.sale_items);
+  const prods = new Map<string, string>();
+  for (const l of lines) if (!prods.has(lineKey(l))) prods.set(lineKey(l), l.product_name);
+  const products = [...prods].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  return { ...catalogOptions(lines, categories, brands), products };
+}
 
+/**
+ * The category and brand dropdowns for any list of tagged items (bill lines,
+ * products, report rows): every known category (as a tree, children
+ * indented) and brand, plus any free-text label an item carries that the list
+ * lacks, plus "No category" / "No brand" when some item has none.
+ */
+export function catalogOptions(
+  items: CatalogTagged[],
+  categories: CatalogCategory[],
+  brands: CatalogBrand[],
+): { categories: FilterOption[]; brands: FilterOption[] } {
   const cats: FilterOption[] = [];
   const byParent = new Map<string | null, CatalogCategory[]>();
   const ids = new Set(categories.map((c) => c.id));
@@ -105,28 +130,24 @@ export function filterOptions(
   walk(null, 0, new Set());
   const known = new Set(categories.map((c) => nameKey(c.name)));
   const extraCats = new Map<string, string>();
-  for (const l of lines) {
+  for (const l of items) {
     const k = categoryKey(l);
     if (k.startsWith("name:") && !known.has(k)) extraCats.set(k, l.category!.trim());
   }
   for (const [value, label] of [...extraCats].sort((a, b) => a[1].localeCompare(b[1]))) cats.push({ value, label });
-  if (lines.some((l) => categoryKey(l) === NONE)) cats.push({ value: NONE, label: "No category" });
+  if (items.some((l) => categoryKey(l) === NONE)) cats.push({ value: NONE, label: "No category" });
 
   const brs: FilterOption[] = brands.map((b) => ({ value: b.id, label: b.name }));
   const knownB = new Set(brands.map((b) => nameKey(b.name)));
   const extraB = new Map<string, string>();
-  for (const l of lines) {
+  for (const l of items) {
     const k = brandKey(l);
     if (k.startsWith("name:") && !knownB.has(k)) extraB.set(k, l.brand!.trim());
   }
   for (const [value, label] of [...extraB].sort((a, b) => a[1].localeCompare(b[1]))) brs.push({ value, label });
-  if (lines.some((l) => brandKey(l) === NONE)) brs.push({ value: NONE, label: "No brand" });
+  if (items.some((l) => brandKey(l) === NONE)) brs.push({ value: NONE, label: "No brand" });
 
-  const prods = new Map<string, string>();
-  for (const l of lines) if (!prods.has(lineKey(l))) prods.set(lineKey(l), l.product_name);
-  const products = [...prods].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
-
-  return { categories: cats, brands: brs, products };
+  return { categories: cats, brands: brs };
 }
 
 /** The chosen category and every category under it. */
@@ -154,8 +175,21 @@ function categorySet(chosen: string, categories: CatalogCategory[]): Set<string>
 
 export const isFiltered = (f: SalesFilter) => !!(f.category || f.brand || f.product);
 
-/** Whether one line passes the filter. */
-export function lineMatcher(f: SalesFilter, categories: CatalogCategory[], brands: CatalogBrand[]) {
+/** A category + brand choice ("" = any; NONE = items with none). */
+export interface CatalogFilter {
+  category: string;
+  brand: string;
+}
+
+export const EMPTY_CATALOG_FILTER: CatalogFilter = { category: "", brand: "" };
+export const isCatalogFiltered = (f: CatalogFilter) => !!(f.category || f.brand);
+
+/**
+ * Whether an item is in the chosen category (or any category under it) and
+ * brand. Free-text labels and real categories / brands of the same name match
+ * each other.
+ */
+export function catalogMatcher(f: CatalogFilter, categories: CatalogCategory[], brands: CatalogBrand[]) {
   const cats = f.category && f.category !== NONE ? categorySet(f.category, categories) : null;
   const brandNames = new Set<string>();
   if (f.brand && f.brand !== NONE) {
@@ -164,9 +198,31 @@ export function lineMatcher(f: SalesFilter, categories: CatalogCategory[], brand
     if (b) brandNames.add(nameKey(b.name));
     else for (const x of brands) if (nameKey(x.name) === f.brand) brandNames.add(x.id);
   }
-  return (l: SalesReportLine) => {
+  return (l: CatalogTagged) => {
     if (f.category === NONE ? categoryKey(l) !== NONE : cats && !cats.has(categoryKey(l))) return false;
     if (f.brand === NONE ? brandKey(l) !== NONE : f.brand && !brandNames.has(brandKey(l))) return false;
+    return true;
+  };
+}
+
+/** Display names for an item's category and brand. */
+export function catalogNames(categories: CatalogCategory[], brands: CatalogBrand[]) {
+  const catName = new Map(categories.map((c) => [c.id, c.name]));
+  const brandName = new Map(brands.map((b) => [b.id, b.name]));
+  return {
+    category: (l: CatalogTagged) => (l.category_id ? catName.get(l.category_id) : null) ?? (l.category?.trim() || "No category"),
+    brand: (l: CatalogTagged) => (l.brand_id ? brandName.get(l.brand_id) : null) ?? (l.brand?.trim() || "No brand"),
+  };
+}
+
+/** Grouping keys, for rolling rows up by category or brand. */
+export const catalogKeys = { category: categoryKey, brand: brandKey };
+
+/** Whether one line passes the filter. */
+export function lineMatcher(f: SalesFilter, categories: CatalogCategory[], brands: CatalogBrand[]) {
+  const inCatalog = catalogMatcher(f, categories, brands);
+  return (l: SalesReportLine) => {
+    if (!inCatalog(l)) return false;
     if (f.product && lineKey(l) !== f.product) return false;
     return true;
   };
@@ -260,10 +316,9 @@ export function rankSales(
   sort: RankSort,
 ): RankRow[] {
   const match = lineMatcher(f, categories, brands);
-  const catName = new Map(categories.map((c) => [c.id, c.name]));
-  const brandName = new Map(brands.map((b) => [b.id, b.name]));
-  const nameOfCat = (l: SalesReportLine) => (l.category_id ? catName.get(l.category_id) : null) ?? (l.category?.trim() || "No category");
-  const nameOfBrand = (l: SalesReportLine) => (l.brand_id ? brandName.get(l.brand_id) : null) ?? (l.brand?.trim() || "No brand");
+  const names = catalogNames(categories, brands);
+  const nameOfCat = names.category;
+  const nameOfBrand = names.brand;
 
   const rows = new Map<string, RankRow & { billIds: Set<string> }>();
   for (const b of bills) {

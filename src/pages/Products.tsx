@@ -1,4 +1,5 @@
 import { BulkPriceDialog } from "@/components/BulkPriceDialog";
+import { productMatchesSearch } from "@/lib/product-search";
 import { applyBulkPrice, bulkPriceLabel, changesVariantPrices, type BulkPriceOp } from "@/lib/bulk-price";
 import { purchaseCosts, costBaseFor } from "@/lib/purchase-costs";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -686,15 +687,8 @@ export default function Products() {
       const places = [p.location_id, ...(p.product_variants ?? []).map((v) => v.location_id)].filter(Boolean);
       if (shelfFilter === "__none__" ? places.length > 0 : !places.some((id) => shelfIds?.has(id as string))) return false;
     }
-    const q = search.toLowerCase();
-    if (!q) return true;
-    if (p.name.toLowerCase().includes(q)) return true;
-    if (p.sku?.toLowerCase().includes(q)) return true;
-    if (p.barcode?.includes(q)) return true;
-    // Also match variant names/skus/barcodes
-    return (p.product_variants ?? []).some(
-      (v) => v.name.toLowerCase().includes(q) || v.sku?.toLowerCase().includes(q) || v.barcode?.includes(q),
-    );
+    // Names match by words; barcodes and SKUs only from their start (lib/product-search).
+    return productMatchesSearch({ ...p, variants: p.product_variants }, search);
   });
 
   /**

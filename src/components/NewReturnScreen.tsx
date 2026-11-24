@@ -14,6 +14,7 @@
  * (products, the customer/supplier pickers, saving, the bill search), so the
  * two apps share this file. ⚠️ COPIED verbatim to the desktop app.
  */
+import { searchProducts } from "@/lib/product-search";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, Check, ChevronsUpDown, Layers, Receipt, Search, Trash2, Truck, Undo2, UserRound, X } from "lucide-react";
@@ -162,12 +163,8 @@ export function NewReturnScreen({
 
   // ─── Products ─────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const words = search.toLowerCase().split(/\s+/).filter(Boolean);
-    if (words.length === 0) return products;
-    return products.filter((o) => {
-      const hay = `${o.name} ${o.barcode ?? ""}`.toLowerCase();
-      return words.every((w) => hay.includes(w));
-    });
+    // Names match by words; barcodes only from their start (lib/product-search).
+    return searchProducts(products, search);
   }, [products, search]);
 
   const addProduct = (o: ReturnProductOption) => {

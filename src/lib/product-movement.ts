@@ -31,6 +31,11 @@ export interface MovementProduct {
   is_service?: boolean | null;
   is_active?: boolean | null;
   low_stock_threshold?: number | string | null;
+  /** Carried onto the row for the Category / Brand filter (lib/sales-report). */
+  category_id?: string | null;
+  category?: string | null;
+  brand_id?: string | null;
+  brand?: string | null;
 }
 
 export interface MovementVariant {
@@ -69,6 +74,11 @@ export interface MovementRow {
   /** Stock when the period began (see the header comment); null with `left`. */
   opening: number | null;
   low: boolean;
+  /** The product's category and brand as it reads NOW (null for a deleted product). */
+  category_id: string | null;
+  category: string | null;
+  brand_id: string | null;
+  brand: string | null;
 }
 
 const num = (v: unknown) => {
@@ -108,6 +118,10 @@ export function productMovement(input: {
       left,
       opening: null,
       low: left !== null && left > 0 && left <= threshold,
+      category_id: product?.category_id ?? null,
+      category: product?.category ?? null,
+      brand_id: product?.brand_id ?? null,
+      brand: product?.brand ?? null,
     };
   };
 
