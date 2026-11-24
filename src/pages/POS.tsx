@@ -6,6 +6,7 @@ import {
   regularSaleLabel,
   tillOrderTypes,
 } from "@/lib/order-types";
+import { searchProducts } from "@/lib/product-search";
 import { ChoiceToggle } from "@/components/NewReturnDialog";
 import { isCafe } from "@/lib/cafe";
 import { amountSetsQuantity, lineTotalOf, priceForAmount, qtyForAmount } from "@/lib/sell-by-amount";
@@ -647,14 +648,8 @@ export default function POS() {
     const base = labEnabled
       ? products.filter((p) => (posTab === "lab" ? isLabTest(p) : !isLabTest(p)))
       : products;
-    if (!search) return base;
-    const q = search.toLowerCase();
-    return base.filter((p) =>
-      p.name.toLowerCase().includes(q) ||
-      p.generic_name?.toLowerCase().includes(q) ||
-      p.barcode?.includes(q) ||
-      p.variants?.some((v) => v.name.toLowerCase().includes(q) || v.sku?.toLowerCase().includes(q) || v.barcode?.includes(q))
-    );
+    // Names match by words; barcodes and SKUs only from their start (lib/product-search).
+    return searchProducts(base, search);
   }, [products, search, labEnabled, posTab, isLabTest]);
 
   const subtotal = cart.reduce((a, c) => a + lineAmountOf(c), 0);

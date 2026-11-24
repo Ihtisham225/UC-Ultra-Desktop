@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { CsvColumn } from "@/lib/csv";
 import { formatQty } from "@/lib/format";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { CatalogFilterBar, useCatalogFilter, useCatalogLists } from "@/components/reports/CatalogFilterBar";
 import {
   ACCOUNT_KIND_LABELS,
   type AccountsReport,
@@ -302,7 +303,26 @@ export function ReturnsReport({ api, ui, fromDate, toDate, fromISO, toISO, forma
   const { KPI, Toolbar, Empty } = ui;
   const { data, error, loading } = useReport(() => api.returns(fromISO, toISO), `${fromISO}|${toISO}`);
   const [show, setShow] = useState<ReturnFilter>("all");
-  const all = data ?? NO_RETURNS;
+  const catalog = useCatalogLists(api.catalog);
+  const raw = data ?? NO_RETURNS;
+  const rawItems = useMemo(() => raw.flatMap((r) => r.items ?? []), [raw]);
+  const cf = useCatalogFilter(rawItems, catalog.categories, catalog.brands);
+  // Category / Brand: only returns holding a matching line, and only those lines
+  // count — quantity and amount become the matching goods' value.
+  const all = useMemo(() => {
+    if (!cf.filtered) return raw;
+    return raw.flatMap((r) => {
+      const hits = (r.items ?? []).filter(cf.match);
+      if (!hits.length) return [];
+      return [{
+        ...r,
+        lines: hits.length,
+        quantity: hits.reduce((a, i) => a + i.quantity, 0),
+        amount: hits.reduce((a, i) => a + i.line_total, 0),
+        deduction: 0,
+      }];
+    });
+  }, [raw, cf.filtered, cf.match]);
   const rows = show === "all" ? all : all.filter((r) => r.kind === show);
 
   const sum = (list: ReturnReportRow[]) => list.reduce((a, r) => a + r.amount, 0);
@@ -334,7 +354,13 @@ export function ReturnsReport({ api, ui, fromDate, toDate, fromISO, toISO, forma
         <KPI label="Settled on the ledger" value={formatMoney(sum(all.filter((r) => r.to_ledger)), cur)} sub="no cash moved" />
       </div>
       <Card className="shadow-card p-4">
-        <Toolbar title="Returns" rows={rows} columns={columns} filename={`returns_${fromDate}_${toDate}`} />
+        <Toolbar title={cf.filtered ? `Returns — ${cf.label}` : "Returns"} rows={rows} columns={columns} filename={`returns_${fromDate}_${toDate}${cf.filtered ? "_filtered" : ""}`} />
+        {(cf.options.categories.length > 0 || cf.options.brands.length > 0) && (
+          <div className="mt-3 flex flex-wrap items-end gap-3 print:hidden"><CatalogFilterBar state={cf} /></div>
+        )}
+        {cf.filtered && (
+          <p className="mt-2 text-xs text-muted-foreground print:hidden">Amounts show only the matching goods&apos; value, before any deduction.</p>
+        )}
         <div className="mt-3 flex gap-1 p-1 bg-muted rounded-lg w-fit print:hidden">
           {([["all", "All"], ["customer", "From customers"], ["supplier", "To suppliers"]] as const).map(([k, label]) => (
             <Button key={k} size="sm" variant={show === k ? "default" : "ghost"} onClick={() => setShow(k)} className="h-7 px-2 text-xs">{label}</Button>

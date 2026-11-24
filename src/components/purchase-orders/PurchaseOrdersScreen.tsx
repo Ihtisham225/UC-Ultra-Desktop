@@ -24,6 +24,8 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { PartySelect } from "@/components/PartySelect";
 import { DateInput } from "@/components/DateInput";
 import { OrderSlipDialog } from "@/components/OrderSlipDialog";
+import { CatalogFilterBar, useCatalogFilter } from "@/components/reports/CatalogFilterBar";
+import type { CatalogBrand, CatalogCategory } from "@/lib/sales-report";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useAddNew } from "@/hooks/useAddNew";
 import { formatMoney } from "@/lib/format";
@@ -85,6 +87,11 @@ export function PurchaseOrdersScreen({
   const [orders, setOrders] = useState<PurchaseOrderDto[] | null>(null);
   const [suppliers, setSuppliers] = useState<PoSupplierOption[]>([]);
   const [products, setProducts] = useState<PoProductOption[]>([]);
+  const [catalog, setCatalog] = useState<{ categories: CatalogCategory[]; brands: CatalogBrand[] }>({ categories: [], brands: [] });
+  // Category / Brand narrow the "Add a product" list; a parent category takes its sub-categories.
+  const catalogFilter = useCatalogFilter(products, catalog.categories, catalog.brands);
+  const pickable = useMemo(() => products.filter((p) => catalogFilter.match(p)), [products, catalogFilter.match]);
+  const showCatalogFilter = catalogFilter.options.categories.length > 0 || catalogFilter.options.brands.length > 0;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [slip, setSlip] = useState<OrderSlipDto | null>(null);
@@ -107,6 +114,7 @@ export function PurchaseOrdersScreen({
       const d = await api.formData();
       setSuppliers(d.suppliers);
       setProducts(d.products);
+      setCatalog({ categories: d.categories ?? [], brands: d.brands ?? [] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load suppliers and products");
     }
@@ -340,6 +348,15 @@ export function PurchaseOrdersScreen({
 
               <div className="space-y-2">
                 <Label>Products</Label>
+                {showCatalogFilter && (
+                  <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-2">
+                    <span className="text-xs text-muted-foreground self-center me-1">Add products from</span>
+                    <CatalogFilterBar state={catalogFilter} />
+                    {catalogFilter.filtered && (
+                      <span className="text-xs text-muted-foreground self-center">{pickable.length} to choose from</span>
+                    )}
+                  </div>
+                )}
                 <Popover open={pickerOpen} onOpenChange={setPickerOpen} modal>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-start text-muted-foreground font-normal">
@@ -358,7 +375,7 @@ export function PurchaseOrdersScreen({
                           ) : "No products"}
                         </CommandEmpty>
                         <CommandGroup>
-                          {products.map((p) => (
+                          {pickable.map((p) => (
                             <CommandItem key={p.key} value={`${p.name} ${p.key}`} onSelect={() => addProduct(p)}>
                               <span className="truncate">{p.name}</span>
                               {p.unit && <span className="ml-auto text-xs text-muted-foreground">{p.unit}</span>}

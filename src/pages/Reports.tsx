@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins, PackageCheck, Undo2, BadgeDollarSign, Building2, Landmark, ScrollText, Banknote, Route } from "lucide-react";
+import { Trophy, Download, Printer, FileBarChart, ShoppingCart, PackageOpen, Boxes, TrendingUp, Wallet, Users, Percent, HandCoins, PackageCheck, Undo2, BadgeDollarSign, Building2, Landmark, ScrollText, Banknote, Route } from "lucide-react";
 import { downloadCsv, CsvColumn } from "@/lib/csv";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { isHandicraft } from "@/lib/handicraft";
@@ -45,6 +45,9 @@ import {
 import { moreReportsApi } from "@/lib/moreReportsApi";
 import { ProductFlowReport } from "@/components/reports/ProductFlowReport";
 import { SalesReportView, type SalesReportRow } from "@/components/reports/SalesReportView";
+import { CatalogFilterBar, useCatalogFilter } from "@/components/reports/CatalogFilterBar";
+import { ProductPerformanceReport } from "@/components/reports/ProductPerformanceReport";
+import { averageCostsWithRecipes } from "@/lib/pnl";
 import type { CatalogBrand, CatalogCategory } from "@/lib/sales-report";
 
 type Rng = { from: string; to: string };
@@ -99,6 +102,7 @@ export default function Reports() {
           <TabsTrigger value="purchases"><PackageOpen className="size-3.5 mr-1.5" />Purchases</TabsTrigger>
           <TabsTrigger value="returns"><Undo2 className="size-3.5 mr-1.5" />Returns</TabsTrigger>
           <TabsTrigger value="inventory"><Boxes className="size-3.5 mr-1.5" />Inventory</TabsTrigger>
+          <TabsTrigger value="products"><Trophy className="size-3.5 mr-1.5" />Products</TabsTrigger>
           <TabsTrigger value="sold-left"><PackageCheck className="size-3.5 mr-1.5" />Sold &amp; left</TabsTrigger>
           <TabsTrigger value="flow"><Route className="size-3.5 mr-1.5" />Flow</TabsTrigger>
           <TabsTrigger value="pnl"><TrendingUp className="size-3.5 mr-1.5" />Profit & Loss</TabsTrigger>
@@ -124,6 +128,7 @@ export default function Reports() {
           <TabsContent value="returns"><ServerReport report={ReturnsReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="inventory"><InventoryReport shopId={currentShop.id} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="flow"><ServerReport report={ProductFlowReport} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
+          <TabsContent value="products"><ProductsReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="sold-left"><SoldLeftReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="pnl"><PnlReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
           <TabsContent value="expenses"><ExpensesReport shopId={currentShop.id} range={range} formatMoney={formatMoney} cur={cur} /></TabsContent>
@@ -216,6 +221,33 @@ type ReportProps = { shopId: string; range: Rng; formatMoney: (n: number | strin
 
 const moreUi: MoreReportProps["ui"] = { KPI, Toolbar: ReportToolbar, Empty };
 
+type CatalogLists = { categories: CatalogCategory[]; brands: CatalogBrand[] };
+const NO_CATALOG: CatalogLists = { categories: [], brands: [] };
+
+/**
+ * Categories and brands for a report's Category / Brand filter. They aren't in
+ * the offline store: offline the filters still work from the names each product
+ * carries — just without the tree.
+ */
+function useShopCatalog(shopId: string): CatalogLists {
+  const [lists, setLists] = useState<CatalogLists>(NO_CATALOG);
+  useEffect(() => {
+    let live = true;
+    Promise.all([
+      rpc<CatalogCategory[]>("listCategoriesAction").catch(() => []),
+      rpc<CatalogBrand[]>("listBrandsAction").catch(() => []),
+    ]).then(([categories, brands]) => { if (live) setLists({ categories: categories ?? [], brands: brands ?? [] }); });
+    return () => { live = false; };
+  }, [shopId]);
+  return lists;
+}
+
+/** A line's product category / brand, as the product reads now. */
+function tagLine(l: any, productById: Map<string, any>) {
+  const p = l.product_id ? productById.get(l.product_id) : undefined;
+  return { ...l, category_id: p?.category_id ?? null, category: p?.category ?? null, brand_id: p?.brand_id ?? null, brand: p?.brand ?? null };
+}
+
 function ServerReport({ report: Report, range, formatMoney, cur }: { report: (p: MoreReportProps) => React.ReactNode; range: Rng; formatMoney: ReportProps["formatMoney"]; cur: string }) {
   const { fromISO, toISO, fromDate, toDate } = useRange(range);
   return <Report api={moreReportsApi} ui={moreUi} fromDate={fromDate} toDate={toDate} fromISO={fromISO} toISO={toISO} formatMoney={formatMoney} cur={cur} />;
@@ -226,7 +258,7 @@ function ServerReport({ report: Report, range, formatMoney, cur }: { report: (p:
 function SalesReport({ shopId, range, formatMoney, cur }: ReportProps) {
   const { fromISO, toISO, fromDate, toDate } = useRange(range);
   const [rows, setRows] = useState<SalesReportRow[]>([]);
-  const [catalog, setCatalog] = useState<{ categories: CatalogCategory[]; brands: CatalogBrand[] }>({ categories: [], brands: [] });
+  const catalog = useShopCatalog(shopId);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -270,14 +302,6 @@ function SalesReport({ shopId, range, formatMoney, cur }: ReportProps) {
     })();
   }, [shopId, fromISO, toISO]);
 
-  // Categories and brands aren't in the offline store. Offline the filters
-  // still work from the names each product carries — just without the tree.
-  useEffect(() => {
-    Promise.all([
-      rpc<CatalogCategory[]>("listCategoriesAction").catch(() => []),
-      rpc<CatalogBrand[]>("listBrandsAction").catch(() => []),
-    ]).then(([categories, brands]) => setCatalog({ categories: categories ?? [], brands: brands ?? [] }));
-  }, [shopId]);
 
   if (loading) return <div className="p-8 text-center text-muted-foreground">Loading…</div>;
 
@@ -305,13 +329,17 @@ function PurchasesReport({ shopId, range, formatMoney, cur }: ReportProps) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [allPurchases, allItems, allSuppliers] = await Promise.all([
+      const [allPurchases, allItems, allSuppliers, allProducts] = await Promise.all([
         getAll<any>("purchases", shopId),
         getAll<any>("purchase_items", shopId),
         getAll<any>("suppliers", shopId),
+        getAll<any>("products", shopId),
       ]);
+      const productById = new Map(allProducts.map((p) => [p.id, p]));
       const itemsByPurchase = new Map<string, any[]>();
-      for (const it of allItems) {
+      for (const raw of allItems) {
+        // Goods plus the line's own share of purchase expenses — what it cost landed.
+        const it = { ...tagLine(raw, productById), line_total: Number(raw.line_total ?? 0) + Number(raw.expense_amount ?? 0) };
         const arr = itemsByPurchase.get(it.purchase_id) ?? []; arr.push(it); itemsByPurchase.set(it.purchase_id, arr);
       }
       const supById = new Map(allSuppliers.map((s) => [s.id, s]));
@@ -328,18 +356,35 @@ function PurchasesReport({ shopId, range, formatMoney, cur }: ReportProps) {
     })();
   }, [shopId, fromISO, toISO]);
 
+  // Category / Brand: only purchases holding a matching line, and only those
+  // lines' value counts — a 50,000 bill with one 2,000 line of the brand adds 2,000.
+  const catalog = useShopCatalog(shopId);
+  const allLines = useMemo(() => rows.flatMap((r) => r.purchase_items ?? []), [rows]);
+  const cf = useCatalogFilter(allLines, catalog.categories, catalog.brands);
+  const shown = useMemo(() => {
+    if (!cf.filtered) return rows.map((r) => ({ ...r, match_value: Number(r.total), match_qty: (r.purchase_items ?? []).reduce((x: number, i: any) => x + Number(i.quantity), 0) }));
+    return rows.flatMap((r) => {
+      const hits = (r.purchase_items ?? []).filter(cf.match);
+      if (!hits.length) return [];
+      return [{ ...r, match_value: hits.reduce((x: number, i: any) => x + Number(i.line_total ?? 0), 0), match_qty: hits.reduce((x: number, i: any) => x + Number(i.quantity), 0) }];
+    });
+  }, [rows, cf.filtered, cf.match]);
   const stats = useMemo(() => {
-    const total = rows.reduce((a, r) => a + Number(r.total), 0);
-    const paid = rows.reduce((a, r) => a + Number(r.paid_amount), 0);
-    const items = rows.reduce((a, r) => a + (r.purchase_items?.reduce((x: number, i: any) => x + Number(i.quantity), 0) ?? 0), 0);
-    return { total, paid, due: total - paid, items, count: rows.length };
-  }, [rows]);
+    const total = shown.reduce((a, r) => a + r.match_value, 0);
+    const paid = shown.reduce((a, r) => a + Number(r.paid_amount), 0);
+    const items = shown.reduce((a, r) => a + r.match_qty, 0);
+    return { total, paid, due: Math.max(0, shown.reduce((a, r) => a + Number(r.total), 0) - paid), items, count: shown.length };
+  }, [shown]);
 
   const columns: CsvColumn<any>[] = [
     { header: "Date", value: (r) => format(new Date(r.created_at), "yyyy-MM-dd HH:mm") },
     { header: "Reference", value: (r) => r.reference_number ?? r.id.slice(0, 8) },
     { header: "Supplier", value: (r) => r.suppliers?.name ?? "—" },
     { header: "Payment", value: (r) => r.payment_method },
+    ...(cf.filtered ? [
+      { header: "Matching products", value: (r: any) => (r.purchase_items ?? []).filter(cf.match).map((i: any) => `${i.product_name} x${formatQty(Number(i.quantity))}`).join("; ") },
+      { header: "Matching value", value: (r: any) => r.match_value.toFixed(2) },
+    ] : []),
     { header: "Total", value: (r) => Number(r.total).toFixed(2) },
     { header: "Paid", value: (r) => Number(r.paid_amount).toFixed(2) },
   ];
@@ -349,29 +394,37 @@ function PurchasesReport({ shopId, range, formatMoney, cur }: ReportProps) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KPI label="Purchases total" value={formatMoney(stats.total, cur)} sub={`${stats.count} purchases`} />
+        <KPI label={cf.filtered ? "Bought of selection" : "Purchases total"} value={formatMoney(stats.total, cur)} sub={cf.filtered ? `In ${stats.count} purchases · incl. their expenses` : `${stats.count} purchases`} />
         <KPI label="Amount paid" value={formatMoney(stats.paid, cur)} />
         <KPI label="Outstanding" value={formatMoney(stats.due, cur)} />
         <KPI label="Items received" value={String(stats.items)} />
       </div>
       <Card className="shadow-card p-4">
-        <ReportToolbar title="Purchase detail" rows={rows} columns={columns} filename={`purchases_${range.from}_${range.to}`} />
-        {rows.length === 0 ? <Empty msg="No purchases in this range." /> : (
+        <ReportToolbar title={cf.filtered ? `Purchase detail — ${cf.label}` : "Purchase detail"} rows={shown} columns={columns} filename={`purchases_${range.from}_${range.to}${cf.filtered ? "_filtered" : ""}`} />
+        <div className="mt-3 flex flex-wrap items-end gap-3 print:hidden"><CatalogFilterBar state={cf} /></div>
+        {shown.length === 0 ? <Empty msg={cf.filtered ? "No purchases of these products in this range." : "No purchases in this range."} /> : (
           <div className="mt-3 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead><TableHead>Reference</TableHead><TableHead>Supplier</TableHead><TableHead>Payment</TableHead>
+                  {cf.filtered && <TableHead className="text-right">Matching</TableHead>}
                   <TableHead className="text-right">Total</TableHead><TableHead className="text-right">Paid</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((r) => (
+                {shown.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="text-xs">{fmtDateTime(r.created_at)}</TableCell>
                     <TableCell className="font-mono text-xs">{r.reference_number ?? r.id.slice(0, 8)}</TableCell>
                     <TableCell>{r.suppliers?.name ?? "—"}</TableCell>
                     <TableCell className="capitalize">{r.payment_method}</TableCell>
+                    {cf.filtered && (
+                      <TableCell className="text-right tabular-nums font-semibold">
+                        {formatMoney(r.match_value, cur)}
+                        <div className="text-xs font-normal text-muted-foreground">{formatQty(r.match_qty)} units</div>
+                      </TableCell>
+                    )}
                     <TableCell className="text-right tabular-nums">{formatMoney(r.total, cur)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatMoney(r.paid_amount, cur)}</TableCell>
                   </TableRow>
@@ -418,7 +471,11 @@ function InventoryReport({ shopId, formatMoney, cur }: Omit<ReportProps, "range"
     })();
   }, [shopId]);
 
+  const catalog = useShopCatalog(shopId);
+  const cf = useCatalogFilter(rows, catalog.categories, catalog.brands);
+  const shown = useMemo(() => (cf.filtered ? rows.filter(cf.match) : rows), [rows, cf.filtered, cf.match]);
   const stats = useMemo(() => {
+    const rows = shown;
     const sku = rows.length;
     const units = rows.reduce((a, r) => a + Number(r.stock), 0);
     const stockValue = rows.reduce((a, r) => a + r.stockValue, 0);
@@ -426,7 +483,7 @@ function InventoryReport({ shopId, formatMoney, cur }: Omit<ReportProps, "range"
     const low = rows.filter((r) => Number(r.stock) > 0 && Number(r.stock) <= Number(r.low_stock_threshold)).length;
     const out = rows.filter((r) => Number(r.stock) <= 0).length;
     return { sku, units, stockValue, retailValue, low, out };
-  }, [rows]);
+  }, [shown]);
 
   const columns: CsvColumn<any>[] = [
     { header: "Product", value: (r) => r.name },
@@ -451,8 +508,9 @@ function InventoryReport({ shopId, formatMoney, cur }: Omit<ReportProps, "range"
         <KPI label="Stock alerts" value={`${stats.low + stats.out}`} sub={`${stats.out} out · ${stats.low} low`} />
       </div>
       <Card className="shadow-card p-4">
-        <ReportToolbar title="Stock detail" rows={rows} columns={columns} filename="inventory" />
-        {rows.length === 0 ? <Empty msg="No products." /> : (
+        <ReportToolbar title={cf.filtered ? `Stock detail — ${cf.label}` : "Stock detail"} rows={shown} columns={columns} filename={cf.filtered ? "inventory_filtered" : "inventory"} />
+        <div className="mt-3 flex flex-wrap items-end gap-3 print:hidden"><CatalogFilterBar state={cf} /></div>
+        {shown.length === 0 ? <Empty msg="No products." /> : (
           <div className="mt-3 overflow-x-auto">
             <Table>
               <TableHeader>
@@ -463,7 +521,7 @@ function InventoryReport({ shopId, formatMoney, cur }: Omit<ReportProps, "range"
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((r) => {
+                {shown.map((r) => {
                   const out = Number(r.stock) <= 0;
                   const low = !out && Number(r.stock) <= Number(r.low_stock_threshold);
                   return (
@@ -1052,16 +1110,19 @@ function SoldLeftReport({ shopId, range, formatMoney, cur }: ReportProps) {
     return () => { live = false; };
   }, [shopId, fromISO, toISO]);
 
+  const catalog = useShopCatalog(shopId);
+  const cf = useCatalogFilter(rows, catalog.categories, catalog.brands);
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return rows.filter((r) => {
+      if (!cf.match(r)) return false;
       if (show === "sold" && !(r.net_sold > 0 || r.returned > 0)) return false;
       // Not selling: on the shelf, and nothing sold OR came back this period —
       // a return-only line would otherwise count as idle and drag the totals negative.
       if (show === "idle" && (r.is_service || r.sold > 0 || r.returned > 0 || (r.left ?? 0) <= 0)) return false;
       return !needle || r.name.toLowerCase().includes(needle) || (r.sku ?? "").toLowerCase().includes(needle);
     });
-  }, [rows, search, show]);
+  }, [rows, search, show, cf.match]);
   const totals = useMemo(() => movementTotals(visible), [visible]);
 
   const qty = (n: number, unit?: string | null) => `${formatQty(n)}${unit ? ` ${unit}` : ""}`;
@@ -1089,7 +1150,8 @@ function SoldLeftReport({ shopId, range, formatMoney, cur }: ReportProps) {
         <KPI label="Units left" value={formatQty(totals.units_left)} sub="in stock now" />
       </div>
       <Card className="shadow-card p-4">
-        <ReportToolbar title="Sold & left" rows={visible} columns={columns} filename="sold-and-left" />
+        <ReportToolbar title={cf.filtered ? `Sold & left — ${cf.label}` : "Sold & left"} rows={visible} columns={columns} filename="sold-and-left" />
+        <div className="mt-3 flex flex-wrap items-end gap-3 print:hidden"><CatalogFilterBar state={cf} /></div>
         <div className="mt-3 flex flex-wrap items-center gap-2 print:hidden">
           <Input
             value={search}
@@ -1159,6 +1221,58 @@ function SoldLeftReport({ shopId, range, formatMoney, cur }: ReportProps) {
  * with no connection. Lines are matched to their bill / return / purchase by
  * that parent's date, exactly as the server filters them.
  */
+/* ---------- Products (best / worst sellers) ---------- */
+
+/**
+ * Best and worst sellers — the shared screen over the Sold & left rows, with
+ * profit at average landed cost worked out from the offline store on the
+ * P&L's own basis (purchases, batches, typed costs, recipes).
+ */
+function ProductsReport({ shopId, range, formatMoney, cur }: ReportProps) {
+  const { fromISO, toISO, fromDate, toDate } = useRange(range);
+  const catalog = useShopCatalog(shopId);
+  const [rows, setRows] = useState<MovementRow[]>([]);
+  const [costs, setCosts] = useState<Map<string, number>>(new Map());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      setLoading(true);
+      const [input, pi, runs, allProducts, recipeLines] = await Promise.all([
+        loadMovement(shopId, fromISO, toISO).catch(() => null),
+        getAll<any>("purchase_items", shopId),
+        getAll<any>("production_runs", shopId),
+        getAll<any>("products", shopId),
+        getAll<any>("product_recipe_lines", shopId),
+      ]);
+      if (!live) return;
+      setRows(input ? productMovement(input) : []);
+      setCosts(averageCostsWithRecipes(
+        [...(pi as any[]), ...productionCostLinesOf(runs), ...typedCostLinesOf(allProducts)],
+        bookFromRows(allProducts, recipeLines),
+      ));
+      setLoading(false);
+    })();
+    return () => { live = false; };
+  }, [shopId, fromISO, toISO]);
+
+  if (loading) return <div className="p-8 text-center text-muted-foreground">Loading…</div>;
+  return (
+    <ProductPerformanceReport
+      rows={rows}
+      costs={costs}
+      categories={catalog.categories}
+      brands={catalog.brands}
+      ui={moreUi}
+      fromDate={fromDate}
+      toDate={toDate}
+      formatMoney={formatMoney}
+      cur={cur}
+    />
+  );
+}
+
 async function loadMovement(shopId: string, fromISO: string, toISO: string) {
   const from = new Date(fromISO).getTime();
   const to = new Date(toISO).getTime();

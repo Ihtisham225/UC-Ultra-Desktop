@@ -79,6 +79,18 @@ export interface ReturnReportRow {
   to_ledger: boolean;
   account: string | null;
   reason: string | null;
+  /** The goods, tagged for the Category / Brand filter (older servers send none). */
+  items?: ReturnReportItem[];
+}
+
+export interface ReturnReportItem {
+  product_name: string;
+  quantity: number;
+  line_total: number;
+  category_id: string | null;
+  category: string | null;
+  brand_id: string | null;
+  brand: string | null;
 }
 
 export interface AccountReportRow {
@@ -160,6 +172,8 @@ export interface MoreReportsApi {
   flowProducts: () => Promise<FlowProductOption[]>;
   /** One product's flow — who bought it, at what price; who it was bought from. */
   productFlow: (productId: string, variantId: string | null, fromISO: string, toISO: string) => Promise<ProductFlow>;
+  /** The shop's categories and brands, for the Category / Brand filters. */
+  catalog?: () => Promise<{ categories: { id: string; name: string; parent_id: string | null }[]; brands: { id: string; name: string }[] }>;
 }
 
 export interface FlowProductOption {
@@ -170,6 +184,10 @@ export interface FlowProductOption {
   unit: string | null;
   is_active: boolean;
   variants: { id: string; name: string; sku: string | null; barcode: string | null }[];
+  category_id?: string | null;
+  category?: string | null;
+  brand_id?: string | null;
+  brand?: string | null;
 }
 
 /** One bill line of the product. Quantity and price are in the product's own unit. */

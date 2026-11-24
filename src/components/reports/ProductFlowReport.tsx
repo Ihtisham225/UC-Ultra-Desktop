@@ -7,6 +7,8 @@
  * RPC on the terminal). ⚠️ COPIED verbatim to the desktop (minus "use client").
  */
 
+import { searchProducts } from "@/lib/product-search";
+import { CatalogFilterBar, useCatalogFilter, useCatalogLists } from "@/components/reports/CatalogFilterBar";
 import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -61,11 +63,8 @@ function ProductPicker({ options, value, onChange }: {
   const selected = options.find((o) => o.id === value);
   // Filtered here and capped, so a catalogue of thousands stays quick to type into.
   const matches = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const hits = !q ? options : options.filter((o) =>
-      [o.name, o.sku, o.barcode, ...o.variants.flatMap((v) => [v.name, v.sku, v.barcode])]
-        .some((s) => s && s.toLowerCase().includes(q)),
-    );
+    // Names by words; barcodes / SKUs only from their start (lib/product-search).
+    const hits = searchProducts(options, search);
     return { shown: hits.slice(0, SHOWN), more: Math.max(0, hits.length - SHOWN) };
   }, [options, search]);
 
@@ -113,6 +112,9 @@ export function ProductFlowReport({ api, ui, fromDate, toDate, fromISO, toISO, f
   const [options, setOptions] = useState<FlowProductOption[] | null>(null);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [productId, setProductId] = useState("");
+  const catalog = useCatalogLists(api.catalog);
+  const cf = useCatalogFilter(options ?? [], catalog.categories, catalog.brands);
+  const pickable = useMemo(() => (options ?? []).filter(cf.match), [options, cf.match]);
   const [variantId, setVariantId] = useState("all");
   const [view, setView] = useState<"customers" | "sales" | "purchases" | "returns">("customers");
   const [state, setState] = useState<{ key: string; data: ProductFlow | null; error: string | null } | null>(null);
@@ -244,11 +246,12 @@ export function ProductFlowReport({ api, ui, fromDate, toDate, fromISO, toISO, f
           <div className="space-y-1 flex-1 min-w-60 sm:flex-none">
             <div className="text-xs text-muted-foreground">Product</div>
             {options ? (
-              <ProductPicker options={options} value={productId} onChange={(id) => { setProductId(id); setVariantId("all"); }} />
+              <ProductPicker options={pickable} value={productId} onChange={(id) => { setProductId(id); setVariantId("all"); }} />
             ) : (
               <div className="h-9 flex items-center text-sm text-muted-foreground">{optionsError ?? "Loading products…"}</div>
             )}
           </div>
+          {(cf.options.categories.length > 0 || cf.options.brands.length > 0) && <CatalogFilterBar state={cf} />}
           {product && product.variants.length > 0 && (
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">Variant</div>
