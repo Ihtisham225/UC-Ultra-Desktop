@@ -258,6 +258,18 @@ export function saleFilterOptions(shop: ShopLike | null | undefined): { value: s
   ];
 }
 
+/**
+ * Whether a bill counts as an oil change: it was rung up as one, or — older
+ * bills, from before the oil change was a till button — it has no order type
+ * but carries a vehicle record. A bill rung up as Take away (or any other
+ * type) is that type, even when the counter also filled in the car: the
+ * shop's own words, "just take away is enough" (NIAZ OIL, 2026-11-24).
+ */
+export function isOilChangeBill(sale: { order_type?: string | null; has_oil_change?: boolean }): boolean {
+  if (sale.order_type === OIL_CHANGE_KEY) return true;
+  return !sale.order_type && !!sale.has_oil_change;
+}
+
 /** Whether one bill matches a filter — the desktop filters its offline list with this. */
 export function saleMatchesFilter(
   sale: { order_type?: string | null; total: number | string; amount_paid?: number | string | null; has_oil_change?: boolean },
@@ -266,8 +278,7 @@ export function saleMatchesFilter(
   switch (f.kind) {
     case "all": return true;
     case "order_type": return f.key === REGULAR_KEY ? !sale.order_type : sale.order_type === f.key;
-    // Older oil bills carry no type, only the record — either counts.
-    case "oil_change": return !!sale.has_oil_change || sale.order_type === OIL_CHANGE_KEY;
+    case "oil_change": return isOilChangeBill(sale);
     case "payment": return paymentStatus(sale.total, sale.amount_paid ?? 0) === f.status;
   }
 }

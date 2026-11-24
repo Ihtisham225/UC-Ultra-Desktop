@@ -13,8 +13,7 @@ import {
   saleFilterOptions,
   saleMatchesFilter,
   serializeOrderTypes,
-  tillOrderTypes,
-} from "@/lib/order-types";
+  tillOrderTypes, isOilChangeBill } from "@/lib/order-types";
 import { orderBanner, orderLine } from "@/lib/cafe-order";
 
 const keys = (list: { key: string }[]) => list.map((t) => t.key);
@@ -176,6 +175,16 @@ describe("sales filters", () => {
     expect(run("pay:ledger")).toEqual(["b"]);
     expect(run("pay:part")).toEqual(["c"]);
     expect(run("pay:paid")).toEqual(["a"]);
+  });
+
+  it("a Take away bill with a car on it is a take-away, not an oil change", () => {
+    // NIAZ OIL bill 315: rung up as Take away, vehicle details filled in.
+    const takeaway = { order_type: "takeaway", total: 750, amount_paid: 750, has_oil_change: true };
+    expect(isOilChangeBill(takeaway)).toBe(false);
+    expect(saleMatchesFilter(takeaway, parseFilter("oil_change"))).toBe(false);
+    expect(isOilChangeBill({ order_type: "oil_change", has_oil_change: true })).toBe(true);
+    // Older bills carry no type, only the record.
+    expect(isOilChangeBill({ order_type: null, has_oil_change: true })).toBe(true);
   });
 
   it("round-trips through its string form and ignores rubbish", () => {

@@ -111,9 +111,12 @@ const buildReceiptPrintHtml = ({ sale, customer, currency, withTerms }: { sale: 
       }</div>`
     : "";
 
+  // The car's details print under "VEHICLE" whenever the slip already says what
+  // the sale was: a Take away bill with a car on it is a take-away, not an oil
+  // change (NIAZ OIL, 2026-11-24). Only an untyped older bill says OIL CHANGE.
   const oilHtml = oilRows.length > 0
     ? `<div class="rule"></div>
-       <div class="center small">${banner?.oil ? "VEHICLE" : "OIL CHANGE"}</div>
+       <div class="center small">${banner ? "VEHICLE" : "OIL CHANGE"}</div>
        ${oilRows
          .map((r) => `<div class="row"><span>${escapeHtml(r.label)}</span><span class="value">${escapeHtml(r.value)}</span></div>`)
          .join("")}`
@@ -516,7 +519,7 @@ export const ReceiptPaper = ({
       {sale.oil_change && (
         <>
           <div className={dashed} />
-          <div className="text-center text-[11px]">{orderBanner(sale)?.oil ? "VEHICLE" : "OIL CHANGE"}</div>
+          <div className="text-center text-[11px]">{orderBanner(sale) ? "VEHICLE" : "OIL CHANGE"}</div>
           <div className="text-[11px] space-y-0.5 mt-0.5">
             {[
               ["Vehicle", String(sale.oil_change.vehicle_number ?? "")],
