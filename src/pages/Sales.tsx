@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SaleKindBadges } from "@/components/SaleKindBadges";
-import { orderTypeLabel, parseFilter, paymentStatus, PAYMENT_LABELS, saleFilterOptions, saleMatchesFilter } from "@/lib/order-types";
+import { isOilChangeBill, orderTypeLabel, parseFilter, paymentStatus, PAYMENT_LABELS, saleFilterOptions, saleMatchesFilter } from "@/lib/order-types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { format } from "date-fns";
@@ -392,7 +392,7 @@ export default function Sales() {
       { header: "Receipt", value: (r) => orderNumberLabel(r.receipt_number) },
       { header: "Customer", value: (r) => r.customer_name ?? "" },
       { header: "Order type", value: (r) => orderTypeLabel(currentShop, r.order_type) },
-      { header: "Oil change", value: (r) => (r.has_oil_change ? "Yes" : "") },
+      { header: "Oil change", value: (r) => (isOilChangeBill(r) ? "Yes" : "") },
       { header: "Paid", value: (r) => PAYMENT_LABELS[paymentStatus(r.total, r.amount_paid ?? 0)] },
       { header: "Date", value: (r) => format(new Date(r.created_at), "yyyy-MM-dd HH:mm") },
       { header: "Items", value: (r) => r.sale_items.length },

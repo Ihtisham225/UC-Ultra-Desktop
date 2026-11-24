@@ -8,7 +8,7 @@
 
 import { BookOpen, Car, CheckCircle2, ShoppingBag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { OIL_CHANGE_KEY, oilChangeLabel, orderTypeLabel, paymentStatus, PAYMENT_LABELS } from "@/lib/order-types";
+import { isOilChangeBill, OIL_CHANGE_KEY, oilChangeLabel, orderTypeLabel, paymentStatus, PAYMENT_LABELS } from "@/lib/order-types";
 
 type ShopArg = Parameters<typeof orderTypeLabel>[0];
 
@@ -49,7 +49,8 @@ export function SaleKindBadges({
           {sale.order_type === "dine_in" && sale.table_label ? ` · Table ${sale.table_label}` : ""}
         </Badge>
       )}
-      {(sale.has_oil_change || isOil) && (
+      {/* Only for an oil-change bill — a Take away bill with a car on it stays Take away. */}
+      {isOilChangeBill(sale) && (
         <Badge variant="secondary" className={chip}>
           <Car className="size-3" /> {oilChangeLabel(shop)}
         </Badge>
