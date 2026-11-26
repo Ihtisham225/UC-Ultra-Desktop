@@ -354,7 +354,7 @@ export async function uploadAttachment(
  * lib/product-look) to one of the server's small-image routes, returning its
  * public URL. Online only — the URL is saved on the record afterwards.
  */
-async function uploadSmallImage(route: "upload-product-image" | "upload-account-logo", file: Blob, fileName: string): Promise<string> {
+async function uploadSmallImage(route: "upload-product-image", file: Blob, fileName: string): Promise<string> {
   if (!navigator.onLine) throw new Error("You're offline — connect to upload an image.");
   const form = new FormData();
   form.append("file", new File([file], fileName, { type: file.type }));
@@ -371,7 +371,6 @@ async function uploadSmallImage(route: "upload-product-image" | "upload-account-
 export const uploadProductImage = (file: Blob, fileName: string) => uploadSmallImage("upload-product-image", file, fileName);
 
 /** A money account's logo (compressed WebP). */
-export const uploadAccountLogo = (file: Blob, fileName: string) => uploadSmallImage("upload-account-logo", file, fileName);
 
 /** Upload a walk-in seller's CNIC photo (front/back), returning its public URL. */
 export async function uploadCnicImage(file: File): Promise<string> {

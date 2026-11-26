@@ -1,6 +1,7 @@
 import {
   defaultTillOrderType,
   effectiveTillOrderType,
+  OIL_CHANGE_KEY,
   oilChangeEnabled,
   regularSaleEnabled,
   regularSaleLabel,
@@ -372,9 +373,12 @@ export default function POS() {
   // With "Regular sale" switched off (Settings), a bill always carries a type.
   const chosenType = effectiveTillOrderType(currentShop, orderType);
   const regularOffered = regularSaleEnabled(currentShop);
-  // The vehicle form stays open whatever the order type — a take-away bill can
-  // still carry a car's oil change. Optional: an empty plate records none.
-  const showVehicle = oilShop;
+  // The vehicle form belongs to an oil change: it shows for a bill rung up as
+  // Oil change, or a plain untyped sale (how oil shops worked before order
+  // types). A Take away bill records no oil change, even if a car was typed in
+  // before the type was switched (NIAZ OIL, 2026-11-26) — same rule as
+  // lib/order-types::isOilChangeBill. Optional: an empty plate records none.
+  const showVehicle = oilShop && (!chosenType || chosenType === OIL_CHANGE_KEY);
   // The terminal's shop can arrive after the first render (or be switched):
   // start that shop's till on its own default (Dine-in for a cafe).
   const [typesFor, setTypesFor] = useState(currentShop?.id ?? null);
