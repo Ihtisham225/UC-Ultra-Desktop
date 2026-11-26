@@ -5,11 +5,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Lock, Sparkles, MessageCircle, Mail, Phone, CheckCircle2 } from "lucide-react";
 import { fmtDate } from "@/lib/date-format";
+import { useSupportContact } from "@/hooks/useSupportContact";
+import { callNumber, whatsappHref } from "@/lib/support-contact";
 
 export default function PlanRequired() {
   const { signOut } = useAuth();
   const { currentShop, role } = useShop();
   useEffect(() => { document.title = "Subscription Required — UCU"; }, []);
+  const contact = useSupportContact();
+  const company = contact.companyName.trim() || "us";
+  const wa = whatsappHref(contact.whatsapp);
+  const phone = callNumber(contact);
+  const email = contact.email.trim();
 
   const isOwner = role === "owner";
   const proUntil = currentShop?.pro_until ? new Date(currentShop.pro_until) : null;
@@ -27,10 +34,10 @@ export default function PlanRequired() {
         </h1>
         <p className="text-muted-foreground text-sm">
           {isNew
-            ? "Welcome! Your account is ready. To activate your subscription, please contact Tech Town Swat."
+            ? `Welcome! Your account is ready. To activate your subscription, please contact ${company}.`
             : expired
-              ? <>Your free trial ended on <span className="font-semibold">{proUntil ? fmtDate(proUntil) : ""}</span>. To keep using UCU, please contact <span className="font-semibold">Tech Town Swat</span> to activate a paid plan.</>
-              : "This shop does not have an active subscription. Please contact Tech Town Swat to activate your plan."}
+              ? <>Your free trial ended on <span className="font-semibold">{proUntil ? fmtDate(proUntil) : ""}</span>. To keep using UCU, please contact <span className="font-semibold">{company}</span> to activate a paid plan.</>
+              : `This shop does not have an active subscription. Please contact ${company} to activate your plan.`}
         </p>
 
         <div className="rounded-xl border bg-gradient-to-br from-emerald-50 to-emerald-100/30 dark:from-emerald-950/20 dark:to-emerald-900/10 p-4 text-left space-y-2">
@@ -46,22 +53,26 @@ export default function PlanRequired() {
         </div>
 
         <div className="rounded-xl border bg-card p-4 text-left space-y-3">
-            <div className="text-sm font-semibold text-center">Contact Tech Town Swat</div>
+            <div className="text-sm font-semibold text-center">Contact {contact.companyName.trim() || "support"}</div>
             <div className="grid sm:grid-cols-2 gap-2">
-              <Button asChild className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
-                <a href="https://wa.me/923105892935" target="_blank" rel="noopener noreferrer">
-                  <MessageCircle className="size-4 mr-2" /> WhatsApp
-                </a>
-              </Button>
-              <Button asChild variant="outline" className="w-full">
-                <a href="mailto:uihtisham0@gmail.com?subject=UCU%20subscription">
-                  <Mail className="size-4 mr-2" /> Email
-                </a>
-              </Button>
+              {wa && (
+                <Button asChild className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <a href={wa} target="_blank" rel="noopener noreferrer">
+                    <MessageCircle className="size-4 mr-2" /> WhatsApp
+                  </a>
+                </Button>
+              )}
+              {email && (
+                <Button asChild variant="outline" className="w-full">
+                  <a href={`mailto:${email}?subject=UCU%20subscription`}>
+                    <Mail className="size-4 mr-2" /> Email
+                  </a>
+                </Button>
+              )}
             </div>
             <div className="text-xs text-muted-foreground space-y-1">
-              <div className="flex items-center gap-2"><Phone className="size-3" /> 0310 5892935</div>
-              <div className="flex items-center gap-2"><Mail className="size-3" /> uihtisham0@gmail.com</div>
+              {phone && <div className="flex items-center gap-2"><Phone className="size-3" /> {phone}</div>}
+              {email && <div className="flex items-center gap-2"><Mail className="size-3" /> {email}</div>}
             </div>
             <p className="text-[11px] text-muted-foreground text-center flex items-center justify-center gap-1">
               <CheckCircle2 className="size-3 text-success" /> Once activated, your account unlocks instantly.

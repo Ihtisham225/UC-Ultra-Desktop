@@ -111,6 +111,8 @@ export interface DeviceShop {
   raw_materials_enabled?: boolean;
   /** Product form: selling price = latest purchase cost + markup %. */
   price_by_markup?: boolean;
+  /** Products carry a photo or colour (Settings → Shop → Features). Missing = off. */
+  product_look_enabled?: boolean;
   /** What the return slip prints (Settings → Receipt → Return receipt). */
   return_receipt?: ReturnReceiptOptions;
   /** What the purchase voucher and ledger payment receipt print (lib/receipt-slips). */
@@ -346,6 +348,30 @@ export async function uploadAttachment(
   if (!res.ok) throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
   return (body as { attachment: { id: string; url: string } }).attachment;
 }
+
+/**
+ * Upload an image the terminal has already compressed (lib/image-compress,
+ * lib/product-look) to one of the server's small-image routes, returning its
+ * public URL. Online only — the URL is saved on the record afterwards.
+ */
+async function uploadSmallImage(route: "upload-product-image" | "upload-account-logo", file: Blob, fileName: string): Promise<string> {
+  if (!navigator.onLine) throw new Error("You're offline — connect to upload an image.");
+  const form = new FormData();
+  form.append("file", new File([file], fileName, { type: file.type }));
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/desktop/${route}`, { method: "POST", headers, body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !(body as { url?: string }).url) throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+  return (body as { url: string }).url;
+}
+
+/** A product photo (compressed WebP). */
+export const uploadProductImage = (file: Blob, fileName: string) => uploadSmallImage("upload-product-image", file, fileName);
+
+/** A money account's logo (compressed WebP). */
+export const uploadAccountLogo = (file: Blob, fileName: string) => uploadSmallImage("upload-account-logo", file, fileName);
 
 /** Upload a walk-in seller's CNIC photo (front/back), returning its public URL. */
 export async function uploadCnicImage(file: File): Promise<string> {

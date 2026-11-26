@@ -19,6 +19,7 @@ import { RecipeBuilder, emptyRecipe, type RecipeDraft, type RecipeIngredient } f
 import { LocationSelect } from "@/components/LocationSelect";
 import type { LocationRow } from "@/lib/storage-locations";
 import { DateInput } from "@/components/DateInput";
+import { ProductLookField } from "@/components/ProductLook";
 import { formatMoney } from "@/lib/format";
 import { costBaseFor, markupFromPrice, priceFromMarkup, type PurchaseCosts } from "@/lib/purchase-costs";
 
@@ -63,6 +64,10 @@ export interface ProductFormValue {
   is_sellable?: boolean;
   /** The recipe being edited (cafe shops). Undefined = none. */
   recipe?: RecipeDraft;
+  /** Photo of the product (public URL of the compressed WebP). */
+  image_url?: string | null;
+  /** "#RRGGBB" swatch for a product with no photo. */
+  color?: string | null;
 }
 
 interface Props<T extends ProductFormValue> {
@@ -93,6 +98,12 @@ interface Props<T extends ProductFormValue> {
   recipeIngredients?: RecipeIngredient[];
   /** The product being edited, so it isn't offered as its own ingredient. */
   productId?: string | null;
+  /**
+   * Stores a compressed product photo and returns its URL. When given, the
+   * form offers an image or a colour for the product; omitted (callers that
+   * don't save those fields), the field isn't shown.
+   */
+  onUploadImage?: (file: Blob, fileName: string) => Promise<string>;
 }
 
 /**
@@ -109,6 +120,7 @@ export function ProductFormFields<T extends ProductFormValue>({
   savedCost,
   recipeIngredients,
   productId,
+  onUploadImage,
 }: Props<T>) {
   const { t } = useTranslation();
   const { currentShop } = useShop();
@@ -216,6 +228,16 @@ export function ProductFormFields<T extends ProductFormValue>({
           Leave blank to auto-generate. For mart items, scan the barcode printed on the package so it can be scanned at checkout.
         </p>
       </div>
+
+      {onUploadImage && (
+        <ProductLookField
+          name={value.name ?? ""}
+          imageUrl={value.image_url}
+          color={value.color}
+          upload={onUploadImage}
+          onChange={(patch) => set(patch)}
+        />
+      )}
 
       {byMarkup && (
         <div className="rounded-lg border bg-muted/20 p-3 space-y-3">

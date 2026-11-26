@@ -54,6 +54,8 @@ import { isPlainEnter, matchPosShortcut, shortcutLabel } from "@/lib/pos-shortcu
 import { useIsMac } from "@/hooks/useIsMac";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useAddNew } from "@/hooks/useAddNew";
+import { ProductThumb } from "@/components/ProductLook";
+import { normalizeColor } from "@/lib/product-look";
 import { fmtDate, fmtDateTime, fmtTime } from "@/lib/date-format";
 import { useCheckoutMode } from "@/components/appearance/useCheckoutMode";
 
@@ -206,6 +208,10 @@ export default function POS() {
   });
   const formatMoney = useFormatMoney();
   const { products, isOnline, lastSynced, refresh } = useOfflineProducts(currentShop?.id);
+  // Settings → Shop → "Product photo or colour": off, the till looks as it always did.
+  const lookOn = !!currentShop?.product_look_enabled;
+  // For the photo / colour on cart lines.
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   // Average landed cost per product, on the same basis the P&L report and the
   // dashboard tile use. Computed from the offline store so the figure is there
   // on a till with no connection, and only when the shop has switched it on.
@@ -1376,6 +1382,17 @@ export default function POS() {
                     disabled={!p.is_service && totalStock <= 0 && !allowNegativeStock}
                     className="text-start p-3 rounded-xl border bg-card hover:border-primary hover:shadow-card transition-all disabled:opacity-40 disabled:cursor-not-allowed group relative overflow-hidden w-full min-w-0"
                   >
+                    {/* A photo or colour to spot it by; cards with neither stay as they were. */}
+                    {lookOn && (p.image_url || normalizeColor(p.color)) && (
+                      <ProductThumb
+                        name={p.name}
+                        imageUrl={p.image_url}
+                        color={p.color}
+                        className="w-[calc(100%+1.5rem)] h-20 -mx-3 -mt-3 mb-2"
+                        rounded="rounded-t-xl rounded-b-none"
+                        textClassName="text-xl"
+                      />
+                    )}
                     {hasVariants && (
                       <span className="absolute top-2 end-2 inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5">
                         <Layers className="size-3" />{p.variants!.length}
@@ -1439,6 +1456,7 @@ export default function POS() {
                     {/* Name gets the whole width; price and stock sit under it,
                         so the column can stay narrow and the bill gets the room. */}
                     <div className="flex items-start gap-1.5">
+                      {lookOn && <ProductThumb name={p.name} imageUrl={p.image_url} color={p.color} className="size-8" />}
                       <span className="font-medium text-sm leading-snug line-clamp-3 break-words flex-1 min-w-0 group-hover:text-primary">{p.name}{p.is_deal && <span className="ms-1.5 align-middle text-[10px] uppercase rounded px-1 py-0.5 bg-primary/10 text-primary font-semibold">Deal</span>}</span>
                       {hasVariants && (
                         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5">
@@ -1484,7 +1502,11 @@ export default function POS() {
               {cart.map((c) => (
                 <li key={c.key} className="p-3 rounded-lg hover:bg-muted/40 group">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      {lookOn && (() => {
+                        const prod = productById.get(c.product_id);
+                        return prod ? <ProductThumb name={prod.name} imageUrl={prod.image_url} color={prod.color} className="size-6" rounded="rounded" textClassName="text-[9px]" /> : null;
+                      })()}
                       <div className="font-medium text-sm truncate">{c.product_name}</div>
                     </div>
                     {/* The line's amount, editable: type what the customer wants to

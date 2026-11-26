@@ -7,13 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wallet, Landmark, Banknote, Plus, ArrowLeftRight, History, Pencil, Archive, ArchiveRestore, RefreshCw, Printer } from "lucide-react";
+import { Wallet, Plus, ArrowLeftRight, History, Pencil, Archive, ArchiveRestore, RefreshCw, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { useShop } from "@/contexts/ShopContext";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
 import { useAddNew } from "@/hooks/useAddNew";
 import { DateInput } from "@/components/DateInput";
 import { fmtDate } from "@/lib/date-format";
+import { AccountLogo, AccountLogoField } from "@/components/AccountLogo";
 import { accountStatement, buildAccountStatementHtml, statementPeriod } from "@/lib/account-statement";
 
 export interface AccountRow {
@@ -21,6 +22,8 @@ export interface AccountRow {
   name: string;
   type: "cash" | "bank" | "wallet";
   is_archived: boolean;
+  /** Optional for hosts that don't send it yet. */
+  logo_url?: string | null;
   opening_balance: number;
   balance: number;
   txn_count: number;
@@ -54,6 +57,11 @@ export interface AccountsApi {
    * (lib/printA4); without it the sheet prints through a hidden frame.
    */
   printDocument?: (html: string, name: string) => Promise<void>;
+  /**
+   * Store a compressed account logo and return its URL. Omitted (a host that
+   * can't upload yet), the account form offers no logo.
+   */
+  uploadLogo?: (file: Blob, fileName: string) => Promise<string>;
 }
 
 /** The browser's own print, from a frame parked off-screen at A4 size. */
@@ -87,7 +95,6 @@ const localToday = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-const TYPE_ICON = { cash: Banknote, bank: Landmark, wallet: Wallet } as const;
 const TYPE_LABEL = { cash: "Cash", bank: "Bank", wallet: "Wallet" } as const;
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -109,7 +116,7 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
 
   const [editing, setEditing] = useState<AccountRow | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", type: "bank", opening_balance: "" });
+  const [form, setForm] = useState<{ name: string; type: string; opening_balance: string; logo_url: string | null }>({ name: "", type: "bank", opening_balance: "", logo_url: null });
 
   const [moveFor, setMoveFor] = useState<{ account: AccountRow; kind: "deposit" | "withdrawal" } | null>(null);
   const [moveForm, setMoveForm] = useState({ amount: "", date: today(), note: "" });
@@ -138,14 +145,14 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
   const total = useMemo(() => active.reduce((a, r) => a + r.balance, 0), [active]);
 
   const openCreate = () => {
-    setForm({ name: "", type: "bank", opening_balance: "" });
+    setForm({ name: "", type: "bank", opening_balance: "", logo_url: null });
     setEditing(null);
     setCreating(true);
   };
   useAddNew({ account: canEdit && openCreate });
 
   const openEdit = (r: AccountRow) => {
-    setForm({ name: r.name, type: r.type, opening_balance: String(r.opening_balance) });
+    setForm({ name: r.name, type: r.type, opening_balance: String(r.opening_balance), logo_url: r.logo_url ?? null });
     setEditing(r);
     setCreating(true);
   };
@@ -155,6 +162,8 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
       name: form.name.trim(),
       type: form.type,
       opening_balance: parseFloat(form.opening_balance) || 0,
+      // Only a host that can upload sends it, so an older one never clears a logo.
+      ...(api.uploadLogo ? { logo_url: form.logo_url } : {}),
     };
     if (!payload.name) return toast.error("Enter a name");
     setBusy(true);
@@ -313,13 +322,12 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {rows.map((r) => {
-            const Icon = TYPE_ICON[r.type] ?? Wallet;
             return (
               <Card key={r.id} className={`p-4 ${r.is_archived ? "opacity-60" : ""}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <Icon className="size-4 text-primary shrink-0" />
+                      <AccountLogo logoUrl={r.logo_url} type={r.type} className="size-8" />
                       <span className="font-semibold truncate">{r.name}</span>
                       <Badge variant="secondary" className="shrink-0">{TYPE_LABEL[r.type]}</Badge>
                       {r.is_archived && <Badge variant="outline" className="shrink-0">Archived</Badge>}
@@ -389,6 +397,14 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
                 What the account already holds today. Sales and transfers are added on top.
               </p>
             </div>
+            {api.uploadLogo && (
+              <AccountLogoField
+                logoUrl={form.logo_url}
+                type={form.type}
+                upload={api.uploadLogo}
+                onChange={(url) => setForm((f) => ({ ...f, logo_url: url }))}
+              />
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreating(false)} disabled={busy}>Cancel</Button>

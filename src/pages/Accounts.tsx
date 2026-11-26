@@ -1,7 +1,7 @@
 import { AccountsScreen, type AccountsApi } from "@/components/AccountsScreen";
 import { useShop } from "@/contexts/ShopContext";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { rpc } from "@/lib/apiClient";
+import { rpc, uploadAccountLogo } from "@/lib/apiClient";
 import { printDocumentA4 } from "@/lib/printA4";
 
 /** Desktop talks to the same server actions over rpc. */
@@ -15,6 +15,8 @@ const api: AccountsApi = {
   transfer: (input) => rpc("transferAccountAction", input),
   // A4 fixed, whatever the printer's default paper (lib/printA4).
   printDocument: (html, name) => printDocumentA4(html, name),
+  // Compressed in the screen first, then sent to /api/desktop/upload-account-logo.
+  uploadLogo: (file, fileName) => uploadAccountLogo(file, fileName),
 };
 
 export default function Accounts() {

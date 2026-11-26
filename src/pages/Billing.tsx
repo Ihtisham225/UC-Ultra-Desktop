@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { fmtDate } from "@/lib/date-format";
+import { useSupportContact } from "@/hooks/useSupportContact";
+import { callNumber, telHref, whatsappHref } from "@/lib/support-contact";
 
 const EASYPAISA_NUMBER = "03480152906";
 const EASYPAISA_NAME = "Tech Town Swat";
@@ -35,13 +37,16 @@ export default function Billing() {
 
   useEffect(() => { document.title = "UCU"; }, []);
 
+  // Set by the super admin on the web (/admin → Settings).
+  const contact = useSupportContact();
+
   const copy = (text: string) => {
     navigator.clipboard.writeText(text).then(() => toast.success("Copied"));
   };
 
   const whatsappLink = (plan: Plan) => {
     const msg = `Assalam o Alaikum, I want to activate UCU ${plan.name} plan (Rs ${plan.pkr}).\nShop: ${currentShop?.name ?? ""}\nEmail: ${user?.email ?? ""}\nI have sent the payment to EasyPaisa ${EASYPAISA_NUMBER}.`;
-    return `https://wa.me/923105892935?text=${encodeURIComponent(msg)}`;
+    return whatsappHref(contact.whatsapp, msg) ?? undefined;
   };
 
   return (
@@ -131,12 +136,16 @@ export default function Billing() {
           <li>Admin will activate your plan within a few minutes.</li>
         </ol>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm">
-            <a href="https://wa.me/923105892935" target="_blank" rel="noopener noreferrer"><MessageCircle className="size-4 mr-1.5" /> WhatsApp 0310 5892935</a>
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <a href="tel:+923105892935"><Phone className="size-4 mr-1.5" /> Call</a>
-          </Button>
+          {whatsappHref(contact.whatsapp) && (
+            <Button asChild variant="outline" size="sm">
+              <a href={whatsappHref(contact.whatsapp)!} target="_blank" rel="noopener noreferrer"><MessageCircle className="size-4 mr-1.5" /> WhatsApp {contact.whatsapp}</a>
+            </Button>
+          )}
+          {telHref(callNumber(contact)) && (
+            <Button asChild variant="outline" size="sm">
+              <a href={telHref(callNumber(contact))!}><Phone className="size-4 mr-1.5" /> Call</a>
+            </Button>
+          )}
         </div>
       </div>
 

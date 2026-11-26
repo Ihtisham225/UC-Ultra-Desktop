@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export interface AccountOption { id: string; name: string; type: string }
+export interface AccountOption { id: string; name: string; type: string; logo_url?: string | null }
 
 /** Loader is injected so the same picker works on web (action) and desktop (rpc). */
 let loader: (() => Promise<AccountOption[]>) | null = null;
@@ -104,7 +104,15 @@ export function AccountPicker({
           {allowNone && <SelectItem value={NONE}>Don&apos;t track</SelectItem>}
           {options.map((a) => (
             <SelectItem key={a.id} value={a.id}>
-              {ICON[a.type] ?? "🏦"} {a.name}
+              {a.logo_url ? (
+                <span className="inline-flex items-center gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- tiny public blob image */}
+                  <img src={a.logo_url} alt="" className="size-4 rounded-sm object-contain bg-white" />
+                  {a.name}
+                </span>
+              ) : (
+                <>{ICON[a.type] ?? "🏦"} {a.name}</>
+              )}
             </SelectItem>
           ))}
         </SelectContent>

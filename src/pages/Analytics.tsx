@@ -13,13 +13,16 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, DollarSign, ShoppingCart, Users, Lightbulb, BookOpen, AlertTriangle, Award, Target, Sparkles } from "lucide-react";
 import { useFormatMoney } from "@/hooks/useFormatMoney";
-import { format, subDays, startOfDay, eachDayOfInterval } from "date-fns";
+import { format, eachDayOfInterval } from "date-fns";
+import { DateInput } from "@/components/DateInput";
+import { fmtDate } from "@/lib/date-format";
+import { ANALYTICS_PRESETS, analyticsWindow, daysIn, localDay, matchingPreset, parseDay, presetRange } from "@/lib/analytics-window";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { averageCostsWithRecipes, computePnl } from "@/lib/pnl";
 import { ProfitExplainer } from "@/components/ProfitExplainer";
 
-type Range = 7 | 30 | 90;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--accent))", "hsl(var(--success))", "hsl(var(--warning))", "hsl(var(--destructive))"];
 
@@ -29,8 +32,14 @@ export default function Analytics() {
   const { currentShop } = useShop();
   const formatMoney = useFormatMoney();
   const perms = usePermissions();
-  const [range, setRange] = useState<Range>(30);
+  // Local days (lib/analytics-window): Today / 7 / 30 / 90 days / this month, or any From–To.
+  const [range, setRange] = useState<{ from: string; to: string }>(() => presetRange("30d"));
   const [loading, setLoading] = useState(true);
+  /** Set once the first load lands; later range changes keep the page up. */
+  const [loaded, setLoaded] = useState(false);
+  const { from, to } = range;
+  const days = daysIn(from, to);
+  const singleDay = from === to;
   const [sales, setSales] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -47,10 +56,16 @@ export default function Analytics() {
   useEffect(() => { document.title = "UCU"; }, []);
 
   useEffect(() => {
-    if (!currentShop) return;
+    if (!currentShop || !DAY.test(from) || !DAY.test(to)) return;
+    let stale = false;
     (async () => {
       setLoading(true);
-      const since = startOfDay(subDays(new Date(), range)).toISOString();
+      // The window's local days and the instants they begin and end at.
+      const win = analyticsWindow(from, to);
+      const since = win.fromIso;
+      const until = win.toIso;
+      const inWindow = (iso: string) => iso >= since && iso < until;
+      const dayIn = (day: unknown) => { const d = String(day).slice(0, 10); return d >= win.from && d <= win.to; };
       const shopId = currentShop.id;
       // Read from the local sync store — offline-capable, all these tables sync.
       const [allSales, allSaleItems, allProducts, allExpenses, allCustomers, allPurchaseItems, allReturns, allReturnItems, runs, recipeLines, writeOffRows, allPurchases] = await Promise.all([
@@ -80,19 +95,16 @@ export default function Analytics() {
       }
       setPnlExtra({
         returns: allReturns
-          .filter((r) => r.created_at >= since)
+          .filter((r) => inWindow(new Date(r.created_at).toISOString()))
           .map((r) => ({ total_refund: r.total_refund, items: itemsByReturn.get(r.id) ?? [] })),
         purchaseItems: [...allPurchaseItems, ...productionCostLinesOf(runs), ...typedCostLinesOf(allProducts)],
         serviceIds: new Set(allProducts.filter((p) => p.is_service).map((p) => p.id)),
         recipes: bookFromRows(allProducts, recipeLines),
         // write-offs carry a plain day, so compare with the window's LOCAL first day —
         // `since` is an instant, and its UTC date is the day before east of Greenwich.
-        writeOffs: writeOffTotals(writeOffRows.filter((w) => {
-          const d = new Date(since);
-          const firstDay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-          return String(w.date).slice(0, 10) >= firstDay;
-        })),
-        rawMaterials: untrackedMaterialsCost(allProducts, allPurchases, allPurchaseItems, since, new Date()),
+        // Write-offs carry a plain day, so they're compared with the window's local days.
+        writeOffs: writeOffTotals(writeOffRows.filter((w) => dayIn(w.date))),
+        rawMaterials: untrackedMaterialsCost(allProducts, allPurchases, allPurchaseItems, since, new Date(until)),
       });
       const itemsBySale = new Map<string, any[]>();
       for (const it of allSaleItems) {
@@ -101,23 +113,29 @@ export default function Analytics() {
         itemsBySale.set(it.sale_id, arr);
       }
       const salesData = allSales
-        .filter((sl) => sl.created_at >= since)
+        .filter((sl) => inWindow(new Date(sl.created_at).toISOString()))
         .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
         .map((sl) => ({ ...sl, sale_items: itemsBySale.get(sl.id) ?? [] }));
       setSales(salesData);
       setItems(salesData.flatMap((sl: any) => (sl.sale_items ?? []).map((it: any) => ({ ...it, created_at: sl.created_at }))));
       setProducts(allProducts.filter((p) => p.is_active !== false));
-      setExpenses(allExpenses.filter((e) => String(e.expense_date) >= since.slice(0, 10)));
+      setExpenses(allExpenses.filter((e) => dayIn(e.expense_date)));
       setCustomerCount(allCustomers.length);
 
       // Payroll isn't synced locally — fetch it online (0 when offline).
       if (perms.canManageExpenses && navigator.onLine) {
-        try { setPayroll(await rpc<any[]>("listPayrollForAnalyticsAction", range)); }
+        // The action counts days back from today, so ask from the window's
+        // first day and trim anything after its last.
+        try {
+          const back = daysIn(win.from, localDay(new Date()));
+          const rows = await rpc<any[]>("listPayrollForAnalyticsAction", back);
+          if (!stale) setPayroll(rows.filter((p) => dayIn(p.date)));
+        }
         catch { setPayroll([]); }
         // Fixed-asset depreciation, likewise server-only.
         try {
           setAssetEffects(await rpc<{ depreciation: number; disposal_gain: number }>(
-            "assetEffectsAction", since.slice(0, 10), new Date().toISOString().slice(0, 10),
+            "assetEffectsAction", win.from, win.to,
           ));
         } catch { setAssetEffects({ depreciation: 0, disposal_gain: 0 }); }
       } else {
@@ -133,9 +151,12 @@ export default function Analytics() {
         bookFromRows(allProducts, recipeLines),
       ));
 
+      if (stale) return;
       setLoading(false);
+      setLoaded(true);
     })();
-  }, [currentShop, range, perms.canManageExpenses]);
+    return () => { stale = true; };
+  }, [currentShop, from, to, perms.canManageExpenses]);
 
   const cur = currentShop?.currency ?? "USD";
 
@@ -171,16 +192,37 @@ export default function Analytics() {
   }, [sales, pnl]);
 
   const dailySeries = useMemo(() => {
-    const days = eachDayOfInterval({ start: subDays(new Date(), range - 1), end: new Date() });
-    return days.map((d) => {
+    if (!DAY.test(from) || !DAY.test(to)) return [];
+    // One day: by the hour, or the chart is a single dot.
+    if (singleDay) {
+      const byHour = new Array(24).fill(0);
+      for (const s of sales) byHour[new Date(s.created_at).getHours()] += Number(s.total);
+      const dayExpense =
+        expenses.reduce((a, e) => a + Number(e.amount), 0) + payroll.reduce((a, p) => a + Number(p.amount), 0);
+      // Expenses carry a day, not a time — put them where the day starts.
+      return byHour.map((v, h) => ({
+        date: format(new Date(2000, 0, 1, h), "h a"),
+        revenue: Math.round(v * 100) / 100,
+        expense: h === 0 ? Math.round(dayExpense * 100) / 100 : 0,
+      }));
+    }
+    const [a, b] = from <= to ? [from, to] : [to, from];
+    const dayList = eachDayOfInterval({ start: parseDay(a), end: parseDay(b) });
+    // A bill's day is the shop's local day, not the UTC date in its timestamp.
+    const revenueByDay = new Map<string, number>();
+    for (const s of sales) {
+      const k = localDay(new Date(s.created_at));
+      revenueByDay.set(k, (revenueByDay.get(k) ?? 0) + Number(s.total));
+    }
+    return dayList.map((d) => {
       const key = format(d, "yyyy-MM-dd");
-      const dayRevenue = sales.filter((s) => s.created_at.slice(0, 10) === key).reduce((a, s) => a + Number(s.total), 0);
+      const dayRevenue = revenueByDay.get(key) ?? 0;
       const dayExpense =
         expenses.filter((e) => e.expense_date === key).reduce((a, e) => a + Number(e.amount), 0) +
         payroll.filter((p) => p.date === key).reduce((a, p) => a + Number(p.amount), 0);
       return { date: format(d, "MMM d"), revenue: Math.round(dayRevenue * 100) / 100, expense: Math.round(dayExpense * 100) / 100 };
     });
-  }, [sales, expenses, payroll, range]);
+  }, [sales, expenses, payroll, from, to, singleDay]);
 
   const topProducts = useMemo(() => {
     const map = new Map<string, { name: string; qty: number; revenue: number }>();
@@ -226,14 +268,15 @@ export default function Analytics() {
     if (stats.margin > 0 && stats.margin < 20) out.push({ tone: "warning", icon: Target, title: t("analytics.tips.tightMarginTitle"), body: t("analytics.tips.tightMarginBody", { value: stats.margin.toFixed(1) }) });
     if (stats.margin >= 40) out.push({ tone: "success", icon: TrendingUp, title: t("analytics.tips.strongMarginTitle"), body: t("analytics.tips.strongMarginBody", { value: stats.margin.toFixed(1) }) });
     if (repeatCustomers === 0 && customerCount > 0) out.push({ tone: "info", icon: Users, title: t("analytics.tips.loyaltyTitle"), body: t("analytics.tips.loyaltyBody") });
-    if (sales.length > 0) {
-      const avgDay = stats.revenue / range;
+    // "Slowing down" compares the last week with the window — meaningless on a short one.
+    if (sales.length > 0 && days >= 14) {
+      const avgDay = stats.revenue / days;
       const last7 = dailySeries.slice(-7).reduce((a, d) => a + d.revenue, 0) / 7;
       if (last7 < avgDay * 0.7) out.push({ tone: "warning", icon: TrendingUp, title: t("analytics.tips.slowingTitle"), body: t("analytics.tips.slowingBody") });
     }
     if (sales.length === 0) out.push({ tone: "info", icon: Sparkles, title: t("analytics.tips.startTitle"), body: t("analytics.tips.startBody") });
     return out;
-  }, [outOfStock, lowStock, topProducts, stats, repeatCustomers, customerCount, sales, dailySeries, range, cur, formatMoney, t]);
+  }, [outOfStock, lowStock, topProducts, stats, repeatCustomers, customerCount, sales, dailySeries, days, cur, formatMoney, t]);
 
   const guides = [
     { title: t("analytics.guides.upsellTitle"), body: t("analytics.guides.upsellBody"), category: t("analytics.guides.sales") },
@@ -244,7 +287,9 @@ export default function Analytics() {
     { title: t("analytics.guides.financeTitle"), body: t("analytics.guides.financeBody"), category: t("analytics.guides.finance") },
   ];
 
-  if (loading) return <div className="p-12 text-center text-muted-foreground">{t("analytics.loadingInsights")}</div>;
+  if (!loaded) return <div className="p-12 text-center text-muted-foreground">{t("analytics.loadingInsights")}</div>;
+
+  const active = matchingPreset(from, to);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -253,14 +298,41 @@ export default function Analytics() {
           <h1 className="text-3xl font-bold">{t("analytics.title")}</h1>
           <p className="text-muted-foreground mt-1">{t("analytics.subtitle")}</p>
         </div>
-        <div className="flex gap-1 p-1 bg-muted rounded-lg">
-          {[7, 30, 90].map((r) => (
-            <Button key={r} size="sm" variant={range === r ? "default" : "ghost"} onClick={() => setRange(r as Range)} className={range === r ? "bg-gradient-primary text-primary-foreground" : ""}>
-              {r}d
-            </Button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-1 p-1 bg-muted rounded-lg">
+            {ANALYTICS_PRESETS.map((p) => (
+              <Button
+                key={p.value}
+                size="sm"
+                variant={active === p.value ? "default" : "ghost"}
+                onClick={() => setRange(presetRange(p.value))}
+                className={active === p.value ? "bg-gradient-primary text-primary-foreground" : ""}
+              >
+                {p.label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <DateInput
+              aria-label="From"
+              className="h-9 w-36"
+              value={from}
+              onChange={(e) => { const v = e.target.value; if (DAY.test(v)) setRange((r) => ({ ...r, from: v })); }}
+            />
+            <span className="text-xs text-muted-foreground">to</span>
+            <DateInput
+              aria-label="To"
+              className="h-9 w-36"
+              value={to}
+              onChange={(e) => { const v = e.target.value; if (DAY.test(v)) setRange((r) => ({ ...r, to: v })); }}
+            />
+          </div>
         </div>
       </header>
+      <p className="-mt-3 text-xs text-muted-foreground">
+        {singleDay ? <>Showing {fmtDate(from)}</> : <>Showing {fmtDate(from <= to ? from : to)} – {fmtDate(from <= to ? to : from)} · {days} days</>}
+        {loading && <span className="ms-2 animate-pulse">Updating…</span>}
+      </p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KPI icon={DollarSign} label={t("analytics.netSales", { defaultValue: "Net sales" })} value={formatMoney(stats.revenue, cur)} sub={`${formatMoney(pnl.billed, cur)} billed`} tone="primary" />
