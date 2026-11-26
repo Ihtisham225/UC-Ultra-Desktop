@@ -107,7 +107,7 @@ export function AccountPicker({
             <SelectItem key={a.id} value={a.id}>
               {a.logo_url ? (
                 <span className="inline-flex items-center gap-2">
-                  <AccountLogo logoUrl={a.logo_url} type={a.type} className="size-4" />
+                  <AccountLogo logoUrl={a.logo_url} type={a.type} className="size-4" wideClassName="h-5 w-10" />
                   {a.name}
                 </span>
               ) : (

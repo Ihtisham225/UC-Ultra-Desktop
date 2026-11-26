@@ -322,7 +322,7 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <AccountLogo logoUrl={r.logo_url} type={r.type} className="size-8" />
+                      <AccountLogo logoUrl={r.logo_url} type={r.type} className="size-8" wideClassName="h-8 w-16" />
                       <span className="font-semibold truncate">{r.name}</span>
                       <Badge variant="secondary" className="shrink-0">{TYPE_LABEL[r.type]}</Badge>
                       {r.is_archived && <Badge variant="outline" className="shrink-0">Archived</Badge>}

@@ -26,6 +26,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { GlobalSearch } from "@/components/GlobalSearch";
+import TodayClock from "@/components/TodayClock";
 import { InstallPwaButton } from "@/components/InstallPwaButton";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { Logo } from "@/components/Logo";
@@ -158,7 +159,7 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
           </div>
 
           {/* Shop switcher */}
-          <div className="no-drag-region flex items-center gap-2 min-w-0 pl-2 lg:pl-0">
+          <div className="no-drag-region flex items-center gap-2 min-w-0 pl-2 lg:pl-0 lg:shrink-0">
             {role === "owner" ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -193,12 +194,14 @@ export const AppLayout = ({ children }: { children: ReactNode }) => {
           </div>
 
           {/* Global search — centred flex-1, draggable gaps on either side */}
-          <div className="no-drag-region chrome-search hidden lg:flex flex-1 justify-center px-4">
+          <div className="no-drag-region chrome-search hidden lg:flex flex-1 min-w-0 justify-center px-4">
             <GlobalSearch variant="desktop-bar" />
           </div>
 
           {/* Right actions */}
           <div className="no-drag-region flex items-center gap-0.5 shrink-0 pr-3 ml-auto lg:ml-0">
+            {/* Only where there's room: day + time from xl, the date too from 2xl (TodayClock). */}
+            <TodayClock compact className="hidden xl:flex" />
             <Button
               variant="ghost" size="icon" onClick={() => openShortcutPopup("shortcuts")}
               className="hidden lg:inline-flex" aria-label="Keyboard shortcuts"

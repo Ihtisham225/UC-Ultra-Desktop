@@ -242,7 +242,8 @@ export default function Dashboard() {
           <p className="text-muted-foreground mt-1">{t("dashboard.growTipBody").split(".")[0]}.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <TodayClock />
+          {/* The widest screens show the full date in the header instead. */}
+          <TodayClock className="2xl:hidden" />
           <Button asChild size="lg" className="bg-gradient-primary hover:opacity-90 text-primary-foreground shadow-glow">
             <Link to="/pos"><ScanBarcode className="size-4 me-2" /> {t("nav.pos")}</Link>
           </Button>
