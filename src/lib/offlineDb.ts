@@ -18,6 +18,9 @@ export interface CachedProduct {
   is_lab_test?: boolean
   /** A deal / combo (cafe recipes) — marked on the till's card. */
   is_deal?: boolean
+  /** Photo / colour to spot it by — only set while the shop has the switch on. */
+  image_url?: string | null
+  color?: string | null
   /** What stock is counted in — the unit a bare quantity means. */
   unit?: string | null
   /** Other units it can be billed in, e.g. a 4-litre bottle of a litre oil. */

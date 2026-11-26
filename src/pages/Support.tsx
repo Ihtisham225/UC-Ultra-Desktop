@@ -4,10 +4,18 @@ import { MessageCircle, Mail, Phone, ExternalLink, HelpCircle, LifeBuoy } from "
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { useSupportContact } from "@/hooks/useSupportContact";
+import { callNumber, telHref, whatsappHref } from "@/lib/support-contact";
 
 export default function Support() {
-  usePageMeta({ title: "Support — UCU", description: "Get in touch with Tech Town Swat for help, plan activation and renewals.", path: "/support" });
+  usePageMeta({ title: "Support — UCU", description: "Get help, plan activation and renewals.", path: "/support" });
   const { t } = useTranslation();
+  // Set by the super admin on the web (/admin → Settings); cached for offline.
+  const contact = useSupportContact();
+  const wa = whatsappHref(contact.whatsapp);
+  const phone = callNumber(contact);
+  const tel = telHref(phone);
+  const email = contact.email.trim();
   useEffect(() => {
     document.title = "UCU";
   }, []);
@@ -25,6 +33,7 @@ export default function Support() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
+        {(wa || phone) && (
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -34,23 +43,25 @@ export default function Support() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">{t("support.whatsappBody")}</p>
-            <Button asChild className="w-full" variant="default">
-              <a
-                href="https://wa.me/923105892935"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <MessageCircle className="size-4 mr-2" />
-                {t("support.chatOnWhatsapp")}
-              </a>
-            </Button>
-            <div className="flex items-center gap-2 text-sm">
-              <Phone className="size-3.5 text-muted-foreground" />
-              <span className="font-medium">0310 5892935</span>
-            </div>
+            {wa && (
+              <Button asChild className="w-full" variant="default">
+                <a href={wa} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle className="size-4 mr-2" />
+                  {t("support.chatOnWhatsapp")}
+                </a>
+              </Button>
+            )}
+            {phone && (
+              <div className="flex items-center gap-2 text-sm">
+                <Phone className="size-3.5 text-muted-foreground" />
+                {tel ? <a href={tel} className="font-medium hover:underline">{phone}</a> : <span className="font-medium">{phone}</span>}
+              </div>
+            )}
           </CardContent>
         </Card>
+        )}
 
+        {email && (
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -61,13 +72,14 @@ export default function Support() {
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">{t("support.emailBody")}</p>
             <Button asChild className="w-full" variant="outline">
-              <a href="mailto:uihtisham0@gmail.com">
+              <a href={`mailto:${email}`} className="min-w-0">
                 <Mail className="size-4 mr-2" />
-                uihtisham0@gmail.com
+                <span className="truncate">{email}</span>
               </a>
             </Button>
           </CardContent>
         </Card>
+        )}
       </div>
 
       <Card>
@@ -93,20 +105,26 @@ export default function Support() {
         </CardContent>
       </Card>
 
+      {contact.companyName.trim() && (
       <Card className="bg-gradient-to-br from-primary/5 to-amber-500/5 border-primary/20">
         <CardContent className="py-5 text-center space-y-1">
           <div className="text-sm text-muted-foreground">{t("support.createdBy")}</div>
-          <a
-            href="https://techtownswat.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-base font-bold text-primary hover:underline"
-          >
-            Tech Town Swat
-            <ExternalLink className="size-3.5" />
-          </a>
+          {contact.companyUrl.trim() ? (
+            <a
+              href={contact.companyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-base font-bold text-primary hover:underline"
+            >
+              {contact.companyName}
+              <ExternalLink className="size-3.5" />
+            </a>
+          ) : (
+            <div className="text-base font-bold text-primary">{contact.companyName}</div>
+          )}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

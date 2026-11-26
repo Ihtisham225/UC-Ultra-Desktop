@@ -104,6 +104,9 @@ export function useOfflineProducts(shopId: string | undefined) {
         is_lab_test: (p as { is_lab_test?: boolean }).is_lab_test ?? false,
         // A deal / combo (cafe recipes) — marked on the till's card.
         is_deal: (p as { recipe_mode?: string | null }).recipe_mode === "deal",
+        // Photo / colour (Settings → Shop); the till shows them only while the switch is on.
+        image_url: (p as { image_url?: string | null }).image_url ?? null,
+        color: (p as { color?: string | null }).color ?? null,
         unit: (p as { unit?: string | null }).unit ?? null,
         units: unitsByProduct.get(p.id) ?? [],
         variants: variantsByProduct.get(p.id) ?? [],

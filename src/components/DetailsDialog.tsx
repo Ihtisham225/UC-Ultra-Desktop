@@ -19,9 +19,11 @@ interface Props {
   children?: ReactNode;
   /** Wider for dialogs carrying a table. */
   wide?: boolean;
+  /** Shown above the rows — e.g. a product's photo or colour. */
+  media?: ReactNode;
 }
 
-export const DetailsDialog = ({ open, onClose, title, subtitle, rows, footer, children, wide }: Props) => {
+export const DetailsDialog = ({ open, onClose, title, subtitle, rows, footer, children, wide, media }: Props) => {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className={`${wide ? "sm:max-w-4xl" : "sm:max-w-2xl"} max-h-[90vh] flex flex-col`}>
@@ -30,6 +32,7 @@ export const DetailsDialog = ({ open, onClose, title, subtitle, rows, footer, ch
           {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
         </DialogHeader>
         <div className="overflow-y-auto flex-1 -mx-6 px-6 space-y-5">
+          {media && <div className="flex justify-center pt-1">{media}</div>}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-2">
             {rows.map((r, i) => (
               <div key={i} className={r.full ? "col-span-2" : "col-span-1"}>

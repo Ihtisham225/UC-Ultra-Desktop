@@ -40,7 +40,8 @@ import { syncNow } from "@/lib/syncEngine";
 import { CategorySelect, flattenCategories, type CategoryDto, type CategoryOption } from "@/components/CategorySelect";
 import { BrandSelect, type BrandDto } from "@/components/BrandSelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { rpc } from "@/lib/apiClient";
+import { rpc, uploadProductImage } from "@/lib/apiClient";
+import { ProductThumb } from "@/components/ProductLook";
 import { isOil } from "@/lib/oil";
 import { cafeKindOf, isCafe, usesRecipes } from "@/lib/cafe";
 import { averageCostsWithRecipes } from "@/lib/pnl";
@@ -102,6 +103,9 @@ interface Product {
   /** Recipe mode and yield, straight off the synced row (yield is Decimal text). */
   recipe_mode?: string | null;
   recipe_yield?: number | string | null;
+  /** Photo / colour (Settings → Shop → "Product photo or colour"). */
+  image_url?: string | null;
+  color?: string | null;
   product_variants?: Variant[];
 }
 
@@ -301,6 +305,8 @@ export default function Products() {
   // Cafe shops: what a recipe can be made from, costed from the local purchase
   // lines — the same average landed cost the P&L uses, so it works offline.
   const cafe = isCafe(currentShop);
+  // Settings → Shop → "Product photo or colour". Off: no field, no thumbnails.
+  const lookOn = !!currentShop?.product_look_enabled;
   const { data: productionRuns } = useLocalStore<{ id: string; product_id: string; quantity: number | string; total_cost: number | string }>("production_runs", currentShop?.id);
   const { data: recipeLineRows } = useLocalStore<LocalRecipeLine>("product_recipe_lines", currentShop?.id);
   /** Products with at least one recipe line — a batch without any is "Prepared ahead". */
@@ -467,6 +473,10 @@ export default function Products() {
       is_service: (editing as any).is_service ?? false,
       is_lab_test: (editing as any).is_lab_test ?? false,
       is_active: editing.is_active !== false,
+      // Photo / colour ride the product row like any column. Carried through
+      // even while the switch is off, so turning it off hides them, never wipes them.
+      image_url: editing.image_url ?? null,
+      color: editing.color ?? null,
       updated_at: now,
       created_at: editing.id
         ? ((items.find((p) => p.id === editing.id) as any)?.created_at ?? now)
@@ -1009,7 +1019,9 @@ export default function Products() {
                             p.brand,
                           ].filter(Boolean);
                           return (
-                            <>
+                            <div className="flex items-start gap-2.5">
+                              {lookOn && <ProductThumb name={p.name} imageUrl={p.image_url} color={p.color} placeholder className="size-9 mt-0.5" />}
+                              <div className="min-w-0">
                               <div className="font-medium flex items-center gap-2">
                                 {p.name}
                                 {special && (
@@ -1024,16 +1036,17 @@ export default function Products() {
                                   {facts.join(" · ")}
                                 </div>
                               )}
-                            </>
-                          );
-                        })()}
-                        {(() => {
-                          const place = whereKept(p, null, locations);
-                          return place ? (
-                            <div className="text-[11px] text-muted-foreground flex items-center gap-1">
-                              <MapPin className="size-3" /> {place}
+                              {(() => {
+                                const place = whereKept(p, null, locations);
+                                return place ? (
+                                  <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                    <MapPin className="size-3" /> {place}
+                                  </div>
+                                ) : null;
+                              })()}
+                              </div>
                             </div>
-                          ) : null;
+                          );
                         })()}
                       </td>
                       <td data-label={`${t("products.sku")} / ${t("products.barcode")}`} className="px-3 py-2.5 hidden md:table-cell font-mono text-xs text-muted-foreground">
@@ -1091,6 +1104,7 @@ export default function Products() {
               savedCost={savedCost}
               recipeIngredients={recipeIngredients}
               productId={editing.id ?? null}
+              onUploadImage={lookOn ? uploadProductImage : undefined}
             />
           )}
           <DialogFooter>
@@ -1130,6 +1144,16 @@ export default function Products() {
           onClose={() => setDetails(null)}
           title={details.name}
           subtitle={[details.category, details.brand].filter(Boolean).join(" · ") || undefined}
+          media={lookOn && (details.image_url || details.color) ? (
+            <ProductThumb
+              name={details.name}
+              imageUrl={details.image_url}
+              color={details.color}
+              className={details.image_url ? "w-full max-w-xs aspect-square" : "w-full h-20"}
+              rounded="rounded-xl"
+              textClassName="text-2xl"
+            />
+          ) : undefined}
           rows={[
             { label: "Brand", value: details.brand ?? "—" },
             { label: t("products.sku"), value: details.sku ?? "—" },

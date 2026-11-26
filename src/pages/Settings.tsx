@@ -101,6 +101,7 @@ export default function Settings() {
   const [chequeDays, setChequeDays] = useState("10");
   const [daybookOn, setDaybookOn] = useState(false);
   const [priceByMarkup, setPriceByMarkup] = useState(false);
+  const [productLook, setProductLook] = useState(false);
   const [dateFormat, setDateFormat] = useState<string>(DEFAULT_DATE_FORMAT);
   const [timeFormat, setTimeFormat] = useState<string>(DEFAULT_TIME_FORMAT);
   const [showCostInPos, setShowCostInPos] = useState(false);
@@ -166,6 +167,7 @@ export default function Settings() {
       setChequeDays(String(currentShop.cheque_reminder_days ?? 10));
       setDaybookOn(!!currentShop.daybook_enabled);
       setPriceByMarkup(!!currentShop.price_by_markup);
+      setProductLook(!!currentShop.product_look_enabled);
       setDateFormat(isDateFormat(currentShop.date_format) ? currentShop.date_format : DEFAULT_DATE_FORMAT);
       setTimeFormat(currentShop.time_format === "24h" ? "24h" : DEFAULT_TIME_FORMAT);
       setShowCostInPos(!!currentShop.show_cost_in_pos);
@@ -279,6 +281,7 @@ export default function Settings() {
         cheque_reminder_days: Math.min(90, Math.max(0, parseInt(chequeDays, 10) || 0)),
         daybook_enabled: daybookOn,
         price_by_markup: priceByMarkup,
+        product_look_enabled: productLook,
         date_format: dateFormat,
         time_format: timeFormat,
       });
@@ -825,6 +828,20 @@ export default function Settings() {
                       </p>
                     </div>
                     <Switch checked={priceByMarkup} onCheckedChange={setPriceByMarkup} disabled={!canEditShop} />
+                  </div>
+                )}
+                {storeType !== "handicraft" && (
+                  <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                    <div>
+                      <Label>Product photo or colour</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Lets each product carry a photo or a colour, so the counter can spot it at a
+                        glance. The product form gets an &quot;Image or colour&quot; box, and the photo or
+                        colour shows on the products list and at the till. Photos are shrunk before
+                        upload, so they take very little space.
+                      </p>
+                    </div>
+                    <Switch checked={productLook} onCheckedChange={setProductLook} disabled={!canEditShop} />
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
