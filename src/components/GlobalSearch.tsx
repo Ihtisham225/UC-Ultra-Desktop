@@ -122,7 +122,7 @@ export const GlobalSearch = ({ variant }: { variant: Variant }) => {
       className="flex items-center gap-2 w-full max-w-xl h-10 px-4 rounded-lg border border-input bg-background/60 hover:bg-background hover:border-primary/40 transition-colors text-sm text-muted-foreground"
     >
       <Search className="size-4 shrink-0" />
-      <span className="flex-1 text-left">Search products, sales, customers…</span>
+      <span className="flex-1 min-w-0 truncate text-left">Search products, sales, customers…</span>
       <kbd className="hidden md:inline-flex items-center gap-0.5 px-1.5 h-5 rounded bg-muted text-[10px] font-mono text-muted-foreground">
         ⌘K
       </kbd>

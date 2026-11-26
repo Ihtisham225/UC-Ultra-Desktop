@@ -27,7 +27,8 @@ export default function HandicraftDashboard({ stats }: { stats: CraftDashboard }
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <TodayClock />
+          {/* The widest screens show the full date in the header instead. */}
+          <TodayClock className="2xl:hidden" />
           <Button variant="outline" asChild>
             <Link to="/job-work"><Factory className="size-4 mr-2" /> Job work</Link>
           </Button>

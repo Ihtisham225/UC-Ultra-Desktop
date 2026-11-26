@@ -57,11 +57,6 @@ export interface AccountsApi {
    * (lib/printA4); without it the sheet prints through a hidden frame.
    */
   printDocument?: (html: string, name: string) => Promise<void>;
-  /**
-   * Store a compressed account logo and return its URL. Omitted (a host that
-   * can't upload yet), the account form offers no logo.
-   */
-  uploadLogo?: (file: Blob, fileName: string) => Promise<string>;
 }
 
 /** The browser's own print, from a frame parked off-screen at A4 size. */
@@ -162,8 +157,8 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
       name: form.name.trim(),
       type: form.type,
       opening_balance: parseFloat(form.opening_balance) || 0,
-      // Only a host that can upload sends it, so an older one never clears a logo.
-      ...(api.uploadLogo ? { logo_url: form.logo_url } : {}),
+      // A key from lib/account-logos ("preset:hbl"), or null for none.
+      logo_url: form.logo_url,
     };
     if (!payload.name) return toast.error("Enter a name");
     setBusy(true);
@@ -327,7 +322,7 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <AccountLogo logoUrl={r.logo_url} type={r.type} className="size-8" />
+                      <AccountLogo logoUrl={r.logo_url} type={r.type} className="size-8" wideClassName="h-8 w-16" />
                       <span className="font-semibold truncate">{r.name}</span>
                       <Badge variant="secondary" className="shrink-0">{TYPE_LABEL[r.type]}</Badge>
                       {r.is_archived && <Badge variant="outline" className="shrink-0">Archived</Badge>}
@@ -368,7 +363,7 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
 
       {/* New / edit account */}
       <Dialog open={creating} onOpenChange={(o) => !o && setCreating(false)}>
-        <DialogContent data-add-new="account" className="sm:max-w-md">
+        <DialogContent data-add-new="account" className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{editing ? "Edit account" : "New account"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -397,14 +392,16 @@ export function AccountsScreen({ api, canEdit }: { api: AccountsApi; canEdit: bo
                 What the account already holds today. Sales and transfers are added on top.
               </p>
             </div>
-            {api.uploadLogo && (
-              <AccountLogoField
-                logoUrl={form.logo_url}
-                type={form.type}
-                upload={api.uploadLogo}
-                onChange={(url) => setForm((f) => ({ ...f, logo_url: url }))}
-              />
-            )}
+            <AccountLogoField
+              logoUrl={form.logo_url}
+              type={form.type}
+              onChange={(value, preset) => setForm((f) => ({
+                ...f,
+                logo_url: value,
+                // A fresh account picked from the list takes its name and type.
+                ...(preset && !f.name.trim() ? { name: preset.name, type: preset.kind } : {}),
+              }))}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreating(false)} disabled={busy}>Cancel</Button>

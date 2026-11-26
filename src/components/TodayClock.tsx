@@ -1,8 +1,10 @@
 "use client";
 
 /**
- * Today's day, date and a live time for the top of the dashboard — in the
- * shop's own date and time format (Settings → Shop → Date & time).
+ * Today's day, date and a live time — in the shop's own date and time format
+ * (Settings → Shop → Date & time). `compact` is the one-line chip in the app
+ * header: "Thu 6:32 PM" from xl, with the date added from 2xl. The boxed
+ * version sits on the dashboard until the header shows the date (below 2xl).
  *
  * ⚠️ The time is read only after mount: the server renders at its own moment
  * and timezone, so reading the clock during render is a hydration mismatch.
@@ -17,8 +19,9 @@ import { CalendarDays } from "lucide-react";
 import { fmtDate, fmtTime } from "@/lib/date-format";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export default function TodayClock({ className = "" }: { className?: string }) {
+export default function TodayClock({ className = "", compact = false }: { className?: string; compact?: boolean }) {
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -27,6 +30,26 @@ export default function TodayClock({ className = "" }: { className?: string }) {
     const id = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  if (compact) {
+    return (
+      // Fixed min-width holds the space before mount, so the header doesn't jump.
+      <div
+        className={`items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-muted-foreground whitespace-nowrap min-w-[5.5rem] 2xl:min-w-[11.5rem] ${className}`}
+        aria-live="off"
+        title={now ? `${WEEKDAYS[now.getDay()]}, ${fmtDate(now)}` : undefined}
+      >
+        <CalendarDays className="size-4 text-primary shrink-0" />
+        {now && (
+          <span className="tabular-nums">
+            {/* The date only where the header has room for it (2xl); the day and time always. */}
+            {SHORT_DAYS[now.getDay()]} <span className="hidden 2xl:inline">{fmtDate(now)} · </span>
+            <span className="font-semibold text-foreground">{fmtTime(now)}</span>
+          </span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Label } from "@/components/ui/label";
+import { AccountLogo } from "@/components/AccountLogo";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export interface AccountOption { id: string; name: string; type: string; logo_url?: string | null }
@@ -106,8 +107,7 @@ export function AccountPicker({
             <SelectItem key={a.id} value={a.id}>
               {a.logo_url ? (
                 <span className="inline-flex items-center gap-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- tiny public blob image */}
-                  <img src={a.logo_url} alt="" className="size-4 rounded-sm object-contain bg-white" />
+                  <AccountLogo logoUrl={a.logo_url} type={a.type} className="size-4" wideClassName="h-5 w-10" />
                   {a.name}
                 </span>
               ) : (
