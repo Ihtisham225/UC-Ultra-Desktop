@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useLandingParams } from "@/hooks/useLandingParams";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { printDocumentA4 } from "@/lib/printA4";
@@ -43,6 +43,9 @@ import { LedgerEntriesTable } from "@/components/LedgerEntriesLog";
 import { PageTip } from "@/components/PageTip";
 import { AccountPicker } from "@/components/AccountPicker";
 import { PaymentReceiptDialog } from "@/components/PaymentReceiptDialog";
+import { PurchaseReceiptDialog } from "@/components/PurchaseReceiptDialog";
+import type { PurchaseSlip } from "@/lib/purchase-receipt";
+import { printThermalHtml } from "@/lib/printThermal";
 import { PersonLedgerDialog } from "@/components/PersonLedgerDialog";
 import { EditLedgerEntryDialog, type EditableLedgerEntry, type LedgerEntryEdit } from "@/components/EditLedgerEntryDialog";
 import type { PaymentReceiptDto } from "@/lib/payment-receipt";
@@ -162,6 +165,23 @@ const billLabel = (d: Pick<Debt, "sale_id" | "purchase_id" | "notes">, billNo: M
 
 export default function Debts() {
   const { currentShop } = useShop();
+  const navigate = useNavigate();
+
+  // A bill on a person's ledger: a sale opens on Sales (read from the local
+  // store, so it works offline); a purchase voucher is built on the server.
+  const [voucher, setVoucher] = useState<PurchaseSlip | null>(null);
+  const openBill = async (b: { sale_id: string | null; purchase_id: string | null }) => {
+    if (b.sale_id) {
+      navigate(`/sales?sale=${b.sale_id}`);
+    } else if (b.purchase_id) {
+      const slip = await rpc<PurchaseSlip | null>("getPurchaseReceiptAction", b.purchase_id).catch(() => null);
+      if (!slip) {
+        toast.error(navigator.onLine ? "This purchase could not be opened — it may have been deleted." : "Opening a purchase needs a connection.");
+        return;
+      }
+      setVoucher(slip);
+    }
+  };
   const { user } = useAuth();
   const perms = usePermissions();
   const formatMoney = useFormatMoney();
@@ -1770,7 +1790,10 @@ export default function Debts() {
         payments={ledgerPayments}
         onRecordPayment={canManage && ledgerGroup ? () => { const g = ledgerGroup; setLedgerKey(null); openPaymentsDialog(g); } : undefined}
         onPrint={ledgerGroup ? () => void printStatements(ledgerDebts.map((d) => d.id)) : undefined}
+        onOpenBill={(b) => void openBill(b)}
       />
+
+      <PurchaseReceiptDialog slip={voucher} onClose={() => setVoucher(null)} print={printThermalHtml} />
 
       <PaymentReceiptDialog
         receipt={receipt}

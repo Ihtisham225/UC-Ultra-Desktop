@@ -70,6 +70,9 @@ export interface StatementLine {
   /** The khata entries behind this line, for edit / delete / receipt. */
   payment_ids: string[];
   receipt_id: string | null;
+  /** The bill behind the line, so the screen can open it. */
+  sale_id?: string | null;
+  purchase_id?: string | null;
 }
 
 export interface Statement {
@@ -164,6 +167,8 @@ export function buildLedgerStatement(
         paid: v < 0 ? r2(-v) : 0,
         payment_ids: [],
         receipt_id: null,
+        sale_id: d.sale_id ?? null,
+        purchase_id: d.purchase_id ?? null,
       },
     });
   }
@@ -231,6 +236,8 @@ export function buildLedgerStatement(
         paid: v < 0 ? -v : 0,
         payment_ids: parts.map((p) => p.id),
         receipt_id: first.receipt_id ?? null,
+        sale_id: null,
+        purchase_id: first.kind === "payment" ? first.purchase_id ?? null : null,
       },
     });
   }
