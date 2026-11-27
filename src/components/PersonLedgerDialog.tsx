@@ -52,6 +52,7 @@ export function PersonLedgerDialog({
   loading = false,
   onRecordPayment,
   onPrint,
+  onOpenBill,
 }: {
   open: boolean;
   onClose: () => void;
@@ -69,6 +70,8 @@ export function PersonLedgerDialog({
   onRecordPayment?: () => void;
   /** Prints the A4 statement. */
   onPrint?: () => void;
+  /** Opens the bill (sale receipt or purchase voucher) behind a line. */
+  onOpenBill?: (bill: { sale_id: string | null; purchase_id: string | null }) => void;
 }) {
   const [range, setRange] = useState({ from: "", to: "" });
   const [kind, setKind] = useState<KindFilter>("all");
@@ -196,7 +199,18 @@ export function PersonLedgerDialog({
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                         <Badge variant="outline" className={"text-[10px] " + KIND_BADGE[l.kind].cls}>{KIND_BADGE[l.kind].label}</Badge>
-                        <span className="font-medium">{l.title}</span>
+                        {onOpenBill && (l.sale_id || l.purchase_id) ? (
+                          <button
+                            type="button"
+                            className="font-medium text-primary underline-offset-2 hover:underline text-left"
+                            title={l.sale_id ? "Open this bill" : "Open this purchase"}
+                            onClick={() => onOpenBill({ sale_id: l.sale_id ?? null, purchase_id: l.purchase_id ?? null })}
+                          >
+                            {l.title}
+                          </button>
+                        ) : (
+                          <span className="font-medium">{l.title}</span>
+                        )}
                       </div>
                       {l.detail && <div className="text-xs text-muted-foreground mt-0.5">{l.detail}</div>}
                     </TableCell>
