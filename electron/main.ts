@@ -141,6 +141,36 @@ ipcMain.handle('print-receipt', async (_event, html: string, printerName?: strin
   })
 })
 
+/**
+ * Barcode stickers. Like a receipt, but the page is the LABEL: without an
+ * explicit size Electron lays the page out on the printer's default paper, so
+ * a sticker page that doesn't match the roll prints across the gap between two
+ * labels and every label after it drifts further. Margins are forced to none
+ * for the same reason as receipts. Not silent — the shop picks the label printer.
+ */
+ipcMain.handle('print-label', async (_event, html: string, widthMm: number, heightMm: number) => {
+  const microns = (mm: number) => Math.max(353, Math.round(Number(mm) * 1000))
+  const htmlFile = path.join(app.getPath('temp'), `ucultra-label-${Date.now()}.html`)
+  const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } })
+  try {
+    await fs.promises.writeFile(htmlFile, html, 'utf8')
+    await win.loadFile(htmlFile)
+    return await new Promise<{ success: boolean; reason?: string }>((resolve) => {
+      win.webContents.print({
+        silent: false,
+        printBackground: true,
+        margins: { marginType: 'none' },
+        pageSize: { width: microns(widthMm), height: microns(heightMm) },
+      }, (success, reason) => resolve(success ? { success: true } : { success: false, reason }))
+    })
+  } catch (e) {
+    return { success: false, reason: e instanceof Error ? e.message : String(e) }
+  } finally {
+    win.destroy()
+    fs.promises.unlink(htmlFile).catch(() => {})
+  }
+})
+
 // ─── A4 documents (reports, statements, count sheets) ──────────────────────
 
 /**

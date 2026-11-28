@@ -56,3 +56,24 @@ function printViaIframe(html: string) {
   doc.close();
   setTimeout(cleanup, 60000);
 }
+
+/**
+ * Print barcode stickers at the label's own page size. The desktop goes through
+ * the main process (window.open is denied in the app, so the old popup never
+ * printed at all); a browser build falls back to a hidden frame.
+ */
+export async function printLabelHtml(html: string, size: { width: number; height: number }): Promise<void> {
+  const api = window.electronAPI;
+  const clean = stripAutoPrint(html);
+  if (api?.printLabel) {
+    const res = await api.printLabel(clean, size.width, size.height);
+    // A cancelled print dialog reports failure too — only surface a real error.
+    if (!res.success && res.reason && !/cancel/i.test(res.reason)) throw new Error(res.reason);
+    return;
+  }
+  if (api?.printReceipt) {
+    await api.printReceipt(clean);
+    return;
+  }
+  printViaIframe(html);
+}
