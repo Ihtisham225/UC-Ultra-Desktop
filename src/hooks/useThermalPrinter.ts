@@ -22,6 +22,7 @@ declare global {
       printReceipt: (html: string, printerName?: string, silent?: boolean) => Promise<void>
       printCurrentPageA4?: (name?: string) => Promise<{ success: boolean; path?: string; reason?: string }>
       printDocumentA4?: (html: string, name?: string) => Promise<{ success: boolean; path?: string; reason?: string }>
+      printLabel?: (html: string, widthMm: number, heightMm: number) => Promise<{ success: boolean; reason?: string }>
       platform?: string
       onUpdateAvailable?: (cb: (version: string) => void) => void
       onUpdateDownloaded?: (cb: (version: string) => void) => void

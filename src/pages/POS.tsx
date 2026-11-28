@@ -373,12 +373,14 @@ export default function POS() {
   // With "Regular sale" switched off (Settings), a bill always carries a type.
   const chosenType = effectiveTillOrderType(currentShop, orderType);
   const regularOffered = regularSaleEnabled(currentShop);
-  // The vehicle form belongs to an oil change: it shows for a bill rung up as
-  // Oil change, or a plain untyped sale (how oil shops worked before order
-  // types). A Take away bill records no oil change, even if a car was typed in
-  // before the type was switched (NIAZ OIL, 2026-11-26) — same rule as
+  // The vehicle form stays open whatever the order type — the counter often
+  // fills it before choosing the type. Only a bill rung up as Oil change (or a
+  // plain untyped sale, how oil shops worked before order types) RECORDS one:
+  // a Take away bill is just marked Take away, with no oil-change register
+  // entry and no vehicle block on the slip — same rule as
   // lib/order-types::isOilChangeBill. Optional: an empty plate records none.
-  const showVehicle = oilShop && (!chosenType || chosenType === OIL_CHANGE_KEY);
+  const showVehicle = oilShop;
+  const recordsOilChange = oilShop && (!chosenType || chosenType === OIL_CHANGE_KEY);
   // The terminal's shop can arrive after the first render (or be switched):
   // start that shop's till on its own default (Dine-in for a cafe).
   const [typesFor, setTypesFor] = useState(currentShop?.id ?? null);
@@ -895,7 +897,7 @@ export default function POS() {
     // visit links to it offline; the server merges a plate another till
     // registered meanwhile (/api/sync/push).
     let vehicleId: string | null = pickedVehicle?.id ?? null;
-    if (showVehicle && !vehicleId && vehicle.vehicle_number.trim()) {
+    if (recordsOilChange && !vehicleId && vehicle.vehicle_number.trim()) {
       const key = normalizePlate(vehicle.vehicle_number);
       const known = localVehicles.find((v) => v.vehicle_key === key || normalizePlate(v.vehicle_number) === key);
       if (known) vehicleId = known.id;
@@ -915,7 +917,7 @@ export default function POS() {
         notifyChange("vehicles");
       }
     }
-    const oilChangeRow = showVehicle && vehicleId
+    const oilChangeRow = recordsOilChange && vehicleId
       ? {
           ...vehicleDraftToInput(vehicle),
           vehicle_id: vehicleId,

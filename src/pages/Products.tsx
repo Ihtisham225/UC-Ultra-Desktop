@@ -1,3 +1,4 @@
+import { printLabelHtml } from "@/lib/printThermal";
 import { BulkPriceDialog } from "@/components/BulkPriceDialog";
 import { productMatchesSearch } from "@/lib/product-search";
 import { applyBulkPrice, bulkPriceLabel, changesVariantPrices, type BulkPriceOp } from "@/lib/bulk-price";
@@ -1135,6 +1136,7 @@ export default function Products() {
           open={!!stickerProduct}
           onClose={() => setStickerProduct(null)}
           product={stickerProduct}
+          print={printLabelHtml}
         />
       )}
 

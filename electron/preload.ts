@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   printReceipt: (html: string, printerName?: string, silent?: boolean): Promise<{ success: boolean }> =>
     ipcRenderer.invoke('print-receipt', html, printerName, silent),
 
+  // Barcode stickers: one label per page at the roll's own size (see main.ts)
+  printLabel: (html: string, widthMm: number, heightMm: number): Promise<{ success: boolean; reason?: string }> =>
+    ipcRenderer.invoke('print-label', html, widthMm, heightMm),
+
   // A4 documents: rendered to a PDF and opened in the default viewer (see main.ts)
   printCurrentPageA4: (name?: string): Promise<{ success: boolean; path?: string; reason?: string }> =>
     ipcRenderer.invoke('print-current-page-a4', name),
